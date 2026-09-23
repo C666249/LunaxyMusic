@@ -1,0 +1,85 @@
+name: Build LunaxyMusic Beta APK
+
+on:
+  push:
+    branches: [ beta-v92.9.14-beta62 ]
+    paths:
+      - ".github/workflows/build-beta-apk.yml"
+      - ".ci/v92914-beta62-delta.tar.xz.b64"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lunaxy-beta-v92.9.14-beta62
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Apply Beta62 channel delta
+        shell: bash
+        run: |
+          set -euxo pipefail
+          base64 -d .ci/v92914-beta62-delta.tar.xz.b64 > /tmp/v92914-beta62-delta.tar.xz
+          echo "521a14b19c59cf720e4c367dfe6eb68bd31bccfc9be7f600dae600271d400b8b  /tmp/v92914-beta62-delta.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/v92914-beta62-delta.tar.xz -C .
+          if [ -f .delete-v92914-beta62.txt ]; then
+            while IFS= read -r path; do
+              [ -z "$path" ] || rm -f -- "$path"
+            done < .delete-v92914-beta62.txt
+            rm -f .delete-v92914-beta62.txt
+          fi
+
+      - name: Verify Beta62 identity
+        shell: bash
+        run: |
+          set -euxo pipefail
+          grep -F 'applicationId = "com.xingyu.music.beta1"' app/build.gradle.kts
+          grep -F 'versionName = "92.9.14-beta62"' app/build.gradle.kts
+          grep -F 'versionCode = 994' app/build.gradle.kts
+          grep -F 'Lunaxy Music Beta' app/src/main/res/values/strings.xml
+
+      - name: Run V92.9.14 artwork-accent regression
+        run: python3 tests/V92914ArtworkAccentRegressionTest.py
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Beta debug APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleDebug
+          test -f app/build/outputs/apk/debug/LunaxyMusic-Beta-92.9.14-beta62-debug.apk
+
+      - name: Collect Beta APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out
+          cp app/build/outputs/apk/debug/LunaxyMusic-Beta-92.9.14-beta62-debug.apk out/LunaxyMusic-V92.9.14-Beta62.apk
+          sha256sum out/LunaxyMusic-V92.9.14-Beta62.apk | tee out/LunaxyMusic-V92.9.14-Beta62.apk.sha256
+
+      - name: Upload Beta APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LunaxyMusic-V92.9.14-Beta62-APK
+          path: |
+            out/LunaxyMusic-V92.9.14-Beta62.apk
+            out/LunaxyMusic-V92.9.14-Beta62.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
