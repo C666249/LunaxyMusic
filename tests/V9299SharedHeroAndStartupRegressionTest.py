@@ -40,10 +40,12 @@ check('heavy playlist detail does not use v9297 size ListView branch', 'if (p.so
 # Startup continuity and cold-start IO
 oncreate = MAIN[MAIN.find('@Override protected void onCreate'):MAIN.find('private void scheduleRuntimeInitializationAfterFirstFrame')]
 check('onCreate builds shell before deferred runtime init', oncreate.find('buildShell();') < oncreate.find('scheduleRuntimeInitializationAfterFirstFrame();'))
-check('onCreate no synchronous reloadLibrary', 'reloadLibrary();' not in oncreate)\ncheck('onCreate defers stores and service binding beyond first frame', 'new LibraryStore' not in oncreate and 'bindService(' not in oncreate and 'scheduleRuntimeInitializationAfterFirstFrame();' in oncreate)
+check('onCreate no synchronous reloadLibrary', 'reloadLibrary();' not in oncreate)
+check('onCreate defers stores and service binding beyond first frame', 'new LibraryStore' not in oncreate and 'bindService(' not in oncreate and 'scheduleRuntimeInitializationAfterFirstFrame();' in oncreate)
 check('library bootstrap runs on io executor', 'io.submit(() -> {' in MAIN[MAIN.find('private void bootstrapLibraryAndFirstPage'):MAIN.find('private void finishStartupScene')])
 check('playlist decode is off main thread', 'nextPlaylists = store.playlists();' in MAIN[MAIN.find('private void bootstrapLibraryAndFirstPage'):MAIN.find('private void finishStartupScene')])
-check('startup begins as starfield scene', 'beginStartupScene();' in oncreate and 'stars.setMotionSpeedMultiplier' in MAIN)\ncheck('runtime init waits across animation frames', 'appRoot.postOnAnimation(() -> appRoot.postOnAnimation(this::initializeRuntimeAfterFirstFrame))' in MAIN)
+check('startup begins as starfield scene', 'beginStartupScene();' in oncreate and 'stars.setMotionSpeedMultiplier' in MAIN)
+check('runtime init waits across animation frames', 'appRoot.postOnAnimation(() -> appRoot.postOnAnimation(this::initializeRuntimeAfterFirstFrame))' in MAIN)
 check('startup star speed settles into home starfield', 'ValueAnimator.ofFloat(from, 1f)' in MAIN and 'stars.setMotionSpeedMultiplier((Float) a.getAnimatedValue())' in MAIN)
 check('starfield supports launch speed multiplier', 'setMotionSpeedMultiplier' in STAR and 'forwardSpeed = .052f * motionSpeedMultiplier' in STAR)
 check('base window background is deep-space not grey', '@color/lunaxy_launch_bg' in THEME and '#02040A' in COLORS)
