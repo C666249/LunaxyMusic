@@ -28,7 +28,7 @@ jobs:
         run: |
           set -euxo pipefail
           base64 -d .ci/v92914-beta62-delta.tar.xz.b64 > /tmp/v92914-beta62-delta.tar.xz
-          echo "521a14b19c59cf720e4c367dfe6eb68bd31bccfc9be7f600dae600271d400b8b  /tmp/v92914-beta62-delta.tar.xz" | sha256sum -c -
+          echo "0876c4a1be3d0846b7c13bebd3a85ea2b10e229835ee84e7163b8db71a85d354  /tmp/v92914-beta62-delta.tar.xz" | sha256sum -c -
           tar -xJf /tmp/v92914-beta62-delta.tar.xz -C .
           if [ -f .delete-v92914-beta62.txt ]; then
             while IFS= read -r path; do
@@ -37,7 +37,7 @@ jobs:
             rm -f .delete-v92914-beta62.txt
           fi
 
-      - name: Verify Beta62 identity
+      - name: Verify Beta62 identity and resources
         shell: bash
         run: |
           set -euxo pipefail
@@ -45,6 +45,7 @@ jobs:
           grep -F 'versionName = "92.9.14-beta62"' app/build.gradle.kts
           grep -F 'versionCode = 994' app/build.gradle.kts
           grep -F 'Lunaxy Music Beta' app/src/main/res/values/strings.xml
+          grep -F '<color name="lunaxy_launch_bg">#02040A</color>' app/src/main/res/values/colors.xml
 
       - name: Run V92.9.14 artwork-accent regression
         run: python3 tests/V92914ArtworkAccentRegressionTest.py
