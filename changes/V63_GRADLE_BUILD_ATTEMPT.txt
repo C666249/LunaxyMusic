@@ -1,0 +1,8 @@
+Lunaxy Music V63 Gradle build attempt
+
+Command attempted: ./gradlew :app:assembleDebug
+Result: NOT COMPLETED in this environment.
+Reason: services.gradle.org cannot be resolved, therefore Gradle 9.5.0 cannot be downloaded/cached.
+Observed error: curl: (6) Could not resolve host: services.gradle.org
+
+This is not reported as a successful Android build. Build/install must be verified in Android Studio/local environment.

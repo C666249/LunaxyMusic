@@ -1,0 +1,19 @@
+--- /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-09 20:45:44.000000000 +0000
++++ /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-10 06:03:57.911304819 +0000
+@@ -386,10 +386,12 @@
+             return;
+         }
+         if (fromCompletion && playMode == MODE_SEQUENTIAL && index >= queue.size() - 1) {
+-            // True sequential mode stops at the end instead of silently looping.
+-            preparing = false;
+-            updateNotification(false);
+-            notifyState();
++            // V18: sequential means ordered continuous playback. After the final item,
++            // continue from the first item while preserving the exact same resolve path.
++            index = 0;
++            resetAttempts();
++            currentArtwork = null;
++            resolveCurrent();
+             return;
+         }
+         if (queue.size() == 1) {

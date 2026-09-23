@@ -1,0 +1,18 @@
+Lunaxy Music V72 — Static Check
+
+[PASS] V71 baseline SHA256SUMS.txt verified 463/463 before modification.
+[PASS] app/src/main runtime inventory: V71=119 / V72=120; changed=2 / added=1 / deleted=0.
+[PASS] Runtime changed files are only MainActivity.java + PlaybackService.java; added PlatformOrbView.java.
+[PASS] V70/V71 protected locked-file set: 25/25 byte-identical.
+[PASS] MainActivity protected playback/search/download-plan methods: 11/11 method-body identical to V71.
+[PASS] PlaybackService protected playback core methods: 18/18 method-body identical to V71.
+[PASS] Java delimiter scan: 80/80.
+[PASS] Changed-Java javac syntax-pattern scan: 0 syntax-pattern hits. (Android SDK classes are unavailable in the sandbox, so unresolved Android symbols are not treated as a build result.)
+[PASS] XML parse: 17/17.
+[PASS] PNG verify: 22/22.
+[PASS] MainActivity sourceLabel() visual text/pill usage remains zero; only accessibility contentDescription + explanatory comment remain.
+[PASS] versionCode=720 / versionName=72.0.0 / applicationId=com.xingyu.music / namespace=com.xingyu.music.
+[PASS] Gradle/BUILD_APK share artifact name: Lunaxy Music V72.apk.
+
+[BUILD]
+assembleDebug was attempted but not completed because the sandbox could not resolve services.gradle.org for Gradle 9.5.0 (curl error 6).

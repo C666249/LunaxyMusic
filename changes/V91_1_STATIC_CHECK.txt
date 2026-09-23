@@ -1,0 +1,39 @@
+V91.1 static check: 38/38 PASS
+01. PASS | Java inventory count 88 | 88/88
+02. PASS | Stable/Beta Java inventory same
+03. PASS | Stable/Beta Java byte-identical
+04. PASS | Frozen PlaybackService.java
+05. PASS | Frozen SourceCoordinator.java
+06. PASS | Frozen PlaybackUrlStore.java
+07. PASS | Frozen RecommendationEngine.java
+08. PASS | Frozen SearchPerformanceStore.java
+09. PASS | Frozen ImageLoader.java
+10. PASS | Frozen LyricCacheStore.java
+11. PASS | Runtime change boundary only MainActivity+SpringMotion | ['com/xingyu/music/MainActivity.java', 'com/xingyu/music/ui/SpringMotion.java']
+12. PASS | Custom top-level drag proxy
+13. PASS | No system drag sorting
+14. PASS | No ListView DragEvent reorder
+15. PASS | Finger direct tracking
+16. PASS | Fixed placeholder
+17. PASS | 8dp hysteresis
+18. PASS | Layout-space thresholds
+19. PASS | No notify during move
+20. PASS | Immediate atomic reset
+21. PASS | Queue uses same controller
+22. PASS | Manual list uses same controller
+23. PASS | Playback queue commit preserved
+24. PASS | Spring overshoot <= 3% | 2.31%
+25. PASS | Stable identity
+26. PASS | Beta identity
+27. PASS | Stable APK naming
+28. PASS | Beta APK naming
+29. PASS | Stable XML parse | 17 files
+30. PASS | Beta XML parse | 17 files
+31. PASS | Beta manifest beta icon
+32. PASS | Stable manifest production icon
+33. PASS | Stable doc LUNAXY_PROJECT_WORKFLOW_MEMORY.md
+34. PASS | Beta doc LUNAXY_PROJECT_WORKFLOW_MEMORY.md
+35. PASS | Stable doc LUNAXY_V91_1_DRAG_REORDER_HOTFIX.md
+36. PASS | Beta doc LUNAXY_V91_1_DRAG_REORDER_HOTFIX.md
+37. PASS | Stable doc V91.1_真机验收建议.txt
+38. PASS | Beta doc V91.1_真机验收建议.txt

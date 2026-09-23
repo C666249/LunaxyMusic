@@ -1,0 +1,354 @@
+--- /tmp/SunflowerMusic-V3.1-baseline/SunflowerMusic-V3.1/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 19:17:09.000000000 +0000
++++ app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 19:44:18.024621033 +0000
+@@ -102,7 +102,7 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Sunflower Music 3.0 test branch, forked from the Lunaxy Music V47 golden UI/data baseline.
++ * Sunflower Music 3.2 test branch, forked from the Lunaxy Music V47 golden UI/data baseline.
+  *
+  * V47 search, playlists, lyrics, recommendation UI and queue interaction remain intentionally stable.
+  * V3 extends the experimental playback domain into a multi-catalog route matrix: TX/KW/KG/WY
+@@ -110,6 +110,9 @@
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(6);
++    // V3.2: canonical merge/ranking is CPU work, not UI work. Keep it serialized off the main
++    // thread so four returning catalogs cannot stall scrolling/taps while ExactTrackMatcher runs.
++    private final ExecutorService searchMergeExecutor = Executors.newSingleThreadExecutor();
+     private final ScheduledExecutorService variantPrefetch = Executors.newSingleThreadScheduledExecutor();
+     private final Handler main = new Handler(Looper.getMainLooper());
+     private final NeteaseApi netease = new NeteaseApi();
+@@ -246,7 +249,15 @@
+     private int searchKwNextPage = 2;
+     private int searchKgNextPage = 2;
+     private static final int SEARCH_PAGE_SIZE = 30;
++    private static final int SEARCH_SUMMARY_COUNT = 12;
++    private static final long SEARCH_MERGE_COALESCE_MS = 105L;
++    private static final long SEARCH_LYRIC_DEFER_MS = 420L;
+     private int searchRequestToken;
++    private int searchSnapshotVersion;
++    private boolean searchFirstPaintDelivered;
++    private boolean searchFirstMergeInFlight;
++    private Runnable pendingSearchMergeRunnable;
++    private Runnable pendingLyricSearchRunnable;
+     private boolean searchAllResultsOpen;
+     private long searchAutoLoadNotBeforeMs;
+ 
+@@ -1792,6 +1803,13 @@
+         final String keyword = q == null ? "" : q.trim();
+         if (keyword.isEmpty()) { toast("输入歌曲、歌手或一句歌词"); return; }
+         final int requestToken = ++searchRequestToken;
++        if (pendingSearchMergeRunnable != null) main.removeCallbacks(pendingSearchMergeRunnable);
++        if (pendingLyricSearchRunnable != null) main.removeCallbacks(pendingLyricSearchRunnable);
++        pendingSearchMergeRunnable = null;
++        pendingLyricSearchRunnable = null;
++        searchSnapshotVersion = 0;
++        searchFirstPaintDelivered = false;
++        searchFirstMergeInFlight = false;
+         lastQuery = keyword;
+         searchSourceFilter = "";
+         searchAllResultsOpen = false;
+@@ -1811,24 +1829,14 @@
+         lastWyCount = lastTxCount = lastKwCount = lastKgCount = 0;
+         lastWyError = lastTxError = lastKwError = lastKgError = "";
+         searchHistory = store.addSearchHistory(keyword);
+-        showBusy(true);
+ 
+-        if (runLyrics) {
+-            io.submit(() -> {
+-                List<NeteaseLyricSearchApi.Hit> remoteLyrics;
+-                try { remoteLyrics = neteaseLyricSearch.search(keyword, 16); }
+-                catch (Exception ignored) { remoteLyrics = new ArrayList<>(); }
+-                List<LyricSearchResult> localLyrics = findLocalLyricMatches(keyword, 12, null, null);
+-                final List<LyricSearchResult> combined = mergeLyricHits(keyword, localLyrics, remoteLyrics, 16);
+-                main.post(() -> {
+-                    if (requestToken != searchRequestToken || isFinishing()) return;
+-                    lyricSearchResults = combined;
+-                    lyricSearchPending = false;
+-                    if (!searchMetadataPending && !lyricSearchResults.isEmpty()) lyricSearchResults = enrichAndRerankLyricResults(keyword, lyricSearchResults);
+-                    renderSearchResults(holder);
+-                });
+-            });
+-        }
++        // V3.2 Progressive Search: do not cover the page with a blocking busy layer. The section
++        // itself renders its pending state immediately, then the fastest catalog supplies the first
++        // usable rows while the other catalogs continue silently in the background.
++        showBusy(false);
++        renderSearchResults(holder);
++
++        if (runLyrics) scheduleLyricSearch(keyword, requestToken, holder);
+ 
+         final java.util.concurrent.atomic.AtomicInteger remaining = new java.util.concurrent.atomic.AtomicInteger(4);
+         submitCatalogSearch("wy", requestToken, keyword, holder, remaining, () -> {
+@@ -1849,6 +1857,35 @@
+         });
+     }
+ 
++    private void scheduleLyricSearch(String keyword, int requestToken, LinearLayout holder) {
++        Runnable start = () -> {
++            if (requestToken != searchRequestToken || isFinishing()) return;
++            io.submit(() -> {
++                List<NeteaseLyricSearchApi.Hit> remoteLyrics;
++                try { remoteLyrics = neteaseLyricSearch.search(keyword, 16); }
++                catch (Exception ignored) { remoteLyrics = new ArrayList<>(); }
++                List<LyricSearchResult> localLyrics = findLocalLyricMatches(keyword, 12, null, null);
++                final List<LyricSearchResult> combined = mergeLyricHits(keyword, localLyrics, remoteLyrics, 16);
++                main.post(() -> {
++                    if (requestToken != searchRequestToken || isFinishing()) return;
++                    lyricSearchResults = combined;
++                    lyricSearchPending = false;
++                    if (!searchMetadataPending && !lyricSearchResults.isEmpty())
++                        lyricSearchResults = enrichAndRerankLyricResults(keyword, lyricSearchResults);
++                    // Search rows are capped at a small first-paint set in V3.2, so this isolated
++                    // lyric refresh no longer reconstructs fifty metadata cards on the main thread.
++                    renderSearchResults(holder);
++                });
++            });
++        };
++        if (containsSentenceCue(keyword)) {
++            start.run();
++        } else {
++            pendingLyricSearchRunnable = start;
++            main.postDelayed(start, SEARCH_LYRIC_DEFER_MS);
++        }
++    }
++
+     private void submitCatalogSearch(String source, int requestToken, String keyword, LinearLayout holder,
+                                      java.util.concurrent.atomic.AtomicInteger remaining,
+                                      java.util.concurrent.Callable<SearchOutcome> call) {
+@@ -1860,22 +1897,81 @@
+             main.post(() -> {
+                 if (requestToken != searchRequestToken || isFinishing()) return;
+                 applyCatalogOutcome(source, result);
+-                // V3 incremental catalog rendering: one slow/rate-limited platform must not block
+-                // already-returned KW/KG/WY/TX results behind the full-screen busy overlay.
+-                showBusy(false);
+-                searchResults = mergeSearch(keyword);
+-                if (trackVariantStore != null) for (Song song : searchResults) trackVariantStore.remember(song);
+                 boolean finished = remaining.decrementAndGet() <= 0;
+-                if (finished) {
++                // First catalog -> immediate off-main merge. Closely arriving later catalogs are
++                // coalesced for ~100ms, avoiding four full canonical merges/UI rebuilds in a burst.
++                scheduleSearchMerge(keyword, requestToken, holder, finished);
++            });
++        });
++    }
++
++    private void scheduleSearchMerge(String keyword, int requestToken, LinearLayout holder, boolean finished) {
++        final int snapshotVersion = ++searchSnapshotVersion;
++        final Map<String,List<Song>> catalogs = snapshotSearchCatalogs();
++        Runnable launch = () -> launchSearchMerge(keyword, requestToken, holder, finished, snapshotVersion, catalogs, false);
++        if (!searchFirstPaintDelivered && !searchFirstMergeInFlight) {
++            searchFirstMergeInFlight = true;
++            launchSearchMerge(keyword, requestToken, holder, finished, snapshotVersion, catalogs, true);
++            return;
++        }
++        if (pendingSearchMergeRunnable != null) main.removeCallbacks(pendingSearchMergeRunnable);
++        pendingSearchMergeRunnable = launch;
++        main.postDelayed(launch, SEARCH_MERGE_COALESCE_MS);
++    }
++
++    private void launchSearchMerge(String keyword, int requestToken, LinearLayout holder, boolean finished,
++                                   int snapshotVersion, Map<String,List<Song>> catalogs, boolean firstLaunch) {
++        searchMergeExecutor.submit(() -> {
++            final List<Song> merged = mergeSearchSnapshot(keyword, catalogs);
++            main.post(() -> {
++                if (firstLaunch) searchFirstMergeInFlight = false;
++                if (requestToken != searchRequestToken || isFinishing()) return;
++                boolean stale = snapshotVersion != searchSnapshotVersion;
++                // A stale first-catalog snapshot is still valuable as the first usable paint. Once
++                // anything is visible, only the newest snapshot may replace it.
++                if (stale && searchFirstPaintDelivered) return;
++                searchResults = merged;
++                if (!merged.isEmpty()) searchFirstPaintDelivered = true;
++                boolean latestFinished = finished && !stale;
++                if (latestFinished) {
+                     searchMetadataPending = false;
+-                    showBusy(false);
+-                    if (!lyricSearchResults.isEmpty()) lyricSearchResults = enrichAndRerankLyricResults(keyword, lyricSearchResults);
++                    persistSearchVariantsAsync(merged);
++                    if (!lyricSearchResults.isEmpty())
++                        lyricSearchResults = enrichAndRerankLyricResults(keyword, lyricSearchResults);
+                 }
+                 renderSearchResults(holder);
+             });
+         });
+     }
+ 
++    private Map<String,List<Song>> snapshotSearchCatalogs() {
++        Map<String,List<Song>> catalogs = new LinkedHashMap<>();
++        catalogs.put("wy", new ArrayList<>(lastWySearchSongs));
++        catalogs.put("tx", new ArrayList<>(lastTxSearchSongs));
++        catalogs.put("kw", new ArrayList<>(lastKwSearchSongs));
++        catalogs.put("kg", new ArrayList<>(lastKgSearchSongs));
++        return catalogs;
++    }
++
++    private List<Song> mergeSearchSnapshot(String keyword, Map<String,List<Song>> catalogs) {
++        int count = 0;
++        if (catalogs != null) for (List<Song> songs : catalogs.values()) if (songs != null) count += songs.size();
++        return SearchRanker.mergeAndRank(keyword, catalogs, Math.max(50, count));
++    }
++
++    private void persistSearchVariantsAsync(List<Song> songs) {
++        if (trackVariantStore == null || songs == null || songs.isEmpty()) return;
++        final List<Song> copy = new ArrayList<>(songs);
++        try {
++            variantPrefetch.execute(() -> {
++                for (Song song : copy) {
++                    if (Thread.currentThread().isInterrupted()) return;
++                    trackVariantStore.remember(song);
++                }
++            });
++        } catch (RejectedExecutionException ignored) { }
++    }
++
+     private void applyCatalogOutcome(String source, SearchOutcome result) {
+         List<Song> songs = new ArrayList<>(result == null ? new ArrayList<>() : result.songs);
+         int total = result == null ? 0 : result.total;
+@@ -1895,17 +1991,10 @@
+         }
+     }
+ 
+-    private List<Song> mergeSearch(String keyword) {
+-        Map<String,List<Song>> catalogs = new LinkedHashMap<>();
+-        catalogs.put("wy", lastWySearchSongs); catalogs.put("tx", lastTxSearchSongs);
+-        catalogs.put("kw", lastKwSearchSongs); catalogs.put("kg", lastKgSearchSongs);
+-        int count = lastWySearchSongs.size() + lastTxSearchSongs.size() + lastKwSearchSongs.size() + lastKgSearchSongs.size();
+-        return SearchRanker.mergeAndRank(keyword, catalogs, Math.max(50, count));
+-    }
+-
+     private boolean shouldSearchLyrics(String keyword, int normalResultCount) {
+         // Three normalized characters is enough to make lyric lookup useful without wasting a
+-        // network request on one- or two-character title searches. It runs in parallel either way.
++        // request on one- or two-character searches. V3.2 starts sentence-like queries immediately
++        // and defers ordinary title/artist queries so metadata gets first access to the network/UI.
+         return normalizeSuggestion(keyword).length() >= 3;
+     }
+ 
+@@ -2099,7 +2188,8 @@
+             }
+             holder.addView(empty); return;
+         }
+-        List<Song> summarySongs = visibleSongs.size() > 50 ? new ArrayList<>(visibleSongs.subList(0, 50)) : visibleSongs;
++        List<Song> summarySongs = visibleSongs.size() > SEARCH_SUMMARY_COUNT
++                ? new ArrayList<>(visibleSongs.subList(0, SEARCH_SUMMARY_COUNT)) : visibleSongs;
+         addMetadataSearchSection(holder, summarySongs, true);
+         addLyricSearchSection(holder, visibleLyrics, true);
+     }
+@@ -2122,7 +2212,10 @@
+         List<Song> safeSongs = songs == null ? new ArrayList<>() : songs;
+         if (safeSongs.isEmpty() && !allowEmpty) return;
+         String suffix = (searchSourceFilter == null || searchSourceFilter.isEmpty()) ? "" : " · " + Song.providerLabel(searchSourceFilter);
+-        String status = searchMetadataPending ? "搜索中…" : safeSongs.size() + " 首" + suffix;
++        int discovered = visibleSearchSongs().size();
++        String status = searchMetadataPending
++                ? (safeSongs.isEmpty() ? "搜索中…" : "已发现 " + discovered + " 首 · 后台补全中…")
++                : discovered + " 首" + suffix;
+         LinearLayout content = Ui.column(this);
+         if (searchMetadataPending && safeSongs.isEmpty()) {
+             TextView pending = Ui.text(this, "正在搜索歌名 / 歌手…", 11.2f, Ui.TEXT_2, false);
+@@ -2135,7 +2228,10 @@
+         } else {
+             content.addView(songList(safeSongs, safeSongs), Ui.lp(-1, -2));
+         }
+-        boolean hasAllPage = !safeSongs.isEmpty()
++        // Keep the compact streaming page authoritative until all four first pages settle. Opening
++        // the virtualized "全部" page mid-stream would otherwise freeze a partial snapshot while
++        // later catalogs are still enriching the canonical rows behind it.
++        boolean hasAllPage = !searchMetadataPending && !safeSongs.isEmpty()
+                 && (searchHasMoreForCurrentFilter() || visibleSearchSongs().size() > safeSongs.size());
+         String allAction = hasAllPage ? "全部 ›" : "";
+         LinearLayout header = searchSectionHeader("歌曲 / 歌手", status,
+@@ -2341,31 +2437,39 @@
+             main.post(() -> {
+                 if (token != searchRequestToken || isFinishing()) return;
+                 boolean hadError = false;
+-                searchMoreLoading = false;
+                 if (loadWy && wy != null) hadError |= applyPaginationPage("wy", wy);
+                 if (loadTx && tx != null) hadError |= applyPaginationPage("tx", tx);
+                 if (loadKw && kw != null) hadError |= applyPaginationPage("kw", kw);
+                 if (loadKg && kg != null) hadError |= applyPaginationPage("kg", kg);
+ 
+-                searchResults = mergeSearch(lastQuery);
+-                if (trackVariantStore != null) for (Song song : searchResults) trackVariantStore.remember(song);
+-                if (!lyricSearchResults.isEmpty()) lyricSearchResults = enrichAndRerankLyricResults(lastQuery, lyricSearchResults);
++                final boolean pageHadError = hadError;
++                final Map<String,List<Song>> catalogs = snapshotSearchCatalogs();
+                 searchAutoLoadNotBeforeMs = SystemClock.uptimeMillis() + (hadError ? 2600L : 260L);
+-
+-                if (searchAllResultsOpen && list.isAttachedToWindow()) {
+-                    adapter.replace(visibleSearchSongs());
+-                    if (!anchorKey.isEmpty()) {
+-                        int anchorIndex = adapter.indexOfKey(anchorKey);
+-                        if (anchorIndex >= 0) list.post(() -> list.setSelectionFromTop(anchorIndex, anchorTop));
+-                    }
+-                    if (status != null) status.setText(searchAllStatusText());
+-                    if (footer != null) {
+-                        if (hadError) {
+-                            footer.setText("部分 Catalog 加载失败 · 其他平台结果不受影响"); footer.setVisibility(View.VISIBLE);
+-                            footer.postDelayed(() -> { if (footer.isAttachedToWindow() && !searchMoreLoading) footer.setVisibility(View.GONE); }, 1800L);
+-                        } else footer.setVisibility(View.GONE);
+-                    }
+-                }
++                searchMergeExecutor.submit(() -> {
++                    final List<Song> merged = mergeSearchSnapshot(lastQuery, catalogs);
++                    main.post(() -> {
++                        if (token != searchRequestToken || isFinishing()) return;
++                        searchMoreLoading = false;
++                        searchResults = merged;
++                        persistSearchVariantsAsync(merged);
++                        if (!lyricSearchResults.isEmpty())
++                            lyricSearchResults = enrichAndRerankLyricResults(lastQuery, lyricSearchResults);
++                        if (searchAllResultsOpen && list.isAttachedToWindow()) {
++                            adapter.replace(visibleSearchSongs());
++                            if (!anchorKey.isEmpty()) {
++                                int anchorIndex = adapter.indexOfKey(anchorKey);
++                                if (anchorIndex >= 0) list.post(() -> list.setSelectionFromTop(anchorIndex, anchorTop));
++                            }
++                            if (status != null) status.setText(searchAllStatusText());
++                            if (footer != null) {
++                                if (pageHadError) {
++                                    footer.setText("部分 Catalog 加载失败 · 其他平台结果不受影响"); footer.setVisibility(View.VISIBLE);
++                                    footer.postDelayed(() -> { if (footer.isAttachedToWindow() && !searchMoreLoading) footer.setVisibility(View.GONE); }, 1800L);
++                                } else footer.setVisibility(View.GONE);
++                            }
++                        }
++                    });
++                });
+             });
+         });
+     }
+@@ -5669,6 +5773,8 @@
+             backInvokedCallback = null;
+         }
+         if (pendingSuggestionRunnable != null) main.removeCallbacks(pendingSuggestionRunnable);
++        if (pendingSearchMergeRunnable != null) main.removeCallbacks(pendingSearchMergeRunnable);
++        if (pendingLyricSearchRunnable != null) main.removeCallbacks(pendingLyricSearchRunnable);
+         if (lyricsResumeRunnable != null) main.removeCallbacks(lyricsResumeRunnable);
+         if (lyricScrollSettleRunnable != null) main.removeCallbacks(lyricScrollSettleRunnable);
+         main.removeCallbacks(lyricKaraokeTicker);
+@@ -5676,6 +5782,7 @@
+         if (bound && playback != null) playback.clearListener(this);
+         if (bound) try { unbindService(connection); } catch (Exception ignored) { }
+         variantPrefetch.shutdownNow();
++        searchMergeExecutor.shutdownNow();
+         if (backgroundVariantEnricher != null) backgroundVariantEnricher.destroy();
+         io.shutdownNow();
+         super.onDestroy();
+
+--- app/build.gradle.kts ---
+--- /tmp/SunflowerMusic-V3.1-baseline/SunflowerMusic-V3.1/app/build.gradle.kts	2026-08-11 19:17:09.000000000 +0000
++++ app/build.gradle.kts	2026-08-11 19:40:18.264304426 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.sunflowermusic"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 310
+-        versionName = "3.1.0-test"
++        versionCode = 320
++        versionName = "3.2.0-test"
+     }
+ 
+     buildTypes {

@@ -1,0 +1,10 @@
+V58 RUNTIME GOLDEN GUARD (V56 baseline)
+
+base files: 83
+new files: 83
+changed: 2
+CHANGED	java/com/xingyu/music/MainActivity.java
+CHANGED	java/com/xingyu/music/ui/Starfield3DView.java
+
+EXPECTED: only MainActivity.java and ui/Starfield3DView.java change under app/src/main.
+RESULT: PASS

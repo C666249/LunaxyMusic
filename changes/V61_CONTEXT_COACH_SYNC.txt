@@ -1,0 +1,13 @@
+V61 CONTEXT COACH SYNC
+
+First-run onboarding: 5 steps (unchanged).
+Context coach IDs: 16
+
+New/expanded merge coaches:
+- 当前播放歌曲定位：歌单高亮 + 定位按钮
+- 桌面歌词隐藏控制：轻点后字号/颜色/锁定/关闭
+- 本地扫描试听：试听不进入正式播放队列
+- 下载“等待线路”：说明播放优先与后续继续尝试
+- Lunaxy 歌单导出：明确可在“导入歌单 → Lunaxy 文件”恢复
+
+Existing scene coaches retained: lyrics seek, multi-catalog, playlist queue takeover, four-platform import, system sounds, ringtone, ringtone clip, Starfield Studio, desktop lyrics, download center, local scan, playlist export.

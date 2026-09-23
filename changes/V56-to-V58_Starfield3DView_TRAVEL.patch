@@ -1,0 +1,391 @@
+--- /mnt/data/LunaxyMusic-V56/app/src/main/java/com/xingyu/music/ui/Starfield3DView.java	2026-08-12 13:17:10.054581919 +0000
++++ /mnt/data/LunaxyMusic-V58/app/src/main/java/com/xingyu/music/ui/Starfield3DView.java	2026-08-12 14:49:01.214541760 +0000
+@@ -47,6 +47,7 @@
+ 
+     public static final int PROFILE_LIVING = 0;
+     public static final int PROFILE_CLASSIC_FORWARD = 1;
++    public static final int PROFILE_DEEP_SPACE = 2;
+ 
+     // A complete 360-degree volume.  Only the current camera frustum is rendered.
+     // V55 tuned population is kept as the 1.00x reference. V56 adds a reserve pool so
+@@ -60,6 +61,12 @@
+     private static final int EXTRA_NEAR_COUNT = 77;
+     private static final int STAR_POOL_COUNT = STAR_COUNT + EXTRA_FAR_COUNT + EXTRA_MID_COUNT + EXTRA_NEAR_COUNT;
+     private static final float MAX_DENSITY_MULTIPLIER = 1.35f;
++    // Travel profiles intentionally render a much calmer subset of the V56 pool.
++    // V57 pushed nearly the whole recycled field into the camera frustum, which looked busy
++    // and increased Canvas work. These multipliers keep Living mode unchanged while
++    // Classic/Deep Space stay comfortably below half of the previous travel population.
++    private static final float CLASSIC_TRAVEL_DENSITY_SCALE = .44f;
++    private static final float DEEP_SPACE_DENSITY_SCALE = .38f;
+ 
+     private static final float BASE_VERTICAL_FOV_DEG = 74f;
+     private static final float NEAR_PLANE = .28f;
+@@ -157,6 +164,9 @@
+     private final float[] inverseCameraQ = new float[]{1f, 0f, 0f, 0f};
+     private final float[] spawnWorld = new float[3];
+     private final float[] spawnDirection = new float[3];
++    private final float[] travelForward = new float[3];
++    private final float[] travelRight = new float[3];
++    private final float[] travelUp = new float[3];
+ 
+     private boolean running;
+     private boolean rotationRegistered;
+@@ -233,8 +243,14 @@
+     public float sensitivity() { return sensitivity; }
+ 
+     public void setMotionProfile(int profile) {
+-        motionProfile = profile == PROFILE_CLASSIC_FORWARD ? PROFILE_CLASSIC_FORWARD : PROFILE_LIVING;
++        int next = profile == PROFILE_CLASSIC_FORWARD ? PROFILE_CLASSIC_FORWARD
++                : profile == PROFILE_DEEP_SPACE ? PROFILE_DEEP_SPACE : PROFILE_LIVING;
++        if (motionProfile == next) return;
++        motionProfile = next;
+         clearTrails();
++        // Foreground particles are re-seeded only when the user explicitly changes the visual
++        // personality. Living mode's deterministic V56 layout remains untouched during playback.
++        resetFlightField(true);
+     }
+ 
+     public int motionProfile() { return motionProfile; }
+@@ -337,7 +353,23 @@
+     }
+ 
+     private void recycleStar(Star s) {
+-        randomUnitVector(random, spawnDirection);
++        if (motionProfile == PROFILE_LIVING) {
++            // Keep V56 Living mode's random-call order exactly intact.
++            randomUnitVector(random, spawnDirection);
++            randomUnitVector(random, spawnWorld);
++            s.axisX = spawnWorld[0];
++            s.axisY = spawnWorld[1];
++            s.axisZ = spawnWorld[2];
++            s.motionType = chooseMotionType(random.nextFloat());
++            s.phase = random.nextFloat() * (float) (Math.PI * 2.0);
++            s.flare = random.nextFloat() < (s.layer == LAYER_NEAR ? .05f : s.layer == LAYER_MID ? .02f : .009f);
++            randomizeLightLife(s);
++            placeStar(s, spawnDirection[0], spawnDirection[1], spawnDirection[2],
++                    lerp(s.farDistance * .90f, s.farDistance, random.nextFloat()));
++            s.previousVisible = false;
++            return;
++        }
++
+         randomUnitVector(random, spawnWorld);
+         s.axisX = spawnWorld[0];
+         s.axisY = spawnWorld[1];
+@@ -346,8 +378,22 @@
+         s.phase = random.nextFloat() * (float) (Math.PI * 2.0);
+         s.flare = random.nextFloat() < (s.layer == LAYER_NEAR ? .05f : s.layer == LAYER_MID ? .02f : .009f);
+         randomizeLightLife(s);
+-        placeStar(s, spawnDirection[0], spawnDirection[1], spawnDirection[2],
+-                lerp(s.farDistance * .90f, s.farDistance, random.nextFloat()));
++        float depth = lerp(s.farDistance * .90f, s.farDistance, random.nextFloat());
++
++        // Travel stars respawn in a deliberately wider camera-space volume than V57.
++        // Only part of that volume intersects the phone viewport at once, giving the same
++        // forward-travel illusion without turning the page into a wall of glowing points.
++        float spreadX = motionProfile == PROFILE_DEEP_SPACE ? .80f : .70f;
++        float spreadY = motionProfile == PROFILE_DEEP_SPACE ? 1.25f : 1.10f;
++        float localX = (random.nextFloat() * 2f - 1f) * depth * spreadX;
++        float localY = (random.nextFloat() * 2f - 1f) * depth * spreadY;
++        if (Math.abs(localX) < depth * .022f) localX += localX < 0f ? -depth * .045f : depth * .045f;
++        if (Math.abs(localY) < depth * .022f) localY += localY < 0f ? -depth * .045f : depth * .045f;
++        cameraToWorld(localX, localY, -depth, spawnWorld);
++        s.x = spawnWorld[0];
++        s.y = spawnWorld[1];
++        s.z = spawnWorld[2];
++        s.distance = depth;
+         s.previousVisible = false;
+     }
+ 
+@@ -399,10 +445,24 @@
+                 ? lerp(2.8f, FLOW_FAR_DEPTH, flowRandom.nextFloat())
+                 : lerp(FLOW_FAR_DEPTH * .86f, FLOW_FAR_DEPTH, flowRandom.nextFloat());
+ 
+-        float localX = (flowRandom.nextFloat() * 2f - 1f) * 9.2f;
+-        float localY = (flowRandom.nextFloat() * 2f - 1f) * 15.0f;
+-        if (Math.abs(localX) < .40f) localX += localX < 0f ? -.74f : .74f;
+-        if (Math.abs(localY) < .44f) localY += localY < 0f ? -.84f : .84f;
++        float localX;
++        float localY;
++        if (motionProfile == PROFILE_DEEP_SPACE) {
++            // A wide elliptical corridor with a quieter vanishing-point core. Most particles live
++            // around the travel tunnel, while a smaller inner population keeps the center alive.
++            float angle = flowRandom.nextFloat() * (float) (Math.PI * 2.0);
++            float radiusSeed = (float) Math.sqrt(flowRandom.nextFloat());
++            float band = flowRandom.nextFloat() < .78f
++                    ? lerp(.34f, 1.0f, radiusSeed)
++                    : lerp(.06f, .42f, radiusSeed);
++            localX = (float) Math.cos(angle) * 10.2f * band;
++            localY = (float) Math.sin(angle) * 16.4f * band;
++        } else {
++            localX = (flowRandom.nextFloat() * 2f - 1f) * 9.2f;
++            localY = (flowRandom.nextFloat() * 2f - 1f) * 15.0f;
++            if (Math.abs(localX) < .40f) localX += localX < 0f ? -.74f : .74f;
++            if (Math.abs(localY) < .44f) localY += localY < 0f ? -.84f : .84f;
++        }
+ 
+         cameraToWorld(localX, localY, -depth, spawnWorld);
+         cameraToWorld(0f, 0f, 1f, spawnDirection);
+@@ -413,9 +473,13 @@
+         s.dirY = spawnDirection[1];
+         s.dirZ = spawnDirection[2];
+         s.remainingDepth = depth;
+-        s.speed = lerp(1.70f, 3.05f, flowRandom.nextFloat());
++        s.speed = motionProfile == PROFILE_DEEP_SPACE
++                ? lerp(1.42f, 2.72f, flowRandom.nextFloat())
++                : lerp(1.70f, 3.05f, flowRandom.nextFloat());
+         s.size = lerp(.22f, .72f, flowRandom.nextFloat());
+-        s.brightness = lerp(.68f, 1.0f, flowRandom.nextFloat());
++        s.brightness = motionProfile == PROFILE_DEEP_SPACE
++                ? lerp(.72f, 1.0f, flowRandom.nextFloat())
++                : lerp(.68f, 1.0f, flowRandom.nextFloat());
+         s.phase = flowRandom.nextFloat() * (float) (Math.PI * 2.0);
+         s.twinkleSpeed = lerp(.70f, 1.60f, flowRandom.nextFloat());
+         s.pulseSpeed = lerp(.36f, 1.12f, flowRandom.nextFloat());
+@@ -569,19 +633,36 @@
+         sceneAxisY /= sceneAxisN;
+         sceneAxisZ /= sceneAxisN;
+ 
++        // Camera-local travel basis. Classic Forward and Deep Space translate the star volume
++        // through the camera instead of radially scaling every xyz coordinate together. That is
++        // the key geometric difference that makes every visible point actually move on-screen.
++        cameraToWorld(0f, 0f, 1f, travelForward);
++        cameraToWorld(1f, 0f, 0f, travelRight);
++        cameraToWorld(0f, 1f, 0f, travelUp);
++        float tunnelSteerX = motionProfile == PROFILE_DEEP_SPACE
++                ? (float) Math.sin(time * .103f) * .052f + (float) Math.sin(time * .037f + 1.21f) * .024f : 0f;
++        float tunnelSteerY = motionProfile == PROFILE_DEEP_SPACE
++                ? (float) Math.cos(time * .087f + .72f) * .043f + (float) Math.sin(time * .031f + 2.0f) * .018f : 0f;
++
+         for (Star s : stars) {
+             if (s == null) continue;
+             if (!isDensityActive(s.baseDensityPool, s.densityRank)) {
+                 s.previousVisible = false;
+                 continue;
+             }
+-            updateStarMotion(s, time, dt, surge, swirl, sceneAxisX, sceneAxisY, sceneAxisZ);
++            updateStarMotion(s, time, dt, surge, swirl, sceneAxisX, sceneAxisY, sceneAxisZ,
++                    travelForward[0], travelForward[1], travelForward[2],
++                    travelRight[0], travelRight[1], travelRight[2],
++                    travelUp[0], travelUp[1], travelUp[2], tunnelSteerX, tunnelSteerY);
+             drawWorldStar(canvas, s, width, height, density, focal, centerX, centerY,
+                     observerX, observerY, observerZ, time, bloom);
+         }
+ 
+         drawFlightField(canvas, width, height, density, focal, centerX, centerY,
+-                observerX, observerY, observerZ, time, dt, surge, swirl, bloom);
++                observerX, observerY, observerZ, time, dt, surge, swirl, bloom,
++                travelForward[0], travelForward[1], travelForward[2],
++                travelRight[0], travelRight[1], travelRight[2],
++                travelUp[0], travelUp[1], travelUp[2], tunnelSteerX, tunnelSteerY);
+ 
+         // Never throttle because the phone is moving.  Particle time always advances while
+         // the player is visible; sensors merely alter cameraQ on top of that simulation.
+@@ -589,9 +670,42 @@
+     }
+ 
+     private void updateStarMotion(Star s, float time, float dt, float surge, float swirl,
+-                                  float sceneAxisX, float sceneAxisY, float sceneAxisZ) {
++                                  float sceneAxisX, float sceneAxisY, float sceneAxisZ,
++                                  float forwardX, float forwardY, float forwardZ,
++                                  float rightX, float rightY, float rightZ,
++                                  float upX, float upY, float upZ,
++                                  float tunnelSteerX, float tunnelSteerY) {
+         if (!running) return;
+ 
++        if (motionProfile == PROFILE_CLASSIC_FORWARD || motionProfile == PROFILE_DEEP_SPACE) {
++            // V49's readable travel illusion comes from holding camera-local x/y while z advances.
++            // V56's previous radial shrink changed x/y/z by the same proportion, so x/z and y/z
++            // barely changed and many stars looked pinned. Translating the world along camera-forward
++            // restores real perspective motion for every visible star while retaining 360° cameraQ.
++            float localPulse = .94f + .10f * (float) Math.sin(time * s.wobbleSpeed + s.phase * 1.71f);
++            float audioDrive = 1f + visualEnergy * .055f + visualBeat * .065f;
++            float surgeT = clamp((surge - .86f) / .48f, 0f, 1f);
++            float profileSurge = motionProfile == PROFILE_CLASSIC_FORWARD
++                    ? lerp(.95f, 1.08f, surgeT) : lerp(.91f, 1.16f, surgeT);
++            float profileSpeed = motionProfile == PROFILE_CLASSIC_FORWARD ? 1.12f : .96f;
++            float advance = s.radialSpeed * profileSpeed * profileSurge * localPulse
++                    * audioDrive * speedMultiplier * dt;
++            float laneX = 0f;
++            float laneY = 0f;
++            if (motionProfile == PROFILE_DEEP_SPACE) {
++                // Shared steering makes the viewer feel like the craft is following a very gentle
++                // curved route through the starfield. Per-star micro drift avoids a rigid tube.
++                laneX = tunnelSteerX + .010f * (float) Math.sin(time * .127f + s.phase);
++                laneY = tunnelSteerY + .008f * (float) Math.cos(time * .113f + s.phase * 1.37f);
++            }
++            s.x += (forwardX + rightX * laneX + upX * laneY) * advance;
++            s.y += (forwardY + rightY * laneX + upY * laneY) * advance;
++            s.z += (forwardZ + rightZ * laneX + upZ * laneY) * advance;
++            s.distance -= advance;
++            if (s.distance <= s.nearDistance) recycleStar(s);
++            return;
++        }
++
+         float ux = s.x / Math.max(.0001f, s.distance);
+         float uy = s.y / Math.max(.0001f, s.distance);
+         float uz = s.z / Math.max(.0001f, s.distance);
+@@ -679,7 +793,8 @@
+         float y = rotated[1] - observerY;
+         float z = rotated[2] - observerZ;
+         if (z >= -NEAR_PLANE) {
+-            s.previousVisible = false;
++            if (motionProfile == PROFILE_CLASSIC_FORWARD || motionProfile == PROFILE_DEEP_SPACE) recycleStar(s);
++            else s.previousVisible = false;
+             return;
+         }
+ 
+@@ -687,6 +802,9 @@
+         float sx = centerX + x * focal * invDepth;
+         float sy = centerY - y * focal * invDepth;
+         if (sx < -72f || sx > width + 72f || sy < -72f || sy > height + 72f) {
++            // Do not immediately recycle an off-screen travel star back into the current viewport.
++            // Let it finish its depth lifecycle naturally. This keeps the field spacious and avoids
++            // V57's rapid refill loop that made almost every active particle visible at once.
+             s.previousVisible = false;
+             return;
+         }
+@@ -742,10 +860,14 @@
+             float dx = sx - s.previousX;
+             float dy = sy - s.previousY;
+             float displacement = (float) Math.sqrt(dx * dx + dy * dy);
+-            boolean trace = s.motionType == MOTION_COMET || (s.layer == LAYER_NEAR && life > .74f);
+-            if (trace && displacement > .55f && displacement < 31f * density) {
+-                float tail = clamp(.07f + life * .12f, .07f, .19f);
+-                float trailAlpha = s.motionType == MOTION_COMET ? .13f : .065f;
++            boolean deepTrace = motionProfile == PROFILE_DEEP_SPACE && s.layer == LAYER_NEAR && life > .72f;
++            boolean livingTrace = motionProfile == PROFILE_LIVING
++                    && (s.motionType == MOTION_COMET || (s.layer == LAYER_NEAR && life > .74f));
++            boolean trace = deepTrace || livingTrace;
++            if (trace && displacement > .60f && displacement < 29f * density) {
++                float tail = deepTrace ? clamp(.07f + life * .10f, .07f, .17f)
++                        : clamp(.07f + life * .12f, .07f, .19f);
++                float trailAlpha = deepTrace ? .045f : (s.motionType == MOTION_COMET ? .13f : .065f);
+                 paint.setStrokeWidth(Math.max(.22f * density, radius * .18f));
+                 paint.setColor(Color.argb((int) (alpha * trailAlpha), r, g, b));
+                 canvas.drawLine(sx - dx * tail, sy - dy * tail, sx, sy, paint);
+@@ -763,7 +885,11 @@
+     private void drawFlightField(Canvas canvas, float width, float height, float density,
+                                  float focal, float centerX, float centerY,
+                                  float observerX, float observerY, float observerZ,
+-                                 float time, float dt, float surge, float swirl, float bloom) {
++                                 float time, float dt, float surge, float swirl, float bloom,
++                                 float forwardX, float forwardY, float forwardZ,
++                                 float rightX, float rightY, float rightZ,
++                                 float upX, float upY, float upZ,
++                                 float tunnelSteerX, float tunnelSteerY) {
+         float audioDrive = 1f + visualEnergy * .11f + visualBeat * .09f;
+         for (FlowStar s : flowStars) {
+             if (s == null) continue;
+@@ -772,36 +898,53 @@
+                 continue;
+             }
+             if (running) {
+-                // Flow particles also never pause while the device rotates.  Some bend into
+-                // graceful arcs; others surge or pulse, but every one continues advancing.
+-                float typeSpeed = s.motionType == MOTION_ORBIT ? .76f
+-                        : s.motionType == MOTION_COMET ? 1.38f
+-                        : s.motionType == MOTION_PULSE
+-                        ? (.88f + .28f * (.5f + .5f * (float) Math.sin(time * s.pulseSpeed + s.phase)))
+-                        : 1f;
+-                if (motionProfile == PROFILE_CLASSIC_FORWARD) typeSpeed = 1.0f;
+-                float advance = s.speed * typeSpeed * surge * audioDrive * speedMultiplier * dt;
+-
+-                if (motionProfile != PROFILE_CLASSIC_FORWARD && (s.motionType == MOTION_CURVE || s.motionType == MOTION_ORBIT || s.motionType == MOTION_PULSE)) {
+-                    float cx = s.axisY * s.dirZ - s.axisZ * s.dirY;
+-                    float cy = s.axisZ * s.dirX - s.axisX * s.dirZ;
+-                    float cz = s.axisX * s.dirY - s.axisY * s.dirX;
+-                    float bend = s.curveStrength * (s.motionType == MOTION_ORBIT ? 1.65f : 1f)
+-                            * (.45f + .55f * swirl) * dt;
+-                    s.dirX += cx * bend;
+-                    s.dirY += cy * bend;
+-                    s.dirZ += cz * bend;
+-                    float n = (float) Math.sqrt(s.dirX * s.dirX + s.dirY * s.dirY + s.dirZ * s.dirZ);
+-                    if (n > 1.0e-6f) {
+-                        float inv = 1f / n;
+-                        s.dirX *= inv; s.dirY *= inv; s.dirZ *= inv;
++                // Flow particles also never pause while the device rotates. Living mode retains
++                // V56's individual Flow/Curve/Orbit/Pulse/Comet personalities byte-for-byte in its
++                // branch; the two travel profiles use a coordinated camera-forward translation.
++                if (motionProfile == PROFILE_CLASSIC_FORWARD || motionProfile == PROFILE_DEEP_SPACE) {
++                    float surgeT = clamp((surge - .86f) / .48f, 0f, 1f);
++                    float profileSurge = motionProfile == PROFILE_CLASSIC_FORWARD
++                            ? lerp(.96f, 1.08f, surgeT) : lerp(.92f, 1.18f, surgeT);
++                    float layerVariation = motionProfile == PROFILE_DEEP_SPACE
++                            ? lerp(.88f, 1.12f, .5f + .5f * (float) Math.sin(s.phase * 1.73f)) : 1f;
++                    float advance = s.speed * profileSurge * layerVariation * audioDrive * speedMultiplier * dt;
++                    float laneX = motionProfile == PROFILE_DEEP_SPACE
++                            ? tunnelSteerX + .014f * (float) Math.sin(time * .119f + s.phase) : 0f;
++                    float laneY = motionProfile == PROFILE_DEEP_SPACE
++                            ? tunnelSteerY + .011f * (float) Math.cos(time * .103f + s.phase * 1.41f) : 0f;
++                    s.x += (forwardX + rightX * laneX + upX * laneY) * advance;
++                    s.y += (forwardY + rightY * laneX + upY * laneY) * advance;
++                    s.z += (forwardZ + rightZ * laneX + upZ * laneY) * advance;
++                    s.remainingDepth -= advance;
++                } else {
++                    float typeSpeed = s.motionType == MOTION_ORBIT ? .76f
++                            : s.motionType == MOTION_COMET ? 1.38f
++                            : s.motionType == MOTION_PULSE
++                            ? (.88f + .28f * (.5f + .5f * (float) Math.sin(time * s.pulseSpeed + s.phase)))
++                            : 1f;
++                    float advance = s.speed * typeSpeed * surge * audioDrive * speedMultiplier * dt;
++
++                    if (s.motionType == MOTION_CURVE || s.motionType == MOTION_ORBIT || s.motionType == MOTION_PULSE) {
++                        float cx = s.axisY * s.dirZ - s.axisZ * s.dirY;
++                        float cy = s.axisZ * s.dirX - s.axisX * s.dirZ;
++                        float cz = s.axisX * s.dirY - s.axisY * s.dirX;
++                        float bend = s.curveStrength * (s.motionType == MOTION_ORBIT ? 1.65f : 1f)
++                                * (.45f + .55f * swirl) * dt;
++                        s.dirX += cx * bend;
++                        s.dirY += cy * bend;
++                        s.dirZ += cz * bend;
++                        float n = (float) Math.sqrt(s.dirX * s.dirX + s.dirY * s.dirY + s.dirZ * s.dirZ);
++                        if (n > 1.0e-6f) {
++                            float inv = 1f / n;
++                            s.dirX *= inv; s.dirY *= inv; s.dirZ *= inv;
++                        }
+                     }
+-                }
+ 
+-                s.x += s.dirX * advance;
+-                s.y += s.dirY * advance;
+-                s.z += s.dirZ * advance;
+-                s.remainingDepth -= advance;
++                    s.x += s.dirX * advance;
++                    s.y += s.dirY * advance;
++                    s.z += s.dirZ * advance;
++                    s.remainingDepth -= advance;
++                }
+             }
+             if (s.remainingDepth <= FLOW_NEAR_DEPTH) {
+                 resetFlowStar(s, false);
+@@ -866,11 +1009,14 @@
+                 float dx = sx - s.previousX;
+                 float dy = sy - s.previousY;
+                 float displacement = (float) Math.sqrt(dx * dx + dy * dy);
+-                boolean trace = progress > .58f || s.motionType == MOTION_COMET;
+-                if (trace && displacement > .55f && displacement < 30f * density) {
+-                    float tail = lerp(.08f, .22f, progress);
++                boolean deepTrace = motionProfile == PROFILE_DEEP_SPACE && progress > .62f;
++                boolean livingTrace = motionProfile == PROFILE_LIVING && (progress > .58f || s.motionType == MOTION_COMET);
++                boolean trace = deepTrace || livingTrace;
++                if (trace && displacement > .62f && displacement < 28f * density) {
++                    float tail = deepTrace ? lerp(.08f, .20f, progress) : lerp(.08f, .22f, progress);
+                     paint.setStrokeWidth(Math.max(.22f * density, radius * .17f));
+-                    paint.setColor(Color.argb((int) (alpha * (s.motionType == MOTION_COMET ? .14f : .07f)), r, g, b));
++                    float trailAlpha = deepTrace ? .052f : (s.motionType == MOTION_COMET ? .14f : .07f);
++                    paint.setColor(Color.argb((int) (alpha * trailAlpha), r, g, b));
+                     canvas.drawLine(sx - dx * tail, sy - dy * tail, sx, sy, paint);
+                 }
+             }
+@@ -975,7 +1121,9 @@
+ 
+     private boolean isDensityActive(boolean baseDensityPool, float rank) {
+         float density = starDensityMultiplier;
+-        if (density < 1f) return baseDensityPool && rank <= density;
++        if (motionProfile == PROFILE_CLASSIC_FORWARD) density *= CLASSIC_TRAVEL_DENSITY_SCALE;
++        else if (motionProfile == PROFILE_DEEP_SPACE) density *= DEEP_SPACE_DENSITY_SCALE;
++        if (density < 1f) return baseDensityPool && rank <= Math.max(0f, density);
+         if (baseDensityPool) return true;
+         float extraFraction = (density - 1f) / Math.max(.001f, MAX_DENSITY_MULTIPLIER - 1f);
+         return rank <= extraFraction;

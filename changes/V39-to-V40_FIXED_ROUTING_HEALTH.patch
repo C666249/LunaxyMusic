@@ -1,0 +1,430 @@
+--- V39/app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
++++ V40/app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
+@@ -8,8 +8,15 @@
+ import java.util.List;
+ 
+ /**
+- * V8.1 health model: success means Media3 actually reached READY, not merely that
+- * a resolver returned a URL. Health is tracked per provider + platform + quality.
++ * V40 stable health layer.
++ *
++ * READY/FAIL/latency are retained as diagnostics only. They no longer change the
++ * long-term provider order. Routing is deterministic:
++ *   tx (QQ): Huibq primary, QDY emergency fallback
++ *   wy (Netease): QDY primary, Huibq fallback
++ *
++ * Temporary outages are handled by short circuit-breaker cooldowns. This keeps
++ * a transient upstream incident from becoming a permanent routing preference.
+  */
+ public final class SourceHealthStore {
+     private final SharedPreferences prefs;
+@@ -22,6 +29,10 @@
+         return safe(providerId) + "|" + safe(platform) + "|" + safe(quality);
+     }
+ 
++    private static String platformKey(String providerId, String platform) {
++        return safe(providerId) + "|" + safe(platform) + "|*";
++    }
++
+     private static String globalKey(String providerId) { return safe(providerId) + "|*|*"; }
+ 
+     public void resolverCandidate(String providerId, String platform, String quality, long latencyMs) {
+@@ -34,6 +45,8 @@
+ 
+     public void playbackSuccess(String providerId, String platform, String quality, long latencyMs) {
+         String k = routeKey(providerId, platform, quality);
++        String pk = platformKey(providerId, platform);
++        String gk = globalKey(providerId);
+         int ok = Math.min(500, prefs.getInt(k + ".ok", 0) + 1);
+         int fail = Math.max(0, prefs.getInt(k + ".fail", 0) - 1);
+         long old = prefs.getLong(k + ".lat", latencyMs);
+@@ -41,26 +54,52 @@
+         prefs.edit().putInt(k + ".ok", ok).putInt(k + ".fail", fail)
+                 .putLong(k + ".lat", ema).putLong(k + ".lastOk", System.currentTimeMillis())
+                 .remove(k + ".cooldown").remove(k + ".reason")
++                .remove(pk + ".cooldown").remove(pk + ".reason")
++                .remove(gk + ".cooldown").remove(gk + ".reason")
+                 .putString(providerId + ".lastRoute", platform + "/" + quality)
+                 .putLong(providerId + ".lastOk", System.currentTimeMillis()).apply();
+     }
+ 
++    /** Historical/statistical failure. cooldownMs is only a short route breaker, never a ranking penalty. */
+     public void routeFailure(String providerId, String platform, String quality, String reason, long cooldownMs) {
+         String k = routeKey(providerId, platform, quality);
+         int fail = Math.min(500, prefs.getInt(k + ".fail", 0) + 1);
+         long until = cooldownMs > 0 ? System.currentTimeMillis() + cooldownMs : 0L;
+-        prefs.edit().putInt(k + ".fail", fail)
++        SharedPreferences.Editor e = prefs.edit().putInt(k + ".fail", fail)
+                 .putString(k + ".reason", reason == null ? "" : reason)
+-                .putLong(k + ".cooldown", until).putLong(k + ".lastFail", System.currentTimeMillis())
++                .putLong(k + ".lastFail", System.currentTimeMillis())
++                .putString(providerId + ".lastReason", reason == null ? "" : reason)
++                .putLong(providerId + ".lastFail", System.currentTimeMillis());
++        if (cooldownMs > 0) e.putLong(k + ".cooldown", until);
++        e.apply();
++    }
++
++    /** Route-only breaker without adding another historical failure count. */
++    public void routeCooldown(String providerId, String platform, String quality, String reason, long cooldownMs) {
++        if (cooldownMs <= 0) return;
++        String k = routeKey(providerId, platform, quality);
++        prefs.edit().putString(k + ".reason", reason == null ? "" : reason)
++                .putLong(k + ".cooldown", System.currentTimeMillis() + cooldownMs)
+                 .putString(providerId + ".lastReason", reason == null ? "" : reason)
+                 .putLong(providerId + ".lastFail", System.currentTimeMillis()).apply();
+     }
+ 
++    /** Platform-only breaker: e.g. QDY's QQ route can rest while QDY Netease remains available. */
++    public void platformFailure(String providerId, String platform, String reason, long cooldownMs) {
++        if (cooldownMs <= 0) return;
++        String k = platformKey(providerId, platform);
++        prefs.edit().putString(k + ".reason", reason == null ? "" : reason)
++                .putLong(k + ".cooldown", System.currentTimeMillis() + cooldownMs)
++                .putString(providerId + ".lastReason", reason == null ? "" : reason)
++                .putLong(providerId + ".lastFail", System.currentTimeMillis()).apply();
++    }
++
++    /** Provider-wide breaker: reserved for real service outages, rate limits and IP blocks. */
+     public void globalFailure(String providerId, String reason, long cooldownMs) {
++        if (cooldownMs <= 0) return;
+         String k = globalKey(providerId);
+-        long until = cooldownMs > 0 ? System.currentTimeMillis() + cooldownMs : 0L;
+         prefs.edit().putString(k + ".reason", reason == null ? "" : reason)
+-                .putLong(k + ".cooldown", until)
++                .putLong(k + ".cooldown", System.currentTimeMillis() + cooldownMs)
+                 .putString(providerId + ".lastReason", reason == null ? "" : reason)
+                 .putLong(providerId + ".lastFail", System.currentTimeMillis()).apply();
+     }
+@@ -68,14 +107,16 @@
+     public boolean cooling(String providerId, String platform, String quality) {
+         long now = System.currentTimeMillis();
+         return prefs.getLong(globalKey(providerId) + ".cooldown", 0L) > now
++                || prefs.getLong(platformKey(providerId, platform) + ".cooldown", 0L) > now
+                 || prefs.getLong(routeKey(providerId, platform, quality) + ".cooldown", 0L) > now;
+     }
+ 
+     public long cooldownRemaining(String providerId, String platform, String quality) {
+         long now = System.currentTimeMillis();
+         long a = prefs.getLong(globalKey(providerId) + ".cooldown", 0L);
+-        long b = prefs.getLong(routeKey(providerId, platform, quality) + ".cooldown", 0L);
+-        return Math.max(0, Math.max(a, b) - now);
++        long b = prefs.getLong(platformKey(providerId, platform) + ".cooldown", 0L);
++        long c = prefs.getLong(routeKey(providerId, platform, quality) + ".cooldown", 0L);
++        return Math.max(0, Math.max(a, Math.max(b, c)) - now);
+     }
+ 
+     public int ok(String providerId, String platform, String quality) {
+@@ -93,6 +134,8 @@
+     public String reason(String providerId, String platform, String quality) {
+         String route = prefs.getString(routeKey(providerId, platform, quality) + ".reason", "");
+         if (route != null && !route.isEmpty()) return route;
++        String platformReason = prefs.getString(platformKey(providerId, platform) + ".reason", "");
++        if (platformReason != null && !platformReason.isEmpty()) return platformReason;
+         return prefs.getString(globalKey(providerId) + ".reason", "");
+     }
+ 
+@@ -113,42 +156,28 @@
+         return total;
+     }
+ 
++    /**
++     * V40: fixed route order. Historical READY/FAIL/latency are diagnostics only.
++     * Active circuit breakers are enforced separately by cooling().
++     */
+     public List<ResolverProvider> rank(List<ResolverProvider> providers, String platform, String quality) {
+         List<ResolverProvider> list = new ArrayList<>(providers);
+-        list.sort(Comparator.comparingDouble((ResolverProvider p) -> score(p, platform, quality)).reversed());
++        list.sort(Comparator.comparingInt(p -> fixedOrder(p.id, platform)));
+         return list;
+     }
+ 
+-    private double score(ResolverProvider p, String platform, String quality) {
+-        if (cooling(p.id, platform, quality)) return -10000.0 + p.basePriority;
+-        int ok = ok(p.id, platform, quality);
+-        int fail = fail(p.id, platform, quality);
+-        double successRate = (ok + 1.8) / (ok + fail + 3.2);
+-        double evidence = Math.min(30.0, ok * 4.0);
+-        double latencyPenalty = Math.min(12.0, latency(p.id, platform, quality) / 800.0);
+-
+-        // V14: start from the routes that the user's real device already proved useful,
+-        // instead of forcing a clean installation to "learn" by failing through many
+-        // dead sources first. These are priors only; the displayed READY counters remain real.
+-        double routePrior = routePrior(p.id, platform, quality);
+-        return routePrior + p.basePriority * 0.12 + successRate * 68.0
+-                + evidence - fail * 3.0 - latencyPenalty;
+-    }
+-
+-    private static double routePrior(String providerId, String platform, String quality) {
+-        boolean high = "320k".equalsIgnoreCase(quality);
++    private static int fixedOrder(String providerId, String platform) {
+         if ("tx".equals(platform)) {
+-            if ("huibq".equals(providerId)) return high ? 150.0 : 132.0;
+-            if ("qdy".equals(providerId)) return high ? 72.0 : 64.0;
++            if ("huibq".equals(providerId)) return 0;
++            if ("qdy".equals(providerId)) return 1;
+         }
+         if ("wy".equals(platform)) {
+-            if ("qdy".equals(providerId)) return high ? 150.0 : 132.0;
+-            if ("huibq".equals(providerId)) return high ? 72.0 : 64.0;
++            if ("qdy".equals(providerId)) return 0;
++            if ("huibq".equals(providerId)) return 1;
+         }
+-        // For other platforms keep both stable providers usable, but without a strong claim.
+-        if ("qdy".equals(providerId)) return high ? 58.0 : 52.0;
+-        if ("huibq".equals(providerId)) return high ? 54.0 : 48.0;
+-        return 0.0;
++        if ("qdy".equals(providerId)) return 0;
++        if ("huibq".equals(providerId)) return 1;
++        return 100;
+     }
+ 
+     private static String safe(String s) { return s == null ? "" : s; }
+
+--- V39/app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
++++ V40/app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
+@@ -43,6 +43,10 @@
+     private static final long BLOCK_COOLDOWN = 60L * 60L * 1000L;
+     private static final long SOFT_NETWORK_COOLDOWN = 15L * 1000L;
+     private static final long INIT_COOLDOWN = 60L * 1000L;
++    // V40 short circuit breakers. They do not affect long-term provider order.
++    private static final long HUIBQ_SERVICE_COOLDOWN = 60L * 1000L;
++    private static final long QDY_QQ_ACCESS_COOLDOWN = 2L * 60L * 1000L;
++    private static final long QDY_QQ_SERVER_COOLDOWN = 30L * 1000L;
+ 
+     private final android.content.Context context;
+     private final SourceHealthStore health;
+@@ -109,8 +113,19 @@
+                         if (probe.checked && !probe.playable) {
+                             trace.add("candidate-reject", provider.label + " / " + probe.reason
+                                     + " · 音频 URL 在进入播放器前已失效");
+-                            health.routeFailure(provider.id, variant.source, quality,
+-                                    "候选音频地址失效：" + probe.reason, 0L);
++                            String candidateReason = "候选音频地址失效：" + probe.reason;
++                            health.routeFailure(provider.id, variant.source, quality, candidateReason, 0L);
++                            // QDY's QQ candidate may be broadly forbidden even while its Netease route is healthy.
++                            // Rest only qdy|tx, never QDY Netease. 404/410 stays song-local.
++                            if ("tx".equals(variant.source) && (probe.statusCode == 401 || probe.statusCode == 403 || probe.statusCode == 409)) {
++                                health.platformFailure(provider.id, variant.source,
++                                        "QQ 候选地址 HTTP " + probe.statusCode + "，短暂暂停 QDY-QQ 备用",
++                                        QDY_QQ_ACCESS_COOLDOWN);
++                            } else if ("tx".equals(variant.source) && probe.statusCode >= 500) {
++                                health.platformFailure(provider.id, variant.source,
++                                        "QQ 候选地址 HTTP " + probe.statusCode + "，短暂暂停 QDY-QQ 备用",
++                                        QDY_QQ_SERVER_COOLDOWN);
++                            }
+                             last = new Exception(provider.label + " 返回失效音频地址：" + probe.reason);
+                             if (tryIndex == 0 && (probe.statusCode == 404 || probe.statusCode == 410)) {
+                                 recycleRuntime(provider.id);
+@@ -133,8 +148,24 @@
+                     }
+                     String friendly = friendlyReason(raw);
+                     long cooldown = classifyCooldown(raw);
+-                    health.routeFailure(provider.id, variant.source, quality, friendly, cooldown);
+-                    if (isGlobalFailure(raw)) health.globalFailure(provider.id, friendly, cooldown);
++                    boolean global = isGlobalFailure(raw);
++
++                    // Huibq's script collapses non-JSON responses into "unknow error". V39 diagnostics
++                    // already observed the completed HTTP response, so V40 can recognize a real 5xx
++                    // without issuing any extra request or changing the resolver payload.
++                    if ("huibq".equals(provider.id)) {
++                        int http = ResolverHttpDiagnostics.huibqHttpCodeSince(start);
++                        if (http >= 500 && http <= 599) {
++                            friendly = "HTTP " + http + " · Huibq 服务暂不可用，60 秒后再探";
++                            cooldown = HUIBQ_SERVICE_COOLDOWN;
++                            global = true;
++                        }
++                    }
++
++                    // Failure counters remain visible statistics, but no longer participate in ranking.
++                    health.routeFailure(provider.id, variant.source, quality, friendly, 0L);
++                    if (global && cooldown > 0) health.globalFailure(provider.id, friendly, cooldown);
++                    else if (cooldown > 0) health.routeCooldown(provider.id, variant.source, quality, friendly, cooldown);
+                     trace.add("resolver-fail", provider.label + " / " + friendly);
+                     break;
+                 }
+@@ -161,8 +192,21 @@
+         } else if (lower.contains("block ip") || lower.contains("ip 被限制") || lower.contains("当前网络被该音源限制")) {
+             effective = BLOCK_COOLDOWN;
+         }
+-        health.routeFailure(providerId, platform, quality, reason, effective);
+-        if (effective > 0) health.globalFailure(providerId, reason, effective);
++        // Record the failure as statistics only; fixed routing never learns a permanent demotion.
++        health.routeFailure(providerId, platform, quality, reason, 0L);
++        if (effective > 0) {
++            health.globalFailure(providerId, reason, effective);
++            return;
++        }
++
++        // Keep QDY's Netease route untouched when only its QQ candidate path is forbidden/unhealthy.
++        if ("qdy".equals(providerId) && "tx".equals(platform)) {
++            if (lower.contains("http 401") || lower.contains("http 403") || lower.contains("http 409")) {
++                health.platformFailure(providerId, platform, reason, QDY_QQ_ACCESS_COOLDOWN);
++            } else if (containsHttp5xx(lower) || lower.contains("timeout") || lower.contains("timed out")) {
++                health.platformFailure(providerId, platform, reason, QDY_QQ_SERVER_COOLDOWN);
++            }
++        }
+     }
+ 
+     private synchronized LxSourceRuntime runtime(ResolverProvider p) {
+@@ -181,8 +225,8 @@
+ 
+     public String statusText() {
+         StringBuilder b = new StringBuilder();
+-        b.append("稳定主链：QQ 默认 Huibq，网易云默认全豆要聚合。\n")
+-                .append("其它长期 0 READY 的实验源已退出日常播放，不会再让新安装先失败一大圈。\n\n");
++        b.append("固定主路由：QQ 永远优先 Huibq，QDY 仅作备用；网易云永远优先全豆要，Huibq 仅作备用。\n")
++                .append("历史 READY / 失败次数只做统计，不再改变长期顺序；临时 503 / 403 / 429 只触发短期保护。\n\n");
+         for (ResolverProvider p : providers) {
+             int ok = health.totalOk(p.id);
+             int fail = health.totalFail(p.id);
+@@ -197,17 +241,17 @@
+             if (!reason.isEmpty() && ok == 0) b.append("\n   ").append(reason);
+             b.append('\n');
+         }
+-        b.append("\n只有 Media3 READY 才计成功。QDY 返回的 404/410 音频地址会在进播放器前拦截；普通单曲 404 不会让整个音源跨歌曲冷却。\n")
+-                .append("Huibq 只有明确 block ip / 429 时才进入保护冷却。\n")
+-                .append("QDY 脚本首次获取后固定保存，不再每 24 小时自动换 latest.js；Huibq 永远使用 APK 内置快照。");
++        b.append("\n只有 Media3 READY 才计成功并缓存 URL。Huibq HTTP 5xx 会短休 60 秒后自动再探；明确 block ip / 429 仍使用长保护冷却。\n")
++                .append("QDY 的 QQ 候选若 401/403/409，只暂停 QDY-QQ 备用，不影响 QDY 播放网易；404/410 仍只影响当前候选。\n")
++                .append("QDY 脚本首次获取后固定保存；Huibq 永远使用 APK 内置快照。");
+         return b.toString();
+     }
+ 
+     public String compactStatus() {
+         int hOk = health.totalOk("huibq");
+         int qOk = health.totalOk("qdy");
+-        if (hOk == 0 && qOk == 0) return "稳定主链 · QQ→Huibq / 网易→全豆要";
+-        return "稳定主链 · Huibq " + hOk + " READY / 全豆要 " + qOk + " READY";
++        if (hOk == 0 && qOk == 0) return "固定主路由 · QQ→Huibq / 网易→全豆要";
++        return "固定主路由 · Huibq " + hOk + " READY / 全豆要 " + qOk + " READY";
+     }
+ 
+     public void destroy() {
+@@ -240,6 +284,14 @@
+         return 0L;
+     }
+ 
++    private static boolean containsHttp5xx(String lower) {
++        if (lower == null) return false;
++        return lower.contains("http 500") || lower.contains("http 501") || lower.contains("http 502")
++                || lower.contains("http 503") || lower.contains("http 504") || lower.contains("http 505")
++                || lower.contains("http 506") || lower.contains("http 507") || lower.contains("http 508")
++                || lower.contains("http 509") || lower.contains("http 510") || lower.contains("http 511");
++    }
++
+     private static String friendlyReason(String m) {
+         String s = m == null ? "" : m;
+         String lower = s.toLowerCase(java.util.Locale.ROOT);
+
+--- V39/app/src/main/java/com/xingyu/music/data/ResolverHttpDiagnostics.java
++++ V40/app/src/main/java/com/xingyu/music/data/ResolverHttpDiagnostics.java
+@@ -25,6 +25,8 @@
+     private static final int MAX_LINE_CHARS = 360;
+     private static final List<String> lines = new ArrayList<>();
+     private static final String HUIBQ_HOST = "lxmusicapi.onrender.com";
++    private static volatile int lastHuibqHttpCode = 0;
++    private static volatile long lastHuibqHttpAt = 0L;
+     private static final Pattern CODE = Pattern.compile("[\\\"']?code[\\\"']?\\s*:\\s*([\\\"']?[^,}\\s\\\"']+[\\\"']?)", Pattern.CASE_INSENSITIVE);
+     private static final Pattern MSG = Pattern.compile("[\\\"']?msg[\\\"']?\\s*:\\s*[\\\"']([^\\\"']{0,120})[\\\"']", Pattern.CASE_INSENSITIVE);
+ 
+@@ -33,6 +35,8 @@
+     public static void observe(String url, Http.Response response) {
+         try {
+             if (response == null || !isHuibq(url)) return;
++            lastHuibqHttpCode = response.code;
++            lastHuibqHttpAt = System.currentTimeMillis();
+             String contentType = header(response.headers, "Content-Type");
+             String contentLength = header(response.headers, "Content-Length");
+             String raw = response.body == null ? "" : response.body;
+@@ -51,6 +55,18 @@
+         }
+     }
+ 
++
++    /** Returns the already-observed Huibq HTTP status; never performs network I/O. */
++    public static int recentHuibqHttpCode(long maxAgeMs) {
++        long age = System.currentTimeMillis() - lastHuibqHttpAt;
++        return age >= 0 && age <= Math.max(0L, maxAgeMs) ? lastHuibqHttpCode : 0;
++    }
++
++    /** Returns a Huibq status only when that observation happened after this resolver attempt began. */
++    public static int huibqHttpCodeSince(long sinceMs) {
++        return lastHuibqHttpAt >= sinceMs ? lastHuibqHttpCode : 0;
++    }
++
+     public static synchronized String text() {
+         if (lines.isEmpty()) return "";
+         StringBuilder b = new StringBuilder(3200);
+
+--- V39/app/src/main/java/com/xingyu/music/MainActivity.java
++++ V40/app/src/main/java/com/xingyu/music/MainActivity.java
+@@ -694,7 +694,7 @@
+ 
+     private void showSourceStatus() {
+         String status = playback == null ? "音源管理器正在启动…" : playback.sourceStatus();
+-        showGlassMessage("智能音源", status + "\n\nV22 继续冻结 V14/V15 稳定主链：只保留 Huibq 与全豆要聚合参与日常播放；QQ 默认优先 Huibq，网易默认优先全豆要。只有 Media3 READY 才记为真实成功，普通单曲 404 不会污染下一首。",
++        showGlassMessage("智能音源", status + "\n\nV40 只调整健康状态层：QQ 固定 Huibq 主源、QDY 备用；网易固定 QDY 主源、Huibq 备用。历史 READY/FAIL 仅统计，不再改变顺序；短暂 503/403/429 只做短期保护。READY URL 缓存和 Media3 验证逻辑保持原样。",
+                 "知道了", null, "", null);
+     }
+ 
+
+--- V39/app/build.gradle.kts
++++ V40/app/build.gradle.kts
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 42
+-        versionName = "39.0.0"
++        versionCode = 43
++        versionName = "40.0.0"
+     }
+ 
+     buildTypes {
+
+--- V39/BUILD_APK.bat
++++ V40/BUILD_APK.bat
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   LunaxyMusic V39 - Debug APK Build
++echo   LunaxyMusic V40 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V39-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V40-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\LunaxyMusic-V39-debug.apk
++echo [OK] APK: %CD%\dist\LunaxyMusic-V40-debug.apk
+ pause
+
+--- V39/README_验收说明.txt
++++ V40/README_验收说明.txt
+@@ -1,10 +1,12 @@
+-LunaxyMusic V38.0 — Playback-Safe + Huibq 纯日志观察
++LunaxyMusic V40.0 — 固定主路由 + 短期健康状态
+ 
+-1. V38 直接基于 V37 Playback-Safe 完整工程修改。
+-2. 歌曲下载/离线体系仍完全移除；QQ/网易都没有歌曲下载入口或下载后台链路。
+-3. 新增 Huibq HTTP 纯观察：播放失败后点“查看诊断”，底部会附加最近的 Huibq HTTP status / Content-Type / 响应类型摘要。
+-4. 该观察不会额外请求网络，不改变 Huibq/QDY 顺序、音质顺序、重试、READY/FAIL、冷却、缓存或 Media3。
+-5. V29 黄金播放核心 17/17 个对象仍 SHA-256 字节级完全一致，详见 changes\PLAYBACK_GOLDEN_BASELINE_GUARD_V38.txt。
+-6. V37→V38 的 HTTP 改动只有“响应已经完成后做只读摘要”，详见 changes\HTTP_OBSERVATION_GUARD_V38.txt。
+-7. READY URL 不是永久锁死：缓存失效时 Media3 会触发 invalidate，并只刷新一次；新地址只有再次 Media3 READY 才重新缓存。
+-8. BUILD_APK.bat 成功构建后输出 dist\LunaxyMusic-V38-debug.apk。
++1. V40 直接基于 V39 完整工程修改；下载/离线体系仍完全移除。
++2. QQ 固定路由：Huibq 永远第一，QDY 仅作备用；网易固定路由：QDY 永远第一，Huibq 仅作备用。
++3. 历史 READY / FAIL / latency 继续显示，但只作为统计，不再参与长期排序，不会因为一次事故永久“记仇”。
++4. READY URL 缓存、Media3 READY 验证、缓存失效刷新、320k→128k、实际解析脚本和播放服务保持原逻辑。
++5. Huibq 若本次已完成 HTTP 响应为 5xx（例如当前抓到的 503），只设置 60 秒 provider 临时断路；60 秒后下一次 QQ 播放自动再探一次。
++6. QDY 的 QQ 候选若 401/403/409，仅暂停 QDY-QQ 备用 2 分钟，不影响 QDY 播放网易；QDY-QQ 5xx/timeout 只休 30 秒。
++7. 明确 429 / too many requests 仍保护 20 分钟；明确 block ip 仍保护 60 分钟。
++8. V39 的 Huibq 固定长度诊断仍保留；V40 只读取“已经完成的本次 HTTP 状态码”来判断临时 5xx，不增加任何网络请求。
++9. 除健康状态层外，15 个黄金播放核心对象与 V39/V29 保持 SHA-256 一致，详见 changes\PLAYBACK_PIPELINE_GUARD_V40.txt。
++10. BUILD_APK.bat 成功后输出 dist\LunaxyMusic-V40-debug.apk。

@@ -1,0 +1,12 @@
+Lunaxy Music V77 runtime diff vs Stable V76
+
+app/src/main changed files:
+- MODIFIED app/src/main/java/com/xingyu/music/MainActivity.java
+- ADDED: 0
+- DELETED: 0
+
+Fix scope:
+- Search result primary Tab indicator first-frame placement only.
+- Replace deferred post() initial positioning with one-shot OnPreDraw positioning.
+
+No provider filter, lyric search API, playback, provider-learning, download, cache, Media3, playlist or data-model runtime file changed.

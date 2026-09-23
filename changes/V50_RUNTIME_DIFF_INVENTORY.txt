@@ -1,0 +1,13 @@
+Lunaxy V49 -> V50 Runtime Diff Inventory
+
+MODIFIED java/com/xingyu/music/MainActivity.java
+  V49 438ee9ae40943766de6d879b5458ec08bb99d72968991898258fe849a267bf93
+  V50 2e24381d59817d566aa9a6ab7f88e239cac23f458f32f2cbe1d70b1338bd7708
+ADDED    java/com/xingyu/music/ui/Starfield3DMath.java
+  V50 4451662b3e7d4684d05f1e1765985c29b94b0041ee0ea79911a7b0bd81ce4a6d
+ADDED    java/com/xingyu/music/ui/Starfield3DView.java
+  V50 b46413d5d3c0de654175acb4b73cdb8fb18d0b0873af017aabecb8070e669e8c
+
+Runtime unchanged files: 79
+Runtime changed/added/removed: 3
+Expected contract: exactly MainActivity MODIFIED + Starfield3DMath ADDED + Starfield3DView ADDED.

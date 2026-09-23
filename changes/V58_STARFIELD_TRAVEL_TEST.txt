@@ -1,0 +1,15 @@
+Lunaxy Music V58 Starfield Travel Test
+======================================
+Baseline: V56. V57 unified-search changes intentionally not carried forward.
+
+[PASS] Android stub javac: Starfield3DView + Starfield3DMath + AudioLevelProvider + TestV58
+[PASS] V56 default Living profile density remains world=3122 / foreground=307 / total=3429 at density=1.16x
+[PASS] Classic Forward lightweight budget at density=1.16x: world=1416 / foreground=150 / total=1566
+       Reduction vs prior travel budget 3429: 54.3%
+[PASS] Deep Space lightweight budget at density=1.16x: world=1236 / foreground=129 / total=1365
+       Reduction vs prior travel budget 3429: 60.2%
+[PASS] Classic Forward uses true camera-forward translation; all active travel stars continue moving rather than xyz proportional shrink.
+[PASS] Deep Space remains a distinct Voyager-like tunnel profile with gentle steering/lane drift.
+[PASS] Travel respawn volume widened; off-screen world stars are no longer immediately recycled back into the viewport.
+[PASS] Deep-space trails reduced to sparse near/late-life accents to lower visual clutter and Canvas work.
+[PASS] Living mode retains V56 density and its original recycle random-call ordering when Living remains selected.

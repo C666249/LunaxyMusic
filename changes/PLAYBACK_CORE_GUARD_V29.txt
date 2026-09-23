@@ -1,0 +1,74 @@
+Lunaxy Music V29 播放核心保护检查
+
+Baseline: Lunaxy Music V28
+原则：V29 只允许歌词配色 UI、添加歌曲选择器性能优化、版本文档变化；播放与音源核心必须逐字节一致。
+
+[PASS] app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java
+      V28 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
+      V29 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
+[PASS] app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+      V28 8e1b7d154d0d51613666327b2f5d2a63aa331396d351b7ccb434f3163f0e8860
+      V29 8e1b7d154d0d51613666327b2f5d2a63aa331396d351b7ccb434f3163f0e8860
+[PASS] app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
+      V28 cdcc6afe54a7a70251a64689a1fa851eda251d220ec4438bd4c607018c86b37c
+      V29 cdcc6afe54a7a70251a64689a1fa851eda251d220ec4438bd4c607018c86b37c
+[PASS] app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
+      V28 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
+      V29 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
+[PASS] app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
+      V28 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
+      V29 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
+[PASS] app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
+      V28 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
+      V29 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
+[PASS] app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
+      V28 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
+      V29 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
+[PASS] app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
+      V28 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
+      V29 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
+[PASS] app/src/main/java/com/xingyu/music/data/ResolverProvider.java
+      V28 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
+      V29 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
+[PASS] app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
+      V28 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
+      V29 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
+[PASS] app/src/main/assets/source/huibq-latest.js
+      V28 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
+      V29 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
+[PASS] app/src/main/java/com/xingyu/music/data/QQMusicApi.java
+      V28 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
+      V29 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
+[PASS] app/src/main/java/com/xingyu/music/data/NeteaseApi.java
+      V28 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
+      V29 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
+[PASS] app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
+      V28 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
+      V29 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
+[PASS] app/src/main/java/com/xingyu/music/data/PlaybackTrace.java
+      V28 24ce07eaeb3e28264dde1f0deea0c4a3aad8e7556ebb181b79cec6d88ca5366b
+      V29 24ce07eaeb3e28264dde1f0deea0c4a3aad8e7556ebb181b79cec6d88ca5366b
+[PASS] app/src/main/java/com/xingyu/music/data/LibraryStore.java
+      V28 4b1b5438a1aabb476b097c7cf4f617884cb98360514cdd7239b0084bfc5bb60f
+      V29 4b1b5438a1aabb476b097c7cf4f617884cb98360514cdd7239b0084bfc5bb60f
+[PASS] app/src/main/AndroidManifest.xml
+      V28 96d959b329e0b897db94052dbdc988d2dbb44a3271354f2e6573c83bd97d9007
+      V29 96d959b329e0b897db94052dbdc988d2dbb44a3271354f2e6573c83bd97d9007
+[PASS] app/src/main/res/drawable-nodpi/icon_xm.png
+      V28 229eced19957739cee21401a22a48e6904e61517bce9d9b182d097fdd11dfb35
+      V29 229eced19957739cee21401a22a48e6904e61517bce9d9b182d097fdd11dfb35
+[PASS] app/src/main/res/drawable-nodpi/icon_stardust.png
+      V28 229eced19957739cee21401a22a48e6904e61517bce9d9b182d097fdd11dfb35
+      V29 229eced19957739cee21401a22a48e6904e61517bce9d9b182d097fdd11dfb35
+[PASS] app/src/main/res/drawable/ic_launcher_foreground.xml
+      V28 e9e0369458497e8ab823022aca243ec12262ff39e815273c9582927616592bc9
+      V29 e9e0369458497e8ab823022aca243ec12262ff39e815273c9582927616592bc9
+[PASS] app/src/main/res/drawable/ic_launcher_background.xml
+      V28 1be2433e87669925dbca4c79e34cccf4cc76529e46f947a164703567dc40aa67
+      V29 1be2433e87669925dbca4c79e34cccf4cc76529e46f947a164703567dc40aa67
+
+结论：保护对象 21/21 SHA-256 完全一致。
+[INTENTIONAL] MainActivity.java：歌词高亮预设真实渐变预览；新增可视化 HSV 选色流程；添加歌曲列表改用 ListView 复用并缓存 Tab；其它歌单全选不再重建数百个 Row。
+[INTENTIONAL] app/src/main/java/com/xingyu/music/ui/ColorPickerView.java：新增纯 UI 选色器。
+[INTENTIONAL] build.gradle.kts：versionCode 32 / versionName 29.0.0。
+[PASS] App 名称、包名、Manifest、图标均未修改。

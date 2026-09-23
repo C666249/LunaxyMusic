@@ -1,0 +1,26 @@
+Sunflower V1 -> V2 Diff Inventory
+
+仅列出实际变化文件；未列出的 V1 文件保持字节级不变。
+
+MOD  BUILD_APK.bat  21adba95bf26f05dc064dac54adeca70a4870997726774a02018ce611af2e17d
+MOD  README_验收说明.txt  8fa24d2c8ffdd8ceab9d5026d200581d1075050797315ff6d3b61eed07e2220f
+MOD  SOURCE_PROVIDERS.md  c1479f4c6e1b898a012f4204bf208cddf2ce4af635ba4490f2f06d6d469f39ca
+ADD  SUNFLOWER_V2_架构与变更说明.md  195a358783f72a4c2e5a64fc53e36417f44547bb88363c8195a9a97476b37518
+ADD  SUNFLOWER_V2_自测结果.txt  37a244c68ae15803bd8bb3be8fd8025edd493fda668d35e52b6f63a03dd85e29
+MOD  app/build.gradle.kts  41e4a7be9c78c2400dfa2e58fd725ad3dcdeec17b5afc4cdfd8a9524a590521a
+MOD  app/src/main/java/com/xingyu/music/MainActivity.java  8746de9ec396d264bb81405af282b86db4bd266c880b8983e2e0681ab06b6986
+MOD  app/src/main/java/com/xingyu/music/data/AudioProvider.java  cc9a58c3a47bd59cc3b3837242a13969f5545ae8a36375009ca5eefdff65c320
+MOD  app/src/main/java/com/xingyu/music/data/AudioProviderHub.java  7d7e19a37a0704d822ae5f3175093b11f03df68a0e462ea071e96da252d6c086
+MOD  app/src/main/java/com/xingyu/music/data/Http.java  42427f77105ae43b1f3f0b485341680c9a4c8a2ad72204333f9c1cb67b04f1d5
+MOD  app/src/main/java/com/xingyu/music/data/LxAudioProvider.java  18917845adc138376873a055dc4d60adb96b4409f9da5f1cffd872db711a059a
+MOD  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java  d6f4ac52367b0f3952eb24deae432cad45774e51c75ca3d4425114d4af01882c
+ADD  app/src/main/java/com/xingyu/music/data/OfficialPlaybackProvider.java  ca7ed038fb68e23b09a2f405f1848b6a1f2ec8ca9b46e384910285a4557b4f10
+ADD  app/src/main/java/com/xingyu/music/data/ResolverFailure.java  9489aeca41ac0e0564b91babdabc56fcba54f65df78edc6f0ca0d1144a8befe7
+MOD  app/src/main/java/com/xingyu/music/data/SourceCoordinator.java  470f71840b9717cd31011257e466a09592888fb096c1e45292e1b97792efcfce
+MOD  app/src/main/java/com/xingyu/music/data/SourceHealthStore.java  8c7e0859ab82a9b14185c92ac09606c5212d29cd6fc45a08d080cd38422e9330
+MOD  app/src/main/java/com/xingyu/music/data/SourceScriptStore.java  531f8bad19395158470dfdef1aff80fa4780e2563aeda743b675c33bec1c8b0e
+MOD  app/src/main/java/com/xingyu/music/playback/PlaybackService.java  d18d505868a25adc79e6b5b49400cb4c4b6c7cd3e57199371584c66daeb8acc2
+ADD  changes/SUNFLOWER_V1_TO_V2_CORE.patch  cc29805c0ba5a4afe3d35412ca9652ff36b717311c523bba471fc117ef3f00e2
+ADD  changes/SUNFLOWER_V2_GOLDEN_BASELINE_GUARD.txt  cef9159a89d6f0a78543e440bb1691cb14f7d04272b4b516affb2bf362f5ee2c
+
+Changed file count: 20

@@ -1,0 +1,37 @@
+Lunaxy Music V41 - GOLDEN TRANSPORT / RESOLUTION BASELINE
+
+These are the URL/cache/runtime transport objects that V41 does not alter.
+
+V29:
+  PASS  app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
+  PASS  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
+  PASS  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
+  PASS  app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
+  PASS  app/src/main/java/com/xingyu/music/data/ResolverProvider.java
+  PASS  app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
+  PASS  app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
+  PASS  app/src/main/java/com/xingyu/music/data/PlaybackTrace.java
+  PASS  app/src/main/java/com/xingyu/music/data/QQMusicApi.java
+  DIFF  app/src/main/java/com/xingyu/music/data/Http.java
+  PASS  app/src/main/java/com/xingyu/music/model/Song.java
+  PASS  app/src/main/java/com/xingyu/music/model/SourceVariant.java
+  PASS  app/src/main/assets/source/huibq-latest.js
+  exact matches: 12/13
+
+V14:
+  PASS  app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
+  PASS  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
+  PASS  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
+  PASS  app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
+  PASS  app/src/main/java/com/xingyu/music/data/ResolverProvider.java
+  PASS  app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
+  PASS  app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
+  PASS  app/src/main/java/com/xingyu/music/data/PlaybackTrace.java
+  PASS  app/src/main/java/com/xingyu/music/data/QQMusicApi.java
+  DIFF  app/src/main/java/com/xingyu/music/data/Http.java
+  PASS  app/src/main/java/com/xingyu/music/model/Song.java
+  PASS  app/src/main/java/com/xingyu/music/model/SourceVariant.java
+  PASS  app/src/main/assets/source/huibq-latest.js
+  exact matches: 12/13
+
+NOTE: MultiSourceManager/SourceHealthStore are intentionally newer scheduling/health layers; they are not claimed byte-identical to V14/V29.

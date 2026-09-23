@@ -1,0 +1,44 @@
+Sunflower Music V2 -> V3 Diff Inventory
+Baseline: SunflowerMusic-V2-Full.zip
+Branch identity remains: com.xingyu.sunflowermusic
+
+ADDED (10)
+  + SUNFLOWER_V3_架构与变更说明.md
+  + SUNFLOWER_V3_自测结果.txt
+  + app/src/main/java/com/xingyu/music/data/ExactTrackMatcher.java
+  + app/src/main/java/com/xingyu/music/data/KugouMusicApi.java
+  + app/src/main/java/com/xingyu/music/data/KuwoMusicApi.java
+  + app/src/main/java/com/xingyu/music/data/TrackVariantEnricher.java
+  + app/src/main/java/com/xingyu/music/data/TrackVariantStore.java
+  + changes/SUNFLOWER_V2_TO_V3_CORE.patch
+  + changes/SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt
+  + changes/SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt
+
+CHANGED (15)
+  * BUILD_APK.bat
+  * README_验收说明.txt
+  * SHA256SUMS.txt
+  * app/build.gradle.kts
+  * app/src/main/java/com/xingyu/music/MainActivity.java
+  * app/src/main/java/com/xingyu/music/data/AudioCandidate.java
+  * app/src/main/java/com/xingyu/music/data/AudioProvider.java
+  * app/src/main/java/com/xingyu/music/data/AudioProviderHub.java
+  * app/src/main/java/com/xingyu/music/data/LxAudioProvider.java
+  * app/src/main/java/com/xingyu/music/data/SearchPaginationApi.java
+  * app/src/main/java/com/xingyu/music/data/SearchRanker.java
+  * app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
+  * app/src/main/java/com/xingyu/music/data/TrackRouteStore.java
+  * app/src/main/java/com/xingyu/music/model/Song.java
+  * app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+
+REMOVED (0)
+  (none)
+
+Intent summary:
+  - Add KW/KG catalog search adapters and TX/KW/KG/WY incremental aggregate search.
+  - Upgrade cross-catalog identity to conservative Exact Track Gate and N-Variant canonical merge.
+  - Add side-car TrackVariantStore/Enricher without changing LibraryStore serialization.
+  - Upgrade playback routing from provider-within-one-platform to global Provider x Variant matrix.
+  - Upgrade READY learning to platform|provider route affinity while preserving V2 prefs compatibility.
+  - Keep Media3 READY/duration gate and mature lyrics/recommendation/player visual modules locked.
+  - Keep YouTube Music/MG out of V3 network path; only future-compatible labels/data seams remain.

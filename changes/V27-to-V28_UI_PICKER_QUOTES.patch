@@ -1,0 +1,204 @@
+--- /mnt/data/v28baseline/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 11:11:18.380496586 +0000
++++ app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 11:42:56.076519879 +0000
+@@ -91,9 +91,9 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V27.0 – first-run onboarding + small UI polish on top of the frozen V25 playback chain.
++ * Lunaxy Music V28.0 – playlist picker select-all + now-playing add-to-playlist + stricter chorus quotes.
+  *
+- * V27 keeps the proven audio-resolution/playback core frozen. Tapping a normal row in a saved playlist
++ * V28 keeps the proven audio-resolution/playback core frozen. Tapping a normal row in a saved playlist
+  * still replaces the current queue with the entire playlist and starts at that row. Tapping a result
+  * inside that playlist's search modal is a temporary pick: insert/play only that song and keep the
+  * existing queue, matching global-search behavior.
+@@ -1038,7 +1038,7 @@
+         for (int i = 0; i < scan; i++) {
+             if (out.size() >= max) break;
+             String cached = lyricCache.get(candidates.get(i));
+-            appendQuoteLines(cached, out, max);
++            appendQuoteLines(cached, candidates.get(i), out, max);
+         }
+     }
+ 
+@@ -1075,7 +1075,7 @@
+                     else if (tx != null) lrc = qqLyrics.lyric(tx.sourceId);
+                     if (lrc != null && !lrc.trim().isEmpty()) {
+                         lyricCache.put(song, lrc);
+-                        appendQuoteLines(lrc, found, 12);
++                        appendQuoteLines(lrc, song, found, 12);
+                     }
+                 } catch (Exception ignored) { }
+                 if (found.size() >= 12) break;
+@@ -1096,24 +1096,95 @@
+         });
+     }
+ 
+-    private static void appendQuoteLines(String raw, List<String> out, int max) {
+-        if (raw == null || raw.trim().isEmpty() || out == null) return;
+-        for (LyricLine line : LyricParser.parse(raw)) {
+-            if (out.size() >= max) break;
++    /**
++     * Builds the home quote pool from lyric lines that look like the song's chorus/highlight rather
++     * than blindly sampling every timestamped row. LRC/YRC does not carry an official "chorus" tag,
++     * so the safest local heuristic is: repeated lines first (typical chorus), include their immediate
++     * neighbours, otherwise prefer the middle 30%-82% of the song. Metadata/title/artist rows are
++     * aggressively rejected before they can enter the ticker.
++     */
++    private static void appendQuoteLines(String raw, Song song, List<String> out, int max) {
++        if (raw == null || raw.trim().isEmpty() || out == null || out.size() >= max) return;
++        List<LyricLine> parsed = LyricParser.parse(raw);
++        if (parsed.isEmpty()) return;
++
++        List<LyricLine> valid = new ArrayList<>();
++        Map<String, Integer> counts = new LinkedHashMap<>();
++        for (LyricLine line : parsed) {
+             String value = line == null || line.text == null ? "" : line.text.trim();
+-            if (!isGoodHomeQuote(value) || out.contains(value)) continue;
+-            out.add(value);
++            if (!isGoodHomeQuote(value, song)) continue;
++            valid.add(line);
++            String key = normalizeQuote(value);
++            counts.put(key, counts.getOrDefault(key, 0) + 1);
++        }
++        if (valid.isEmpty()) return;
++
++        LinkedHashSet<Integer> preferredIndexes = new LinkedHashSet<>();
++        for (int i = 0; i < valid.size(); i++) {
++            String key = normalizeQuote(valid.get(i).text);
++            if (counts.getOrDefault(key, 0) >= 2) {
++                for (int d = -2; d <= 2; d++) {
++                    int idx = i + d;
++                    if (idx >= 0 && idx < valid.size() &&
++                            Math.abs(valid.get(idx).timeMs - valid.get(i).timeMs) <= 14000L) {
++                        preferredIndexes.add(idx);
++                    }
++                }
++            }
++        }
++
++        // If the lyric has no repeated chorus, use the musical middle instead of intro/credits/outro.
++        if (preferredIndexes.isEmpty()) {
++            long end = Math.max(1L, valid.get(valid.size() - 1).timeMs + 4500L);
++            for (int i = 0; i < valid.size(); i++) {
++                float ratio = valid.get(i).timeMs / (float) end;
++                if (ratio >= .30f && ratio <= .82f) preferredIndexes.add(i);
++            }
++        }
++        if (preferredIndexes.isEmpty()) for (int i = 0; i < valid.size(); i++) preferredIndexes.add(i);
++
++        // Prefer genuinely repeated hook lines, then the surrounding chorus lines.
++        List<Integer> ordered = new ArrayList<>(preferredIndexes);
++        ordered.sort((a, b) -> {
++            int ca = counts.getOrDefault(normalizeQuote(valid.get(a).text), 0);
++            int cb = counts.getOrDefault(normalizeQuote(valid.get(b).text), 0);
++            if (ca != cb) return Integer.compare(cb, ca);
++            return Long.compare(valid.get(a).timeMs, valid.get(b).timeMs);
++        });
++        for (Integer index : ordered) {
++            if (out.size() >= max) break;
++            String value = valid.get(index).text.trim();
++            if (!out.contains(value)) out.add(value);
+         }
+     }
+ 
+-    private static boolean isGoodHomeQuote(String value) {
++    private static String normalizeQuote(String value) {
++        if (value == null) return "";
++        String lower = Normalizer.normalize(value, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
++        return lower.replaceAll("[\\p{P}\\p{S}\\s]+", "");
++    }
++
++    private static boolean isGoodHomeQuote(String value, Song song) {
+         if (value == null) return false;
+         String clean = value.trim();
+         if (clean.length() < 5 || clean.length() > 42) return false;
+         String lower = clean.toLowerCase(Locale.ROOT);
+-        if (lower.startsWith("作词") || lower.startsWith("作曲") || lower.startsWith("编曲") ||
+-                lower.startsWith("制作") || lower.startsWith("词：") || lower.startsWith("曲：") ||
+-                lower.contains("qq音乐") || lower.contains("网易云")) return false;
++        if (lower.contains("http://") || lower.contains("https://") || lower.contains("www.") || lower.contains("@")) return false;
++        if (lower.contains("qq音乐") || lower.contains("网易云") || lower.contains("纯音乐") || lower.contains("instrumental")) return false;
++        if (lower.matches("^(作词|作曲|编曲|制作人?|制作|监制|混音|录音|母带|和声|吉他|贝斯|鼓|发行|出品|词|曲|歌手|歌曲|演唱|lyrics?|lyricist|composer|arranger|producer|written by|music by|vocals?|artist|title)\\s*[:：].*$")) return false;
++        if (lower.matches("^[\\p{L}\\p{N} ._'·&/-]{1,18}\\s*[:：]\\s*[^，。！？!?]{1,30}$")) return false;
++        if (clean.startsWith("[") || clean.startsWith("【") || clean.startsWith("{") || clean.endsWith("制作")) return false;
++
++        String normalized = normalizeQuote(clean);
++        if (normalized.isEmpty()) return false;
++        if (song != null) {
++            String title = normalizeQuote(song.title);
++            String artist = normalizeQuote(song.artist);
++            // Metadata providers sometimes timestamp title/artist as if they were lyric lines.
++            if (!title.isEmpty() && (normalized.equals(title) || (normalized.length() <= title.length() + 3 && title.contains(normalized)))) return false;
++            if (!artist.isEmpty() && (normalized.equals(artist) || (normalized.length() <= artist.length() + 3 && artist.contains(normalized)))) return false;
++            if (!title.isEmpty() && !artist.isEmpty() && normalized.equals(title + artist)) return false;
++        }
+         int meaningful = 0;
+         for (int i = 0; i < clean.length(); i++) if (Character.isLetterOrDigit(clean.charAt(i))) meaningful++;
+         return meaningful >= 4;
+@@ -2861,6 +2932,35 @@
+             texts.addView(title,new LinearLayout.LayoutParams(-1,0,1f));
+             texts.addView(Ui.text(this,playlist.songs.size()+" 首 · 选择要加入的歌曲",10.3f,Ui.DIM,false),new LinearLayout.LayoutParams(-1,0,1f));
+             header.addView(texts,new LinearLayout.LayoutParams(0,Ui.dp(this,40),1f));
++            boolean allSelectableSelected = true;
++            int selectableCount = 0;
++            for (Song candidate : playlist.songs) {
++                if (candidate == null || indexByKey(target.songs, candidate.key()) >= 0) continue;
++                selectableCount++;
++                if (!selected.containsKey(candidate.key())) allSelectableSelected = false;
++            }
++            final boolean allSelectedNow = selectableCount > 0 && allSelectableSelected;
++            TextView selectAll = Ui.text(this, allSelectedNow ? "取消全选" : "全选", 10.8f, allSelectedNow ? Ui.GREEN : Ui.CYAN, true);
++            selectAll.setGravity(Gravity.CENTER);
++            selectAll.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 10), 0);
++            selectAll.setBackground(Ui.tintedGlass(allSelectedNow ? Ui.GREEN : Ui.CYAN, 14, this));
++            selectAll.setClickable(selectableCount > 0); selectAll.setFocusable(selectableCount > 0);
++            selectAll.setAlpha(selectableCount > 0 ? 1f : .42f);
++            Ui.applyRipple(selectAll, Color.argb(34,255,255,255));
++            selectAll.setOnClickListener(v -> {
++                if (allSelectedNow) {
++                    for (Song candidate : playlist.songs) {
++                        if (candidate != null && indexByKey(target.songs, candidate.key()) < 0) selected.remove(candidate.key());
++                    }
++                } else {
++                    for (Song candidate : playlist.songs) {
++                        if (candidate != null && indexByKey(target.songs, candidate.key()) < 0) selected.put(candidate.key(), candidate);
++                    }
++                }
++                updateFooter.run();
++                showSongs[0].run(playlist); // rebuild rows so every checkbox reflects the new state
++            });
++            header.addView(selectAll, Ui.lp(-2,Ui.dp(this,36)));
+             pane.addView(header,Ui.lp(-1,Ui.dp(this,40)));
+             LinearLayout.LayoutParams slp=new LinearLayout.LayoutParams(-1,0,1f); slp.topMargin=Ui.dp(this,8);
+             pane.addView(buildPickerSongList(playlist.songs,target,selected,updateFooter),slp);
+@@ -3326,6 +3426,16 @@
+         FrameLayout metaRow = new FrameLayout(this);
+         nowSource = Ui.pill(this, "", Ui.CYAN);
+         metaRow.addView(nowSource, Ui.frame(-2, Ui.dp(this, 30), Gravity.CENTER));
++        FrameLayout addToPlaylist = Ui.iconButton(this, IconView.Type.PLUS, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
++        addToPlaylist.setContentDescription("添加到歌单");
++        addToPlaylist.setOnClickListener(v -> {
++            Song song = playback == null ? null : playback.currentSong();
++            if (song != null) showAddToPlaylist(song);
++        });
++        FrameLayout.LayoutParams addMeta = Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.END | Gravity.CENTER_VERTICAL);
++        addMeta.rightMargin = Ui.dp(this, 46);
++        metaRow.addView(addToPlaylist, addMeta);
++
+         nowFavoriteButton = Ui.iconButton(this, IconView.Type.HEART, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
+         nowFavoriteIcon = (IconView) nowFavoriteButton.getChildAt(0);
+         nowFavoriteButton.setContentDescription("收藏");
+--- /mnt/data/v28baseline/app/build.gradle.kts	2026-08-10 11:09:15.366211936 +0000
++++ app/build.gradle.kts	2026-08-10 11:40:30.374240824 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 30
+-        versionName = "27.0.0"
++        versionCode = 31
++        versionName = "28.0.0"
+     }
+ 
+     buildTypes {

@@ -1,0 +1,299 @@
+--- /mnt/data/v54work/LunaxyMusic-V53/app/src/main/java/com/xingyu/music/ui/Starfield3DView.java	2026-08-12 11:27:37.000000000 +0000
++++ /mnt/data/v54work/LunaxyMusic-V54/app/src/main/java/com/xingyu/music/ui/Starfield3DView.java	2026-08-12 12:10:02.698649688 +0000
+@@ -3,7 +3,10 @@
+ import android.content.Context;
+ import android.graphics.Canvas;
+ import android.graphics.Color;
++import android.graphics.Matrix;
+ import android.graphics.Paint;
++import android.graphics.RadialGradient;
++import android.graphics.Shader;
+ import android.hardware.Sensor;
+ import android.hardware.SensorEvent;
+ import android.hardware.SensorEventListener;
+@@ -14,10 +17,11 @@
+ import java.util.Random;
+ 
+ /**
+- * Lunaxy V53 refined living 3D star-volume renderer for the now-playing page.
++ * Lunaxy V54 cinematic living 3D star-volume renderer for the now-playing page.
+  *
+- * V53 keeps the physical 360-degree quaternion camera and continuous motion from V52, but
+- * replaces the coarse bubble-like bloom with a tighter layered stellar-point treatment. Every star keeps intrinsic
++ * V54 keeps the physical 360-degree quaternion camera and continuous motion from V53, but
++ * restores the luminous depth and delicacy of the original V49 starfield with a physically-inspired
++ * soft point-spread-function treatment: a pin-sharp core, smooth radial falloff and rare diffraction sparkle. Every star keeps intrinsic
+  * world-space motion at all times.  Turning the phone only changes where the camera
+  * looks; it can never pause, restart or "wait for" the particle simulation.
+  *
+@@ -101,6 +105,10 @@
+     }
+ 
+     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
++    private final Matrix glowMatrix = new Matrix();
++    private final Shader[] glowShaders = new Shader[5];
++    private final int[] glowPalette = new int[5];
+     private final Star[] stars = new Star[STAR_COUNT];
+     private final FlowStar[] flowStars = new FlowStar[FLOW_COUNT];
+     private final Random random = new Random(UNIVERSE_SEED);
+@@ -144,6 +152,7 @@
+         setClickable(false);
+         setFocusable(false);
+         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
++        rebuildGlowPalette();
+         createUniverse();
+         createFlightField();
+ 
+@@ -159,6 +168,7 @@
+ 
+     public void setAccentColor(int color) {
+         accent = color;
++        rebuildGlowPalette();
+         invalidate();
+     }
+ 
+@@ -561,16 +571,20 @@
+         // approach to the camera supplies most of the perceived brightening.
+         float twinkleWave = .5f + .5f * (float) Math.sin(time * s.twinkleSpeed + s.phase);
+         float pulseWave = .5f + .5f * (float) Math.sin(time * s.pulseSpeed + s.phase * 1.31f);
+-        float twinkle = lerp(.88f, 1.0f, twinkleWave);
+-        float breath = lerp(.955f, 1.045f, pulseWave);
+-        if (s.motionType == MOTION_PULSE) breath = lerp(.925f, 1.065f, pulseWave);
++        float twinkle = lerp(.94f, 1.0f, twinkleWave);
++        float breath = lerp(.975f, 1.025f, pulseWave);
++        if (s.motionType == MOTION_PULSE) breath = lerp(.955f, 1.045f, pulseWave);
++        // A travelling luminance wave, inspired by coordinated pulse-field animations: it
++        // changes light, not geometry, and stays subtle enough to feel celestial rather than UI-like.
++        float depthWave = .5f + .5f * (float) Math.sin(time * .37f - life * 5.6f + s.phase * .19f);
++        float shimmer = lerp(.965f, 1.045f, depthWave);
+         float radius = s.worldRadius * focal * invDepth;
+-        radius *= breath * (1f + life * .18f + visualEnergy * .035f + visualBeat * .065f);
+-        radius = clamp(radius, .24f * density, 2.75f * density);
++        radius *= breath * (1f + life * .11f + visualEnergy * .020f + visualBeat * .035f);
++        radius = clamp(radius, .18f * density, 1.85f * density);
+ 
+-        float layerAlpha = s.layer == LAYER_FAR ? .68f : s.layer == LAYER_MID ? .86f : 1f;
++        float layerAlpha = s.layer == LAYER_FAR ? .72f : s.layer == LAYER_MID ? .90f : 1f;
+         float approach = smoothstep(.02f, .98f, life);
+-        int alpha = (int) ((34f + 214f * approach) * s.brightness * layerAlpha * twinkle);
++        int alpha = (int) ((42f + 210f * approach) * s.brightness * layerAlpha * twinkle * shimmer);
+         alpha = Math.max(22, Math.min(255, alpha));
+ 
+         int neutralR = s.layer == LAYER_FAR ? 226 : 248;
+@@ -672,15 +686,17 @@
+                     / (FLOW_FAR_DEPTH - FLOW_NEAR_DEPTH), 0f, 1f);
+             float twinkleWave = .5f + .5f * (float) Math.sin(time * s.twinkleSpeed + s.phase);
+             float pulseWave = .5f + .5f * (float) Math.sin(time * s.pulseSpeed + s.phase * 1.37f);
+-            float twinkle = lerp(.86f, 1.0f, twinkleWave);
+-            float pulse = lerp(.94f, 1.055f, pulseWave);
+-            if (s.motionType == MOTION_PULSE) pulse = lerp(.91f, 1.08f, pulseWave);
+-            float radius = s.size * (.34f + progress * 1.78f) * density;
+-            radius *= pulse * (1f + visualEnergy * .045f + visualBeat * .085f);
+-            radius = clamp(radius, .30f * density, 2.90f * density);
++            float twinkle = lerp(.935f, 1.0f, twinkleWave);
++            float pulse = lerp(.972f, 1.03f, pulseWave);
++            if (s.motionType == MOTION_PULSE) pulse = lerp(.948f, 1.052f, pulseWave);
++            float depthWave = .5f + .5f * (float) Math.sin(time * .41f - progress * 5.1f + s.phase * .17f);
++            float shimmer = lerp(.96f, 1.055f, depthWave);
++            float radius = s.size * (.28f + progress * 1.48f) * density;
++            radius *= pulse * (1f + visualEnergy * .025f + visualBeat * .045f);
++            radius = clamp(radius, .22f * density, 2.05f * density);
+ 
+             float approach = smoothstep(.02f, .99f, progress);
+-            int alpha = (int) ((42f + 207f * approach) * s.brightness * twinkle);
++            int alpha = (int) ((48f + 203f * approach) * s.brightness * twinkle * shimmer);
+             alpha = Math.max(28, Math.min(255, alpha));
+             int neutralR = s.coolWhite ? 224 : 250;
+             int neutralG = s.coolWhite ? 236 : 250;
+@@ -715,68 +731,83 @@
+ 
+ 
+     /**
+-     * V53 stellar point treatment.  The previous renderer used a single large translucent
+-     * circle as bloom, which read as a soap bubble when many close particles overlapped.
+-     * This version keeps the luminous footprint tight and builds a star from several tiny
+-     * continuous layers: a faint corona, a coloured body, a hot pinpoint core and (rarely)
+-     * a smoothly breathing diffraction cross.  All envelopes are continuous functions of
+-     * time/depth, so nothing pops on or suddenly flashes.
++     * V54 stellar point-spread-function treatment.
++     *
++     * The important difference from V52/V53 is that the visible glow is no longer a flat
++     * translucent disc.  It is a reusable radial-gradient light profile: intensely bright
++     * in the central few percent and then falling off cubically-like toward full transparency.
++     * This mirrors the point-light idea used by refined WebGL particle shaders while keeping
++     * Lunaxy's renderer native Canvas and compatible with older Android devices.
+      */
+     private void drawRefinedStar(Canvas canvas, float sx, float sy, float radius, int alpha,
+                                  int r, int g, int b, float life, float time, float phase,
+                                  boolean flare, int motionType, boolean foreground,
+                                  float sceneBloom, float density) {
+-        float near = smoothstep(.12f, .98f, life);
+-        float coronaWave = .5f + .5f * (float) Math.sin(time * .41f + phase * .73f);
+-        float coronaBreath = lerp(.82f, 1f, coronaWave);
+-
+-        // Tight, low-opacity corona.  It grows by less than 2x the body instead of the old
+-        // 3-5x filled disc, preserving a granular Milky-Way texture.
+-        if (radius > .42f * density) {
+-            float outerScale = foreground ? lerp(1.28f, 1.72f, near) : lerp(1.22f, 1.56f, near);
+-            float outerAlpha = (foreground ? .020f : .014f)
+-                    + near * (foreground ? .040f : .028f);
+-            outerAlpha *= coronaBreath * (1f + sceneBloom * .08f);
+-            paint.setColor(Color.argb(Math.max(1, (int) (alpha * outerAlpha)), r, g, b));
+-            canvas.drawCircle(sx, sy, radius * outerScale, paint);
+-
+-            float innerScale = foreground ? lerp(1.10f, 1.28f, near) : lerp(1.08f, 1.23f, near);
+-            float innerAlpha = (.045f + near * .080f) * coronaBreath;
+-            paint.setColor(Color.argb(Math.max(1, (int) (alpha * innerAlpha)), r, g, b));
+-            canvas.drawCircle(sx, sy, radius * innerScale, paint);
+-        }
+-
+-        // The visible body stays compact.  A tiny hot core gives each point texture and
+-        // prevents large near stars from looking like flat discs.
+-        float bodyRadius = Math.max(.22f * density, radius * .78f);
+-        paint.setColor(Color.argb(alpha, r, g, b));
+-        canvas.drawCircle(sx, sy, bodyRadius, paint);
+-
+-        if (radius > .54f * density) {
+-            int hotR = mix(r, 255, .62f);
+-            int hotG = mix(g, 255, .62f);
+-            int hotB = mix(b, 255, .62f);
+-            int hotAlpha = Math.min(255, (int) (alpha * (.72f + near * .24f)));
+-            canvas.drawCircle(sx, sy, Math.max(.16f * density, radius * .24f),
+-                    colorPaint(hotAlpha, hotR, hotG, hotB));
+-        }
++        float near = smoothstep(.10f, .985f, life);
++
++        // The core remains tiny; the perceived size comes from a smooth PSF, not a bubble.
++        float coreRadius = Math.max(.14f * density, radius * (foreground ? .58f : .54f));
++        coreRadius = Math.min(coreRadius, (foreground ? 1.18f : 1.02f) * density);
++
++        // A faint halo may extend several core radii, just like V49, but its alpha decays to
++        // exactly zero at the edge.  Hence large near stars glow without exposing a circle.
++        float glowBreath = .5f + .5f * (float) Math.sin(time * .29f + phase * .61f);
++        float glowScale = foreground ? lerp(3.2f, 5.2f, near) : lerp(2.7f, 4.6f, near);
++        glowScale *= lerp(.96f, 1.07f, glowBreath) * (1f + sceneBloom * .035f);
++        float glowRadius = Math.max(.80f * density, coreRadius * glowScale);
++        glowRadius = Math.min(glowRadius, (foreground ? 8.4f : 7.0f) * density);
++
++        float tint = colorTintDistance(r, g, b);
++        Shader shader = glowShaders[paletteIndex(tint)];
++        if (shader != null) {
++            glowMatrix.reset();
++            glowMatrix.setScale(glowRadius, glowRadius);
++            glowMatrix.postTranslate(sx, sy);
++            shader.setLocalMatrix(glowMatrix);
++            glowPaint.setShader(shader);
++            // Far stars keep a detectable but restrained atmosphere; near stars bloom more.
++            float haloStrength = (foreground ? .56f : .48f) + near * (foreground ? .34f : .28f);
++            haloStrength *= lerp(.96f, 1.04f, glowBreath);
++            glowPaint.setAlpha(clamp255((int) (alpha * haloStrength)));
++            canvas.drawCircle(sx, sy, glowRadius, glowPaint);
++            glowPaint.setShader(null);
++            glowPaint.setAlpha(255);
++        }
++
++        // Coloured stellar body.  It is intentionally smaller than V53 and therefore reads
++        // as a point of light even when flying close to the virtual camera.
++        int bodyAlpha = clamp255((int) (alpha * lerp(.88f, 1f, near)));
++        paint.setColor(Color.argb(bodyAlpha, r, g, b));
++        canvas.drawCircle(sx, sy, coreRadius, paint);
++
++        // Sub-pixel hot nucleus: this is what gives the point a crisp photographic texture.
++        int hotR = mix(r, 255, .78f);
++        int hotG = mix(g, 255, .78f);
++        int hotB = mix(b, 255, .78f);
++        float nucleusRadius = Math.max(.11f * density, coreRadius * .26f);
++        int hotAlpha = clamp255((int) (alpha * (.80f + near * .18f)));
++        canvas.drawCircle(sx, sy, nucleusRadius, colorPaint(hotAlpha, hotR, hotG, hotB));
+ 
+-        // Rare star-shaped highlights fade in and out over a long envelope.  No thresholded
+-        // blink: the cross slowly appears, reaches a peak and dissolves again.
++        // Rare diffraction spikes use two low-frequency envelopes.  Their rise/fall is
++        // continuous over seconds, never threshold-flashed; most stars never show them.
+         if (flare || motionType == MOTION_COMET) {
+-            float sparkleWave = .5f + .5f * (float) Math.sin(time * .53f + phase * 1.19f);
+-            float sparkle = smoothstep(.34f, .94f, sparkleWave) * smoothstep(.42f, .96f, life);
+-            if (sparkle > .008f) {
+-                paint.setStrokeWidth(Math.max(.18f * density, radius * .105f));
+-                paint.setColor(Color.argb((int) (alpha * .18f * sparkle), r, g, b));
+-                float arm = radius * (1.30f + 1.55f * sparkle);
++            float slow = .5f + .5f * (float) Math.sin(time * .31f + phase * 1.07f);
++            float second = .5f + .5f * (float) Math.sin(time * .173f + phase * .43f + 1.2f);
++            float sparkle = smoothstep(.46f, .94f, slow * .72f + second * .28f)
++                    * smoothstep(.34f, .96f, life);
++            if (sparkle > .004f) {
++                float arm = coreRadius * (1.8f + 4.0f * sparkle);
++                float fine = Math.max(.12f * density, coreRadius * .075f);
++                paint.setStrokeWidth(fine);
++                paint.setColor(Color.argb(clamp255((int) (alpha * .21f * sparkle)), hotR, hotG, hotB));
+                 canvas.drawLine(sx - arm, sy, sx + arm, sy, paint);
+-                canvas.drawLine(sx, sy - arm * .76f, sx, sy + arm * .76f, paint);
++                canvas.drawLine(sx, sy - arm * .72f, sx, sy + arm * .72f, paint);
+ 
+-                if (flare && sparkle > .34f) {
+-                    paint.setStrokeWidth(Math.max(.14f * density, radius * .075f));
+-                    paint.setColor(Color.argb((int) (alpha * .075f * sparkle), r, g, b));
+-                    float diag = arm * .57f;
++                // Only the rarest flare stars get a very faint diagonal pair.
++                if (flare && sparkle > .58f) {
++                    float diag = arm * .45f;
++                    paint.setStrokeWidth(Math.max(.09f * density, fine * .68f));
++                    paint.setColor(Color.argb(clamp255((int) (alpha * .065f * sparkle)), r, g, b));
+                     canvas.drawLine(sx - diag, sy - diag, sx + diag, sy + diag, paint);
+                     canvas.drawLine(sx - diag, sy + diag, sx + diag, sy - diag, paint);
+                 }
+@@ -784,6 +815,53 @@
+         }
+     }
+ 
++    /** Rebuild a tiny gradient palette only when the cover accent changes, never per frame. */
++    private void rebuildGlowPalette() {
++        final float[] tintStops = new float[]{.05f, .16f, .28f, .41f, .55f};
++        for (int i = 0; i < glowShaders.length; i++) {
++            int neutralR = i == 0 ? 228 : 247;
++            int neutralG = i == 0 ? 238 : 248;
++            int neutralB = 255;
++            int rr = mix(neutralR, Color.red(accent), tintStops[i]);
++            int gg = mix(neutralG, Color.green(accent), tintStops[i]);
++            int bb = mix(neutralB, Color.blue(accent), tintStops[i]);
++            glowPalette[i] = Color.rgb(rr, gg, bb);
++
++            // This alpha profile approximates pow(1-r, 3): bright center, fast organic
++            // falloff, then a long almost-invisible tail.  The transparent last stop is
++            // what removes the visible "bubble boundary" of solid-circle bloom.
++            int hot = Color.argb(250, mix(rr, 255, .76f), mix(gg, 255, .76f), mix(bb, 255, .76f));
++            int body = Color.argb(188, rr, gg, bb);
++            int inner = Color.argb(78, rr, gg, bb);
++            int haze = Color.argb(18, rr, gg, bb);
++            int zero = Color.argb(0, rr, gg, bb);
++            glowShaders[i] = new RadialGradient(0f, 0f, 1f,
++                    new int[]{hot, body, inner, haze, zero},
++                    new float[]{0f, .105f, .30f, .59f, 1f}, Shader.TileMode.CLAMP);
++        }
++    }
++
++    private int paletteIndex(float tint) {
++        if (tint < .11f) return 0;
++        if (tint < .22f) return 1;
++        if (tint < .34f) return 2;
++        if (tint < .48f) return 3;
++        return 4;
++    }
++
++    /** Approximate how strongly this already-mixed body colour leans toward the cover accent. */
++    private float colorTintDistance(int r, int g, int b) {
++        int ar = Color.red(accent), ag = Color.green(accent), ab = Color.blue(accent);
++        float accentDistance = Math.abs(r - ar) + Math.abs(g - ag) + Math.abs(b - ab);
++        float whiteDistance = Math.abs(r - 244) + Math.abs(g - 248) + Math.abs(b - 255);
++        float total = accentDistance + whiteDistance;
++        return total < 1f ? .20f : clamp(whiteDistance / total, .04f, .60f);
++    }
++
++    private static int clamp255(int value) {
++        return Math.max(0, Math.min(255, value));
++    }
++
+     private Paint colorPaint(int alpha, int r, int g, int b) {
+         paint.setColor(Color.argb(alpha, r, g, b));
+         return paint;

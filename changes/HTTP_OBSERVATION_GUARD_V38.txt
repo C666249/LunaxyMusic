@@ -1,0 +1,25 @@
+Lunaxy Music V38 - HTTP OBSERVATION GUARD
+
+V37 → V38 只在 data/Http.java 的 request() 中增加以下行为：
+
+- 原响应 code/body/headers 已经读取完成；
+- HttpURLConnection 已 disconnect；
+- 创建与 V37 字段完全相同的 Http.Response；
+- 调用 ResolverHttpDiagnostics.observe(url, response)；
+- 将同一个 response 原样 return。
+
+ResolverHttpDiagnostics：
+- 仅匹配 host == lxmusicapi.onrender.com；
+- 只读取已经收到的 response.code/body/headers；
+- 不进行任何网络请求；
+- 不调用 Huibq/QDY resolver；
+- 不调用 SourceHealthStore；
+- 不调用 PlaybackUrlStore；
+- 不调用 Media3；
+- 内部 catch 所有诊断异常，日志自身不能制造播放失败；
+- 不输出 X-Request-Key；
+- 不输出可播放 URL。
+
+MainActivity 的唯一相关变化：用户主动点“查看诊断”时，把该只读 HTTP 观察文本附加在原 PlaybackTrace 后面。
+
+结论：请求数量、请求参数、选路、音质 fallback、学习、缓存、冷却、Media3 行为均不变。

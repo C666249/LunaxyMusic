@@ -1,0 +1,802 @@
+diff -ruN '--exclude=V20-to-V21_FULL.patch' "v20baseline/XingyuMusic-V20/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt" "v21work/XingyuMusic-V21/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"
+--- "v20baseline/XingyuMusic-V20/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-10 07:29:45.000000000 +0000
++++ "v21work/XingyuMusic-V21/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-10 08:00:54.806396087 +0000
+@@ -64,3 +64,11 @@
+ 4. 每日推荐只做 QQ/网易元数据搜索，不调用 Huibq/QDY；私人电台完全本地。
+ 5. 智能音源详情及实际播放应与 V19 一致。若覆盖安装，原 READY 学习和成功 URL 缓存应保留。
+ 6. 核心保护证据见 changes/PLAYBACK_CORE_GUARD_V20.txt；完整差异见 changes/V19-to-V20_FULL.patch。
++
++[V21 推荐详情 / 天气电台验收]
++1. 首页「为你推荐」横向出现 3 张卡片：每日推荐、私人电台、天气电台。
++2. 点每日推荐 / 私人电台：不能立刻播放，应先进入列表详情；详情有“从第一首播放”。
++3. 推荐详情点任意歌曲：整份推荐列表进入播放队列，并从所点歌曲开始；爱心 / 下一首 / 更多按钮可用。
++4. 第一次点天气电台：仅请求前台粗略位置；允许后读取当前位置天气并打开天气电台详情，不应直接播放。
++5. 拒绝定位权限：应提示，不影响其它推荐和播放功能。
++6. 播放核心保护证据见 changes/PLAYBACK_CORE_GUARD_V21.txt。
+diff -ruN '--exclude=V20-to-V21_FULL.patch' "v20baseline/XingyuMusic-V20/V21.0_\346\216\250\350\215\220\350\257\246\346\203\205\344\270\216\345\244\251\346\260\224\347\224\265\345\217\260.md" "v21work/XingyuMusic-V21/V21.0_\346\216\250\350\215\220\350\257\246\346\203\205\344\270\216\345\244\251\346\260\224\347\224\265\345\217\260.md"
+--- "v20baseline/XingyuMusic-V20/V21.0_\346\216\250\350\215\220\350\257\246\346\203\205\344\270\216\345\244\251\346\260\224\347\224\265\345\217\260.md"	1970-01-01 00:00:00.000000000 +0000
++++ "v21work/XingyuMusic-V21/V21.0_\346\216\250\350\215\220\350\257\246\346\203\205\344\270\216\345\244\251\346\260\224\347\224\265\345\217\260.md"	2026-08-10 08:00:54.794396087 +0000
+@@ -0,0 +1,25 @@
++# XingyuMusic V21.0 — 推荐详情页 + 天气电台
++
++## 本版目标
++
++1. 「每日推荐」「私人电台」不再点击即播放，改为先进入推荐歌单详情页。
++2. 推荐详情页提供：从第一首播放；点击任意歌曲后以整份推荐列表作为当前播放队列并从该首开始；每首保留收藏、下一首、更多操作。
++3. 首页推荐区改为横向三卡片：每日推荐 / 私人电台 / 天气电台。
++4. 天气电台只在用户主动点击时请求前台“粗略位置”权限，根据当前位置的实时天气 + 早晨/中午/下午/夜晚/深夜 + 本地口味生成列表。
++5. 天气数据使用无需 API Key 的 Open-Meteo；只保存天气摘要，不持久化经纬度。
++
++## 天气电台推荐逻辑
++
++- 天气：晴 / 多云 / 雨 / 雪 / 雾 / 雷雨等映射成氛围关键词。
++- 时间：早晨 / 中午 / 下午 / 夜晚 / 深夜参与缓存键和排序。
++- 口味：收藏 > 歌单 > 最近播放仍然是主体。
++- 若已有明显偏好的歌手，会用“歌手 + 天气氛围词”进行 QQ / 网易歌曲元数据搜索，随后混入本地私人电台候选。
++- 该流程不会请求 Huibq / QDY，也不会解析播放 URL。
++
++## 播放核心保护
++
++V20 -> V21 以下播放核心文件 SHA-256 必须完全一致：PlaybackService、BeatAudioProcessor、SourceCoordinator、MultiSourceManager、SourceHealthStore、PlaybackUrlStore、LxSourceRuntime、AudioUrlProbe、ResolverProvider、SourceScriptStore、huibq-latest.js、QQMusicApi、NeteaseApi、LibraryStore、V14PlaybackStateMigration。
++
++AndroidManifest.xml 本版只有一个有意变化：新增 `ACCESS_COARSE_LOCATION`，用于用户点击天气电台时获取前台粗略位置；没有新增后台定位权限。
++
++完整证据见 `changes/PLAYBACK_CORE_GUARD_V21.txt` 与 `changes/V20-to-V21_FULL.patch`。
+diff -ruN '--exclude=V20-to-V21_FULL.patch' "v20baseline/XingyuMusic-V20/V21.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt" "v21work/XingyuMusic-V21/V21.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"
+--- "v20baseline/XingyuMusic-V20/V21.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"	1970-01-01 00:00:00.000000000 +0000
++++ "v21work/XingyuMusic-V21/V21.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"	2026-08-10 08:00:54.798396087 +0000
+@@ -0,0 +1,15 @@
++XingyuMusic V21.0 自测记录
++
++[PASS] V20 -> V21 播放核心 15 个受保护文件 SHA-256 完全一致。
++[PASS] Huibq / QDY / SourceCoordinator / Media3 READY / URL cache / source health 均未修改。
++[PASS] QQMusicApi / NeteaseApi 未修改；天气电台只复用元数据搜索。
++[PASS] WeatherMoodProvider + RecommendationEngine 在最小 Android/JSON stub 环境下 javac 编译通过。
++[PASS] 全工程 javac 语法扫描未发现 ; expected / illegal start / unclosed / reached end 等解析错误。
++[PASS] 每日推荐、私人电台由“点击即播放”改为“先打开详情页”。
++[PASS] 推荐详情页：从第一首播放；点任意歌曲以整份推荐列表为队列并从该歌曲开始；收藏/下一首/更多按钮沿用现有 songRow。
++[PASS] 首页推荐区为三张横向卡片：每日推荐 / 私人电台 / 天气电台。
++[PASS] 天气电台只声明 ACCESS_COARSE_LOCATION，不声明后台定位；经纬度不持久化。
++[PASS] 天气结果缓存按“日期 + 天气桶 + 时段”，避免同一场景反复生成。
++
++[环境限制]
++当前容器无法解析 services.gradle.org，Gradle Wrapper 不能下载 9.5.0，因此无法在此环境完成 Android SDK assembleDebug。请在本机 Android Studio 进行最终 Gradle Sync / Build APK(s)。
+diff -ruN '--exclude=V20-to-V21_FULL.patch' v20baseline/XingyuMusic-V20/app/build.gradle.kts v21work/XingyuMusic-V21/app/build.gradle.kts
+--- v20baseline/XingyuMusic-V20/app/build.gradle.kts	2026-08-10 07:23:50.000000000 +0000
++++ v21work/XingyuMusic-V21/app/build.gradle.kts	2026-08-10 07:57:02.942920750 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 23
+-        versionName = "20.0.0"
++        versionCode = 24
++        versionName = "21.0.0"
+     }
+ 
+     buildTypes {
+diff -ruN '--exclude=V20-to-V21_FULL.patch' v20baseline/XingyuMusic-V20/app/src/main/AndroidManifest.xml v21work/XingyuMusic-V21/app/src/main/AndroidManifest.xml
+--- v20baseline/XingyuMusic-V20/app/src/main/AndroidManifest.xml	2026-08-09 04:26:53.000000000 +0000
++++ v21work/XingyuMusic-V21/app/src/main/AndroidManifest.xml	2026-08-10 07:57:02.942754617 +0000
+@@ -2,6 +2,7 @@
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+     <uses-permission android:name="android.permission.INTERNET" />
+     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
++    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+     <uses-permission android:name="android.permission.WAKE_LOCK" />
+     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+diff -ruN '--exclude=V20-to-V21_FULL.patch' v20baseline/XingyuMusic-V20/app/src/main/java/com/xingyu/music/MainActivity.java v21work/XingyuMusic-V21/app/src/main/java/com/xingyu/music/MainActivity.java
+--- v20baseline/XingyuMusic-V20/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 07:27:32.000000000 +0000
++++ v21work/XingyuMusic-V21/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 07:58:50.030168882 +0000
+@@ -6,6 +6,7 @@
+ import android.content.ClipboardManager;
+ import android.content.ComponentName;
+ import android.content.Intent;
++import android.content.pm.PackageManager;
+ import android.content.ServiceConnection;
+ import android.content.SharedPreferences;
+ import android.content.res.ColorStateList;
+@@ -13,6 +14,9 @@
+ import android.graphics.Color;
+ import android.graphics.Typeface;
+ import android.graphics.drawable.GradientDrawable;
++import android.location.Location;
++import android.location.LocationListener;
++import android.location.LocationManager;
+ import android.os.Build;
+ import android.os.Bundle;
+ import android.os.Handler;
+@@ -55,6 +59,7 @@
+ import com.xingyu.music.data.RecommendationEngine;
+ import com.xingyu.music.data.SearchRanker;
+ import com.xingyu.music.data.V14PlaybackStateMigration;
++import com.xingyu.music.data.WeatherMoodProvider;
+ import com.xingyu.music.model.ImportedPlaylist;
+ import com.xingyu.music.model.LyricLine;
+ import com.xingyu.music.model.PlaybackSnapshot;
+@@ -85,11 +90,11 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Xingyu Music V20.0 – lyric coverage + local-first recommendations.
++ * Xingyu Music V21.0 – recommendation collection pages + weather station.
+  *
+- * V20 deliberately leaves the proven audio-resolution/playback core untouched. QQ lyric
+- * coverage is implemented as an isolated metadata path: NetEase cross-match first, direct
+- * QQ LRC fallback second. Recommendations only use local library data and metadata search.
++ * V21 keeps the proven audio-resolution/playback core frozen. Recommendation cards now open
++ * collection-style detail pages instead of autoplaying, and Weather Radio uses foreground
++ * coarse location + free weather metadata only; none of these paths resolve audio URLs.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(4);
+@@ -102,6 +107,7 @@
+     private LyricCacheStore lyricCache;
+     private LyricMatchStore lyricMatches;
+     private RecommendationEngine recommendations;
++    private WeatherMoodProvider weatherMood;
+     private PlaybackService playback;
+     private boolean bound;
+ 
+@@ -134,6 +140,7 @@
+     private List<String> searchHistory = new ArrayList<>();
+     private List<ImportedPlaylist> playlists = new ArrayList<>();
+     private ImportedPlaylist openPlaylist;
++    private SmartCollection openSmartCollection;
+     private int playlistVisibleCount = 40;
+     private Song lastHistorySong;
+     private String lastErrorShown;
+@@ -142,6 +149,24 @@
+     private Song pendingPickedSong;
+     private final List<Song> pendingNextSongs = new ArrayList<>();
+ 
++    private static final int REQ_WEATHER_LOCATION = 2107;
++    private boolean pendingWeatherRadioOpen;
++
++    private static final class SmartCollection {
++        final String title;
++        final String subtitle;
++        final String kind;
++        final int accent;
++        final List<Song> songs;
++        SmartCollection(String title, String subtitle, String kind, int accent, List<Song> songs) {
++            this.title = title == null ? "推荐歌单" : title;
++            this.subtitle = subtitle == null ? "" : subtitle;
++            this.kind = kind == null ? "smart" : kind;
++            this.accent = accent;
++            this.songs = songs == null ? new ArrayList<>() : new ArrayList<>(songs);
++        }
++    }
++
+     private String lastQuery = "";
+     private int lastWyCount;
+     private int lastTxCount;
+@@ -247,6 +272,7 @@
+         lyricCache = new LyricCacheStore(this);
+         lyricMatches = new LyricMatchStore(this);
+         recommendations = new RecommendationEngine(this, netease, qq);
++        weatherMood = new WeatherMoodProvider(this);
+         reloadLibrary();
+         loadUiPreferences();
+         configureWindow();
+@@ -360,6 +386,7 @@
+             item.setOnClickListener(v -> {
+                 tab = idx;
+                 openPlaylist = null;
++                openSmartCollection = null;
+                 refreshNav();
+                 renderTab();
+             });
+@@ -638,7 +665,7 @@
+ 
+     private void showSourceStatus() {
+         String status = playback == null ? "音源管理器正在启动…" : playback.sourceStatus();
+-        showGlassMessage("智能音源", status + "\n\nV20 继续冻结 V14/V15 稳定主链：只保留 Huibq 与全豆要聚合参与日常播放；QQ 默认优先 Huibq，网易默认优先全豆要。只有 Media3 READY 才记为真实成功，普通单曲 404 不会污染下一首。",
++        showGlassMessage("智能音源", status + "\n\nV21 继续冻结 V14/V15 稳定主链：只保留 Huibq 与全豆要聚合参与日常播放；QQ 默认优先 Huibq，网易默认优先全豆要。只有 Media3 READY 才记为真实成功，普通单曲 404 不会污染下一首。",
+                 "知道了", null, "", null);
+     }
+ 
+@@ -663,7 +690,8 @@
+         pageHost.animate().cancel();
+         pageHost.removeAllViews();
+         View page;
+-        if (openPlaylist != null) page = playlistDetailPage(openPlaylist);
++        if (openSmartCollection != null) page = smartCollectionPage(openSmartCollection);
++        else if (openPlaylist != null) page = playlistDetailPage(openPlaylist);
+         else if (tab == 0) page = homePage();
+         else if (tab == 1) page = searchPage();
+         else if (tab == 2) page = playlistsPage();
+@@ -760,16 +788,8 @@
+             body.addView(recentCarousel(recent), marginTop(8));
+         }
+ 
+-        body.addView(sectionHeader("为你推荐", "本地口味 · 免费生成"), marginTop(24));
+-        LinearLayout library = Ui.row(this);
+-        View daily = libraryActionCard(IconView.Type.MUSIC, "每日推荐", "为你选 20 首", Ui.PURPLE);
+-        daily.setOnClickListener(v -> startDailyRecommendations());
+-        library.addView(daily, new LinearLayout.LayoutParams(0, Ui.dp(this, 106), 1f));
+-        Space gap = new Space(this); library.addView(gap, Ui.lp(Ui.dp(this, 10), 1));
+-        View radio = libraryActionCard(IconView.Type.SHUFFLE, "私人电台", "从红心与歌单出发", Ui.CYAN);
+-        radio.setOnClickListener(v -> startPrivateRadio());
+-        library.addView(radio, new LinearLayout.LayoutParams(0, Ui.dp(this, 106), 1f));
+-        body.addView(library, marginTop(8));
++        body.addView(sectionHeader("为你推荐", "本地口味 · 天气与时间"), marginTop(24));
++        body.addView(recommendationCarousel(), marginTop(8));
+ 
+         if (!playlists.isEmpty()) {
+             body.addView(sectionHeader("最近导入", "歌单"), marginTop(24));
+@@ -795,7 +815,34 @@
+     }
+ 
+ 
+-    private void startDailyRecommendations() {
++    private View recommendationCarousel() {
++        HorizontalScrollView scroll = new HorizontalScrollView(this);
++        scroll.setHorizontalScrollBarEnabled(false);
++        scroll.setClipToPadding(false);
++        LinearLayout row = Ui.row(this);
++        row.setGravity(Gravity.TOP);
++
++        View daily = libraryActionCard(IconView.Type.MUSIC, "每日推荐", "为你选 20 首", Ui.PURPLE);
++        daily.setOnClickListener(v -> openDailyRecommendations());
++        row.addView(daily, Ui.lp(Ui.dp(this, 154), Ui.dp(this, 108)));
++
++        Space gap1 = new Space(this); row.addView(gap1, Ui.lp(Ui.dp(this, 10), 1));
++        View radio = libraryActionCard(IconView.Type.SHUFFLE, "私人电台", "从红心与歌单出发", Ui.CYAN);
++        radio.setOnClickListener(v -> openPrivateRadio());
++        row.addView(radio, Ui.lp(Ui.dp(this, 154), Ui.dp(this, 108)));
++
++        Space gap2 = new Space(this); row.addView(gap2, Ui.lp(Ui.dp(this, 10), 1));
++        WeatherMoodProvider.WeatherSnapshot cached = weatherMood == null ? null : weatherMood.cached();
++        String weatherSub = cached == null ? "天气 × 早午晚" : cached.compactLabel();
++        View weather = libraryActionCard(IconView.Type.WEATHER, "天气电台", weatherSub, Ui.GOLD);
++        weather.setOnClickListener(v -> openWeatherRadio());
++        row.addView(weather, Ui.lp(Ui.dp(this, 154), Ui.dp(this, 108)));
++
++        scroll.addView(row);
++        return scroll;
++    }
++
++    private void openDailyRecommendations() {
+         if (recommendations == null || !recommendations.hasTaste(favorites, playlists, history)) {
+             toast("先收藏、导入歌单或听几首歌，推荐会更懂你");
+             return;
+@@ -809,21 +856,130 @@
+             main.post(() -> {
+                 showBusy(false);
+                 if (songs == null || songs.isEmpty()) { toast("今天暂时没有生成推荐"); return; }
+-                playQueue(new ArrayList<>(songs), 0);
+-                toast("今日推荐 · " + songs.size() + " 首");
++                openSmartCollection = new SmartCollection("每日推荐", "今天为你挑选 · " + songs.size() + " 首",
++                        "daily", Ui.PURPLE, songs);
++                renderTab();
+             });
+         });
+     }
+ 
+-    private void startPrivateRadio() {
++    private void openPrivateRadio() {
+         if (recommendations == null || !recommendations.hasTaste(favorites, playlists, history)) {
+             toast("先收藏、导入歌单或听几首歌，再开启私人电台");
+             return;
+         }
+         List<Song> songs = recommendations.privateRadio(favorites, playlists, history, 30);
+         if (songs.isEmpty()) { toast("私人电台还没有足够的歌曲"); return; }
+-        playQueue(new ArrayList<>(songs), 0);
+-        toast("私人电台 · " + songs.size() + " 首");
++        openSmartCollection = new SmartCollection("私人电台", "红心、歌单与最近播放 · " + songs.size() + " 首",
++                "private", Ui.CYAN, songs);
++        renderTab();
++    }
++
++    private void openWeatherRadio() {
++        if (recommendations == null || !recommendations.hasTaste(favorites, playlists, history)) {
++            toast("先收藏、导入歌单或听几首歌，天气电台会更适合你");
++            return;
++        }
++        if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
++                != PackageManager.PERMISSION_GRANTED) {
++            pendingWeatherRadioOpen = true;
++            requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_WEATHER_LOCATION);
++            return;
++        }
++        resolveLocationAndOpenWeatherRadio();
++    }
++
++    private void resolveLocationAndOpenWeatherRadio() {
++        LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
++        if (lm == null) { toast("暂时无法读取当前位置"); return; }
++        try {
++            Location best = bestLastLocation(lm);
++            if (best != null && System.currentTimeMillis() - best.getTime() < 3L * 60L * 60L * 1000L) {
++                fetchWeatherAndOpen(best);
++                return;
++            }
++            boolean networkEnabled = false;
++            boolean gpsEnabled = false;
++            try { networkEnabled = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER); } catch (Exception ignored) { }
++            try { gpsEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER); } catch (Exception ignored) { }
++            if (!networkEnabled && !gpsEnabled) { toast("请先打开系统定位，再使用天气电台"); return; }
++            showBusy(true);
++            if (Build.VERSION.SDK_INT >= 30) {
++                String provider = networkEnabled ? LocationManager.NETWORK_PROVIDER : LocationManager.GPS_PROVIDER;
++                lm.getCurrentLocation(provider, null, getMainExecutor(), location -> {
++                    showBusy(false);
++                    if (location == null) toast("没有获取到当前位置，请打开定位后重试");
++                    else fetchWeatherAndOpen(location);
++                });
++            } else {
++                String provider = networkEnabled ? LocationManager.NETWORK_PROVIDER : LocationManager.GPS_PROVIDER;
++                lm.requestSingleUpdate(provider, new LocationListener() {
++                    @Override public void onLocationChanged(Location location) {
++                        showBusy(false);
++                        if (location == null) toast("没有获取到当前位置，请打开定位后重试");
++                        else fetchWeatherAndOpen(location);
++                    }
++                    @Override public void onProviderDisabled(String provider) { showBusy(false); }
++                    @Override public void onProviderEnabled(String provider) { }
++                    @Override public void onStatusChanged(String provider, int status, Bundle extras) { }
++                }, null);
++            }
++        } catch (SecurityException e) {
++            showBusy(false);
++            toast("需要定位权限才能生成天气电台");
++        } catch (Exception e) {
++            showBusy(false);
++            toast("当前位置读取失败");
++        }
++    }
++
++    private Location bestLastLocation(LocationManager lm) {
++        Location best = null;
++        String[] providers = {LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER, LocationManager.PASSIVE_PROVIDER};
++        for (String provider : providers) {
++            try {
++                Location loc = lm.getLastKnownLocation(provider);
++                if (loc == null) continue;
++                if (best == null || loc.getTime() > best.getTime()
++                        || (loc.getTime() == best.getTime() && loc.getAccuracy() < best.getAccuracy())) best = loc;
++            } catch (Exception ignored) { }
++        }
++        return best;
++    }
++
++    private void fetchWeatherAndOpen(Location location) {
++        if (location == null || weatherMood == null) { toast("天气电台暂时不可用"); return; }
++        final List<Song> favSnapshot = new ArrayList<>(favorites);
++        final List<ImportedPlaylist> playlistSnapshot = new ArrayList<>(playlists);
++        final List<Song> historySnapshot = new ArrayList<>(history);
++        showBusy(true);
++        io.submit(() -> {
++            try {
++                WeatherMoodProvider.WeatherSnapshot weather = weatherMood.fetch(location.getLatitude(), location.getLongitude());
++                List<Song> songs = recommendations.weatherRadio(favSnapshot, playlistSnapshot, historySnapshot, weather, 24);
++                main.post(() -> {
++                    showBusy(false);
++                    if (songs == null || songs.isEmpty()) { toast("天气电台暂时没有生成歌曲"); return; }
++                    openSmartCollection = new SmartCollection("天气电台", weather.compactLabel() + " · " + songs.size() + " 首",
++                            "weather", Ui.GOLD, songs);
++                    renderTab();
++                });
++            } catch (Exception e) {
++                main.post(() -> { showBusy(false); toast("天气获取失败，稍后再试"); });
++            }
++        });
++    }
++
++    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
++        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
++        if (requestCode != REQ_WEATHER_LOCATION) return;
++        boolean granted = grantResults != null && grantResults.length > 0
++                && grantResults[0] == PackageManager.PERMISSION_GRANTED;
++        if (pendingWeatherRadioOpen) {
++            pendingWeatherRadioOpen = false;
++            if (granted) resolveLocationAndOpenWeatherRadio();
++            else toast("未授予定位权限，天气电台不会读取你的位置");
++        }
+     }
+ 
+     private String greetingTitle() {
+@@ -1498,6 +1654,79 @@
+         return hero;
+     }
+ 
++    private View smartCollectionPage(SmartCollection collection) {
++        LinearLayout body = Ui.column(this);
++        LinearLayout back = Ui.row(this);
++        back.setGravity(Gravity.CENTER_VERTICAL);
++        IconView bi = new IconView(this, IconView.Type.BACK, collection.accent);
++        back.addView(bi, Ui.lp(Ui.dp(this, 24), Ui.dp(this, 24)));
++        TextView bt = Ui.text(this, "返回", 13, collection.accent, true);
++        back.addView(bt, new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
++        back.setClickable(true);
++        back.setOnClickListener(v -> { openSmartCollection = null; renderTab(); });
++        body.addView(back, Ui.lp(-1, Ui.dp(this, 38)));
++
++        LinearLayout hero = Ui.column(this);
++        hero.setPadding(Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16));
++        hero.setBackground(Ui.tintedGlass(collection.accent, 23, this));
++
++        LinearLayout top = Ui.row(this);
++        if (!collection.songs.isEmpty()) {
++            ImageView cover = new ImageView(this);
++            cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
++            cover.setClipToOutline(true);
++            cover.setBackground(Ui.round(Color.rgb(22, 22, 28), 18, this));
++            ImageLoader.load(collection.songs.get(0).coverUrl, cover, null);
++            top.addView(cover, Ui.lp(Ui.dp(this, 78), Ui.dp(this, 78)));
++        } else {
++            FrameLayout icon = Ui.iconButton(this, "weather".equals(collection.kind) ? IconView.Type.WEATHER : IconView.Type.MUSIC,
++                    78, collection.accent, Color.argb(24, Color.red(collection.accent), Color.green(collection.accent), Color.blue(collection.accent)));
++            top.addView(icon, Ui.lp(Ui.dp(this, 78), Ui.dp(this, 78)));
++        }
++        LinearLayout texts = Ui.column(this);
++        texts.setPadding(Ui.dp(this, 14), Ui.dp(this, 4), 0, Ui.dp(this, 2));
++        TextView name = Ui.text(this, collection.title, 20, Ui.TEXT, true);
++        name.setSingleLine(true); name.setEllipsize(TextUtils.TruncateAt.END);
++        texts.addView(name, new LinearLayout.LayoutParams(-1, 0, 1f));
++        TextView sub = Ui.text(this, collection.subtitle, 11.5f, Ui.TEXT_2, false);
++        sub.setSingleLine(true); sub.setEllipsize(TextUtils.TruncateAt.END);
++        texts.addView(sub, new LinearLayout.LayoutParams(-1, 0, 1f));
++        top.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(this, 78), 1f));
++        hero.addView(top, Ui.lp(-1, Ui.dp(this, 78)));
++
++        TextView play = filledAction("从第一首播放", collection.accent, Color.rgb(12, 12, 18));
++        play.setEnabled(!collection.songs.isEmpty());
++        play.setAlpha(collection.songs.isEmpty() ? .42f : 1f);
++        play.setOnClickListener(v -> { if (!collection.songs.isEmpty()) playQueue(collection.songs, 0); });
++        LinearLayout.LayoutParams pp = Ui.lp(-1, Ui.dp(this, 44)); pp.topMargin = Ui.dp(this, 12);
++        hero.addView(play, pp);
++        body.addView(hero, Ui.lp(-1, -2));
++
++        body.addView(sectionHeader("歌曲", collection.songs.size() + " 首"), marginTop(22));
++        if (collection.songs.isEmpty()) {
++            body.addView(compactEmpty("暂时没有生成歌曲"), marginTop(6));
++        } else {
++            body.addView(smartCollectionSongList(collection.songs), marginTop(6));
++        }
++        String pageSub = "weather".equals(collection.kind) ? "天气 × 时间 × 你的口味" : "根据你的本地音乐偏好生成";
++        return pageScaffold(collection.title, pageSub, body);
++    }
++
++    private View smartCollectionSongList(List<Song> songs) {
++        LinearLayout box = Ui.column(this);
++        for (int i = 0; i < songs.size(); i++) {
++            final int queueIndex = i;
++            Song song = songs.get(i);
++            View row = songRow(song, songs, i);
++            // Recommendation collections behave like real playlists: tapping a row installs the
++            // whole generated list as the queue and begins from that selected song. Child action
++            // buttons keep their own favorite / next / more listeners.
++            row.setOnClickListener(v -> playQueue(songs, queueIndex));
++            box.addView(row, marginTop(i == 0 ? 0 : 7));
++        }
++        return box;
++    }
++
+     private View playlistDetailPage(ImportedPlaylist p) {
+         LinearLayout body = Ui.column(this);
+         LinearLayout back = Ui.row(this);
+@@ -3378,6 +3607,11 @@
+             closeNowPlaying();
+             return;
+         }
++        if (openSmartCollection != null) {
++            openSmartCollection = null;
++            renderTab();
++            return;
++        }
+         if (openPlaylist != null) {
+             openPlaylist = null;
+             renderTab();
+diff -ruN '--exclude=V20-to-V21_FULL.patch' v20baseline/XingyuMusic-V20/app/src/main/java/com/xingyu/music/data/RecommendationEngine.java v21work/XingyuMusic-V21/app/src/main/java/com/xingyu/music/data/RecommendationEngine.java
+--- v20baseline/XingyuMusic-V20/app/src/main/java/com/xingyu/music/data/RecommendationEngine.java	2026-08-10 07:26:15.000000000 +0000
++++ v21work/XingyuMusic-V21/app/src/main/java/com/xingyu/music/data/RecommendationEngine.java	2026-08-10 07:55:06.201627525 +0000
+@@ -105,6 +105,54 @@
+         return out;
+     }
+ 
++    /**
++     * Weather + daypart station. It only searches song metadata and local taste data; it never
++     * requests playback URLs. Results are cached by date + coarse weather bucket + daypart.
++     */
++    public List<Song> weatherRadio(List<Song> favorites, List<ImportedPlaylist> playlists,
++                                   List<Song> history, WeatherMoodProvider.WeatherSnapshot weather,
++                                   int limit) {
++        int max = Math.max(1, Math.min(limit, 30));
++        if (weather == null) return privateRadio(favorites, playlists, history, max);
++        String cacheKey = dayKey() + "|" + weather.cacheKey();
++        if (cacheKey.equals(prefs.getString("weather_key", ""))) {
++            List<Song> cached = decode(prefs.getString("weather_songs", "[]"));
++            if (!cached.isEmpty()) return trim(cached, max);
++        }
++
++        List<String> seeds = topArtists(favorites, playlists, history, 2);
++        LinkedHashMap<String,Song> outMap = new LinkedHashMap<>();
++        String moodWord = weather.discoveryWord();
++        // Keep the user's artists as the strongest constraint, then let the weather/daypart
++        // keyword nudge discovery toward a matching atmosphere. This is metadata search only.
++        for (String artist : seeds) {
++            String query = (artist + " " + moodWord).trim();
++            List<Song> wy = new ArrayList<>();
++            List<Song> tx = new ArrayList<>();
++            try { wy = netease.search(query, 16); } catch (Exception ignored) { }
++            try { tx = qq.search(query, 16); } catch (Exception ignored) { }
++            for (Song s : SearchRanker.mergeAndRank(query, wy, tx, 22)) {
++                if (s == null || !artistMatches(s.artist, artist)) continue;
++                outMap.putIfAbsent(s.key(), s);
++            }
++        }
++
++        // Always anchor the station in the user's own library. A stable weather/daypart seed makes
++        // the order feel different between rain/night/morning without requiring a paid model/API.
++        List<Song> local = privateRadio(favorites, playlists, history, Math.max(max, 30));
++        Collections.shuffle(local, new Random(cacheKey.hashCode() * 2654435761L));
++        for (Song s : local) {
++            if (s != null) outMap.putIfAbsent(s.key(), s);
++            if (outMap.size() >= max) break;
++        }
++
++        List<Song> out = trim(new ArrayList<>(outMap.values()), max);
++        if (!out.isEmpty()) {
++            prefs.edit().putString("weather_key", cacheKey).putString("weather_songs", encode(out)).apply();
++        }
++        return out;
++    }
++
+     public boolean hasTaste(List<Song> favorites, List<ImportedPlaylist> playlists, List<Song> history) {
+         if (favorites != null && !favorites.isEmpty()) return true;
+         if (history != null && !history.isEmpty()) return true;
+diff -ruN '--exclude=V20-to-V21_FULL.patch' v20baseline/XingyuMusic-V20/app/src/main/java/com/xingyu/music/data/WeatherMoodProvider.java v21work/XingyuMusic-V21/app/src/main/java/com/xingyu/music/data/WeatherMoodProvider.java
+--- v20baseline/XingyuMusic-V20/app/src/main/java/com/xingyu/music/data/WeatherMoodProvider.java	1970-01-01 00:00:00.000000000 +0000
++++ v21work/XingyuMusic-V21/app/src/main/java/com/xingyu/music/data/WeatherMoodProvider.java	2026-08-10 08:00:12.624460657 +0000
+@@ -0,0 +1,155 @@
++package com.xingyu.music.data;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++
++import org.json.JSONObject;
++
++import java.net.URLEncoder;
++import java.util.Calendar;
++import java.util.Collections;
++import java.util.Locale;
++
++/**
++ * Small, free weather metadata helper used only by the recommendation UI.
++ * It never resolves or touches audio URLs. Weather data comes from Open-Meteo's
++ * key-free forecast endpoint and is cached locally for the home-card subtitle.
++ */
++public final class WeatherMoodProvider {
++    private final SharedPreferences prefs;
++
++    public WeatherMoodProvider(Context context) {
++        prefs = context.getSharedPreferences("xingyu_weather_v21", Context.MODE_PRIVATE);
++    }
++
++    public WeatherSnapshot fetch(double latitude, double longitude) throws Exception {
++        String url = "https://api.open-meteo.com/v1/forecast?latitude="
++                + enc(String.format(Locale.US, "%.5f", latitude))
++                + "&longitude=" + enc(String.format(Locale.US, "%.5f", longitude))
++                + "&current=temperature_2m,apparent_temperature,precipitation,rain,weather_code,cloud_cover"
++                + "&timezone=auto";
++        Http.Response r = Http.get(url, Collections.singletonMap("User-Agent", "XingyuMusic/21"), 6500, 8500);
++        if (r.code < 200 || r.code >= 300) throw new IllegalStateException("天气服务 HTTP " + r.code);
++        JSONObject root = new JSONObject(r.body == null ? "{}" : r.body);
++        JSONObject current = root.optJSONObject("current");
++        if (current == null) throw new IllegalStateException("天气数据为空");
++
++        int code = current.optInt("weather_code", -1);
++        double temp = current.optDouble("temperature_2m", Double.NaN);
++        double apparent = current.optDouble("apparent_temperature", temp);
++        double precipitation = current.optDouble("precipitation", 0d);
++        double cloud = current.optDouble("cloud_cover", 0d);
++        WeatherSnapshot out = new WeatherSnapshot(code, temp, apparent, precipitation, cloud,
++                weatherLabel(code), daypart(), System.currentTimeMillis());
++        save(out);
++        return out;
++    }
++
++    public WeatherSnapshot cached() {
++        if (!prefs.contains("fetched_at")) return null;
++        long fetchedAt = prefs.getLong("fetched_at", 0L);
++        if (fetchedAt <= 0L) return null;
++        return new WeatherSnapshot(
++                prefs.getInt("code", -1),
++                Double.longBitsToDouble(prefs.getLong("temp_bits", Double.doubleToRawLongBits(Double.NaN))),
++                Double.longBitsToDouble(prefs.getLong("apparent_bits", Double.doubleToRawLongBits(Double.NaN))),
++                Double.longBitsToDouble(prefs.getLong("precip_bits", Double.doubleToRawLongBits(0d))),
++                Double.longBitsToDouble(prefs.getLong("cloud_bits", Double.doubleToRawLongBits(0d))),
++                prefs.getString("label", "天气"),
++                daypart(),
++                fetchedAt
++        );
++    }
++
++    private void save(WeatherSnapshot s) {
++        prefs.edit()
++                .putInt("code", s.weatherCode)
++                .putLong("temp_bits", Double.doubleToRawLongBits(s.temperatureC))
++                .putLong("apparent_bits", Double.doubleToRawLongBits(s.apparentC))
++                .putLong("precip_bits", Double.doubleToRawLongBits(s.precipitationMm))
++                .putLong("cloud_bits", Double.doubleToRawLongBits(s.cloudCover))
++                .putString("label", s.weatherLabel)
++                .putLong("fetched_at", s.fetchedAt)
++                .apply();
++    }
++
++    private static String enc(String s) {
++        try { return URLEncoder.encode(s == null ? "" : s, "UTF-8"); }
++        catch (Exception impossible) { return s == null ? "" : s; }
++    }
++
++    public static String daypart() {
++        int hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
++        if (hour < 6) return "深夜";
++        if (hour < 11) return "早晨";
++        if (hour < 14) return "中午";
++        if (hour < 18) return "下午";
++        if (hour < 23) return "夜晚";
++        return "深夜";
++    }
++
++    public static String weatherLabel(int code) {
++        if (code == 0) return "晴";
++        if (code == 1 || code == 2) return "晴间多云";
++        if (code == 3) return "阴云";
++        if (code == 45 || code == 48) return "雾";
++        if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return "雨";
++        if ((code >= 71 && code <= 77) || code == 85 || code == 86) return "雪";
++        if (code >= 95) return "雷雨";
++        return "天气";
++    }
++
++    public static final class WeatherSnapshot {
++        public final int weatherCode;
++        public final double temperatureC;
++        public final double apparentC;
++        public final double precipitationMm;
++        public final double cloudCover;
++        public final String weatherLabel;
++        public final String daypart;
++        public final long fetchedAt;
++
++        WeatherSnapshot(int weatherCode, double temperatureC, double apparentC,
++                        double precipitationMm, double cloudCover, String weatherLabel,
++                        String daypart, long fetchedAt) {
++            this.weatherCode = weatherCode;
++            this.temperatureC = temperatureC;
++            this.apparentC = apparentC;
++            this.precipitationMm = precipitationMm;
++            this.cloudCover = cloudCover;
++            this.weatherLabel = weatherLabel == null ? "天气" : weatherLabel;
++            this.daypart = daypart == null ? WeatherMoodProvider.daypart() : daypart;
++            this.fetchedAt = fetchedAt;
++        }
++
++        public String compactLabel() {
++            String temp = Double.isNaN(temperatureC) ? "" : " · " + Math.round(temperatureC) + "°C";
++            return weatherLabel + temp + " · " + daypart;
++        }
++
++        public String cacheKey() {
++            return weatherBucket() + "|" + daypart;
++        }
++
++        public String weatherBucket() {
++            int c = weatherCode;
++            if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82) || c >= 95) return "rain";
++            if ((c >= 71 && c <= 77) || c == 85 || c == 86) return "snow";
++            if (c == 45 || c == 48) return "fog";
++            if (c == 3 || cloudCover >= 70d) return "cloud";
++            return "clear";
++        }
++
++        /** One broad discovery keyword; recommendation code keeps artist taste as the stronger signal. */
++        public String discoveryWord() {
++            String bucket = weatherBucket();
++            if ("rain".equals(bucket)) return "雨";
++            if ("snow".equals(bucket)) return "雪";
++            if ("fog".equals(bucket)) return "雾";
++            if ("cloud".equals(bucket)) return "云";
++            if ("夜晚".equals(daypart) || "深夜".equals(daypart)) return "夜";
++            if ("早晨".equals(daypart)) return "清晨";
++            return "晴";
++        }
++    }
++}
+diff -ruN '--exclude=V20-to-V21_FULL.patch' v20baseline/XingyuMusic-V20/app/src/main/java/com/xingyu/music/ui/IconView.java v21work/XingyuMusic-V21/app/src/main/java/com/xingyu/music/ui/IconView.java
+--- v20baseline/XingyuMusic-V20/app/src/main/java/com/xingyu/music/ui/IconView.java	2026-08-10 04:34:15.000000000 +0000
++++ v21work/XingyuMusic-V21/app/src/main/java/com/xingyu/music/ui/IconView.java	2026-08-10 07:56:21.963432610 +0000
+@@ -9,7 +9,7 @@
+ 
+ /** Small dependency-free line icon renderer so the UI does not rely on emoji glyphs. */
+ public final class IconView extends View {
+-    public enum Type { HOME, SEARCH, PLAYLIST, HEART, PLAY, PAUSE, NEXT, PREV, PLUS, BACK, MUSIC, MORE, CLOSE, DELETE, DRAG, SHUFFLE, REPEAT, REPEAT_ONE, PALETTE }
++    public enum Type { HOME, SEARCH, PLAYLIST, HEART, PLAY, PAUSE, NEXT, PREV, PLUS, BACK, MUSIC, MORE, CLOSE, DELETE, DRAG, SHUFFLE, REPEAT, REPEAT_ONE, PALETTE, WEATHER }
+ 
+     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+     private final Path path = new Path();
+@@ -166,6 +166,22 @@
+                 c.drawLine(r - s * .07f, cy + s * .22f, r, cy + s * .15f, paint);
+                 break;
+             }
++            case WEATHER: {
++                // Sun behind a soft cloud: compact, dependency-free weather glyph.
++                c.drawCircle(cx - s * .10f, cy - s * .08f, s * .12f, paint);
++                for (int i = 0; i < 8; i++) {
++                    double a = Math.PI * 2d * i / 8d;
++                    float x1 = cx - s * .10f + (float)Math.cos(a) * s * .18f;
++                    float y1 = cy - s * .08f + (float)Math.sin(a) * s * .18f;
++                    float x2 = cx - s * .10f + (float)Math.cos(a) * s * .23f;
++                    float y2 = cy - s * .08f + (float)Math.sin(a) * s * .23f;
++                    c.drawLine(x1, y1, x2, y2, paint);
++                }
++                RectF cloud = new RectF(cx - s * .25f, cy + s * .01f, cx + s * .24f, cy + s * .22f);
++                c.drawRoundRect(cloud, s * .10f, s * .10f, paint);
++                c.drawArc(new RectF(cx - s * .14f, cy - s * .09f, cx + s * .10f, cy + s * .15f), 190f, 160f, false, paint);
++                break;
++            }
+             case PALETTE: {
+                 // Compact SF-Symbol-like palette outline.
+                 RectF oval = new RectF(cx - s * .27f, cy - s * .23f, cx + s * .27f, cy + s * .23f);
+diff -ruN '--exclude=V20-to-V21_FULL.patch' v20baseline/XingyuMusic-V20/changes/PLAYBACK_CORE_GUARD_V21.txt v21work/XingyuMusic-V21/changes/PLAYBACK_CORE_GUARD_V21.txt
+--- v20baseline/XingyuMusic-V20/changes/PLAYBACK_CORE_GUARD_V21.txt	1970-01-01 00:00:00.000000000 +0000
++++ v21work/XingyuMusic-V21/changes/PLAYBACK_CORE_GUARD_V21.txt	2026-08-10 08:01:11.154554361 +0000
+@@ -0,0 +1,53 @@
++XingyuMusic V21 播放核心保护检查
++Baseline: V20-Full
++Rule: V21 推荐详情与天气电台不得修改以下播放解析/缓存/健康核心。
++
++[PASS] app/src/main/java/com/xingyu/music/playback/PlaybackService.java
++      V20 0fad6065fbb1805b18f3673178460a5d0c5e05bb87257c46f9f505bf96253dc7
++      V21 0fad6065fbb1805b18f3673178460a5d0c5e05bb87257c46f9f505bf96253dc7
++[PASS] app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java
++      V20 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
++      V21 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
++[PASS] app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
++      V20 cdcc6afe54a7a70251a64689a1fa851eda251d220ec4438bd4c607018c86b37c
++      V21 cdcc6afe54a7a70251a64689a1fa851eda251d220ec4438bd4c607018c86b37c
++[PASS] app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
++      V20 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
++      V21 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
++[PASS] app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
++      V20 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
++      V21 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
++[PASS] app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
++      V20 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
++      V21 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
++[PASS] app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
++      V20 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
++      V21 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
++[PASS] app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
++      V20 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
++      V21 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
++[PASS] app/src/main/java/com/xingyu/music/data/ResolverProvider.java
++      V20 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
++      V21 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
++[PASS] app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
++      V20 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
++      V21 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
++[PASS] app/src/main/assets/source/huibq-latest.js
++      V20 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
++      V21 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
++[PASS] app/src/main/java/com/xingyu/music/data/QQMusicApi.java
++      V20 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
++      V21 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
++[PASS] app/src/main/java/com/xingyu/music/data/NeteaseApi.java
++      V20 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
++      V21 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
++[PASS] app/src/main/java/com/xingyu/music/data/LibraryStore.java
++      V20 0d8eaf627eebe00f29743d68f2429127e3086248b693ca5f1adb98a396acb5dc
++      V21 0d8eaf627eebe00f29743d68f2429127e3086248b693ca5f1adb98a396acb5dc
++[PASS] app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
++      V20 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
++      V21 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
++
++结论：受保护播放核心 15/15 完全一致。
++AndroidManifest.xml 有意新增 ACCESS_COARSE_LOCATION，仅用于用户点击天气电台后的前台粗略定位；未新增后台定位权限。
++RecommendationEngine 仅新增天气候选排序/元数据搜索；WeatherMoodProvider 为独立天气元数据模块，不进入 SourceCoordinator / PlaybackService。
+\ No newline at end of file

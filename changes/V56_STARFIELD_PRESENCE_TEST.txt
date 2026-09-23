@@ -1,0 +1,20 @@
+STARFIELD_V56_STUB_JAVAC_PASS
+STARFIELD_V56_DENSITY_POOL_PASS
+
+Android stub javac：Starfield3DView + Starfield3DMath + AudioLevelProvider 编译通过。
+密度池实测（确定性 seed）：
+- 0.60x: world=1636 / flow=168
+- 1.00x: world=2680 / flow=260（V55 基准数量完全保留）
+- 1.16x: world=3122 / flow=307（V56 官方默认）
+- 1.35x: world=3618 / flow=351（预分配池上限）
+
+参数 clamp 实测：
+- 星点大小：0.70x ~ 1.55x
+- 星点亮度：0.65x ~ 1.55x
+- 星点密度：0.60x ~ 1.35x
+
+实现约束：
+- 密度提升使用启动时预分配 reserve pool，拖动滑杆时不 new 粒子对象。
+- 1.00x 先创建完整 V55 基准粒子，再追加 reserve pool；密度随机 seed 独立，不扰动 V55 基准星点生成随机序列。
+- 大小只改变光核/柔光视觉尺度；亮度统一乘入星体 alpha；密度只控制可见/参与模拟粒子集合。
+- 2D StarfieldView 未修改。

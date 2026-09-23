@@ -1,0 +1,74 @@
+--- /mnt/data/SunflowerMusic-V3.1-baseline/SunflowerMusic-V3/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 18:50:07.000000000 +0000
++++ /mnt/data/SunflowerMusic-V3.1-work/SunflowerMusic-V3/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 19:17:09.419804911 +0000
+@@ -2463,8 +2463,8 @@
+                 holder.row.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(MainActivity.this, 52), 1f));
+ 
+                 holder.source = Ui.text(MainActivity.this, "", 9.4f, Ui.TEXT_2, true);
+-                holder.source.setGravity(Gravity.CENTER);
+-                holder.row.addView(holder.source, Ui.lp(Ui.dp(MainActivity.this, 68), Ui.dp(MainActivity.this, 27)));
++                configureAdaptiveSourceBadge(holder.source, 112);
++                holder.row.addView(holder.source, Ui.lp(-2, -2));
+ 
+                 holder.favorite = Ui.iconButton(MainActivity.this, IconView.Type.HEART, 36, Ui.DIM, Color.TRANSPARENT);
+                 holder.favoriteIcon = (IconView) holder.favorite.getChildAt(0);
+@@ -2514,6 +2514,26 @@
+         }
+     }
+ 
++    /**
++     * V3.1 UI-only fix: multi-catalog labels can grow from one platform to four or more.
++     * Keep the pill content-complete without giving it an unbounded width that would crush
++     * the title/actions on narrow phones. 1-2 catalog labels stay compact; longer labels
++     * wrap naturally at the middle-dot spaces into at most two centered lines.
++     */
++    private void configureAdaptiveSourceBadge(TextView badge, int maxWidthDp) {
++        if (badge == null) return;
++        badge.setSingleLine(false);
++        badge.setMaxLines(2);
++        badge.setEllipsize(null);
++        badge.setGravity(Gravity.CENTER);
++        badge.setMinWidth(Ui.dp(this, 46));
++        badge.setMaxWidth(Ui.dp(this, maxWidthDp));
++        badge.setMinHeight(Ui.dp(this, 27));
++        badge.setPadding(Ui.dp(this, 8), Ui.dp(this, 3), Ui.dp(this, 8), Ui.dp(this, 3));
++        badge.setIncludeFontPadding(false);
++        badge.setLineSpacing(0f, 0.94f);
++    }
++
+     private void appendUniqueProviderSongs(List<Song> target, List<Song> incoming, String source) {
+         if (target == null || incoming == null || incoming.isEmpty()) return;
+         LinkedHashSet<String> seen = new LinkedHashSet<>();
+@@ -3396,7 +3416,8 @@
+         row.addView(text, new LinearLayout.LayoutParams(0, Ui.dp(this, 56), 1f));
+ 
+         TextView src = Ui.pill(this, song.sourceLabel(), song.variants().size() > 1 ? Ui.CYAN : Ui.PURPLE);
+-        row.addView(src, Ui.lp(Ui.dp(this, 72), Ui.dp(this, 28)));
++        configureAdaptiveSourceBadge(src, 112);
++        row.addView(src, Ui.lp(-2, -2));
+ 
+         FrameLayout fav = Ui.iconButton(this, IconView.Type.HEART, 38, isFavorite(song) ? Ui.PINK : Ui.DIM, Color.TRANSPARENT);
+         IconView favIcon = (IconView) fav.getChildAt(0);
+@@ -3867,7 +3888,8 @@
+ 
+             TextView source = Ui.pill(MainActivity.this, song.sourceLabel(),
+                     song.variant("tx") != null && song.variant("wy") == null ? Ui.CYAN : Ui.PURPLE);
+-            row.addView(source, Ui.lp(Ui.dp(MainActivity.this, 64), Ui.dp(MainActivity.this, 30)));
++            configureAdaptiveSourceBadge(source, 104);
++            row.addView(source, Ui.lp(-2, -2));
+ 
+             FrameLayout drag = Ui.iconButton(MainActivity.this, IconView.Type.DRAG, 42,
+                     (targetBefore || targetAfterLast) ? Ui.CYAN : Ui.TEXT_2, Color.TRANSPARENT);
+
+--- /mnt/data/SunflowerMusic-V3.1-baseline/SunflowerMusic-V3/app/build.gradle.kts	2026-08-11 18:39:04.000000000 +0000
++++ /mnt/data/SunflowerMusic-V3.1-work/SunflowerMusic-V3/app/build.gradle.kts	2026-08-11 19:17:09.420017586 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.sunflowermusic"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 300
+-        versionName = "3.0.0-test"
++        versionCode = 310
++        versionName = "3.1.0-test"
+     }
+ 
+     buildTypes {

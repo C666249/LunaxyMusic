@@ -1,0 +1,15 @@
+Lunaxy Music V65 — MainActivity Playback/Search Method Guard
+
+PASS	ensurePlaybackServiceStarted
+PASS	playPickedSong
+PASS	playQueue
+PASS	performSearch
+PASS	scheduleLyricSearch
+PASS	submitCatalogSearch
+PASS	scheduleSearchMerge
+PASS	launchSearchMerge
+PASS	mergeSearchSnapshot
+PASS	applyCatalogOutcome
+
+TOTAL=10/10
+PASS	downloadPlanCard (V64 Ghost Swipe method body byte-equivalent)

@@ -1,0 +1,15 @@
+V58 SEARCH / PLAYBACK ROLLBACK GUARD (V56 baseline)
+
+Goal: V57 Unified Discovery is fully removed; V58 restores V56 search behavior while only retaining starfield UI wiring.
+
+MainActivity outside the 3 starfield-only methods: PASS
+V56 stripped SHA-256: cf33a05feec9dd28d43cfe649235b681c64dcc9eea7a0aa68f4cda4a77f1820e
+V58 stripped SHA-256: cf33a05feec9dd28d43cfe649235b681c64dcc9eea7a0aa68f4cda4a77f1820e
+
+Search implementation region: PASS
+Search region SHA-256: 789fd7fc037d0e20bfae1fcbb5e08cf48d819bb039160dd05569d61feb6c56de
+SEARCH_LYRIC_DEFER_MS expected/restored: 420 ms
+UnifiedSearchResult expected: absent
+lyricSearchError expected: absent
+
+Playback/provider/search core files are additionally covered by V58_CORE_LOCK_GUARD.txt.

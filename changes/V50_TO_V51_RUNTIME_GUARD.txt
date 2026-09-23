@@ -1,0 +1,14 @@
+V50 -> V51 Runtime Golden Guard
+================================
+Baseline: LunaxyMusic-V50-Full.zip
+
+app/src/main recursive diff:
+  MODIFIED java/com/xingyu/music/ui/Starfield3DView.java
+
+All other existing app/src/main runtime files are SHA-256 byte-identical to V50.
+No Provider/Resolver/Playback/Download/Offline/Ringtone/Search/Library runtime file changed.
+
+V51 visual-only forbidden dependency scan: PASS
+Starfield3DView contains no SourceCoordinator / AudioProviderHub / SourceHealthStore /
+LxSourceRuntime / ResolverProvider / PlaybackUrlStore / TrackRouteStore /
+OfflineDownloadService / OfflineStore / RingtoneHelper / PlaybackService / HTTP URL.

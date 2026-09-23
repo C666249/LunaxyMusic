@@ -1,0 +1,187 @@
+--- /tmp/v70base/LunaxyMusic-V70/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-19 07:24:50.000000000 +0000
++++ app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-19 08:43:24.810117396 +0000
+@@ -392,7 +392,7 @@
+     private ImageView nowCoverLoader;
+     private TextView nowTitle;
+     private TextView nowArtist;
+-    private TextView nowSource;
++    private LinearLayout nowSource;
+     private TextView nowTime;
+     private TextView nowDuration;
+     private IconView nowModeIcon;
+@@ -1921,7 +1921,7 @@
+         if (song == null || badge == null || song.variants().size() < 2 || tab != 1 || searchMetadataPending) return;
+         maybeShowContextCoach(COACH_MULTI_CATALOG, badge,
+                 "一首歌，多条可播放路线",
+-                "搜索结果用小圆点显示同一录音已匹配的平台：紫=网易、蓝=QQ、绿=酷我、黄=酷狗。它们只是歌曲身份；Lunaxy 会在后台自动选择当前真正可用的播放线路，你不需要手动切源。");
++                "歌曲列表统一用小圆点显示同一录音已匹配的平台：紫=网易、蓝=QQ、绿=酷我、黄=酷狗。搜索、歌单、收藏等都保持同一套标识；圆点只是歌曲身份，Lunaxy 仍在后台自动选择真正可用的播放线路。");
+     }
+ 
+     private void startHomeLyricQuoteTicker(TextView target) {
+@@ -3561,8 +3561,18 @@
+      * This is presentation-only and does not change Song variants, ranking or route selection.
+      */
+     private void bindSearchPlatformDots(LinearLayout strip, Song song) {
++        bindPlatformDots(strip, song, 7, 5);
++    }
++
++    /**
++     * V71 presentation-only catalog identity indicator used everywhere a song row previously
++     * showed a long sourceLabel() pill. WY=purple / TX=blue / KW=green / KG=gold.
++     * The dots only read Song variants; they never reorder, add, remove or prefer a source.
++     */
++    private void bindPlatformDots(LinearLayout strip, Song song, int dotDp, int gapDp) {
+         if (strip == null) return;
+         strip.removeAllViews();
++        strip.setGravity(Gravity.CENTER);
+         if (song == null) return;
+         String[] sources = {"wy", "tx", "kw", "kg"};
+         int[] colors = {Ui.PURPLE, Ui.BLUE, Ui.GREEN, Ui.GOLD};
+@@ -3571,20 +3581,28 @@
+             if (song.variant(sources[i]) == null) continue;
+             View dot = new View(this);
+             dot.setBackground(Ui.round(colors[i], 99, this));
+-            dot.setAlpha(.97f);
+-            LinearLayout.LayoutParams dp = Ui.lp(Ui.dp(this, 7), Ui.dp(this, 7));
+-            if (added > 0) dp.leftMargin = Ui.dp(this, 5);
+-            strip.addView(dot, dp);
++            dot.setAlpha(.98f);
++            LinearLayout.LayoutParams lp = Ui.lp(Ui.dp(this, dotDp), Ui.dp(this, dotDp));
++            if (added > 0) lp.leftMargin = Ui.dp(this, gapDp);
++            strip.addView(dot, lp);
+             added++;
+         }
+         if (added == 0) {
+             View dot = new View(this);
+             dot.setBackground(Ui.round(Ui.DIM, 99, this));
+-            strip.addView(dot, Ui.lp(Ui.dp(this, 7), Ui.dp(this, 7)));
++            strip.addView(dot, Ui.lp(Ui.dp(this, dotDp), Ui.dp(this, dotDp)));
+         }
+         strip.setContentDescription("可用平台：" + song.sourceLabel());
+     }
+ 
++    private LinearLayout platformDotsView(Song song, int dotDp, int gapDp) {
++        LinearLayout strip = Ui.row(this);
++        strip.setGravity(Gravity.CENTER);
++        strip.setMinimumWidth(Ui.dp(this, dotDp));
++        bindPlatformDots(strip, song, dotDp, gapDp);
++        return strip;
++    }
++
+     /**
+      * V3.1 UI-only fix: multi-catalog labels can grow from one platform to four or more.
+      * Keep the pill content-complete without giving it an unbounded width that would crush
+@@ -5682,9 +5700,11 @@
+         text.addView(artist, new LinearLayout.LayoutParams(-1, 0, 1f));
+         row.addView(text, new LinearLayout.LayoutParams(0, Ui.dp(this, 56), 1f));
+ 
+-        TextView src = Ui.pill(this, song.sourceLabel(), song.variants().size() > 1 ? Ui.CYAN : Ui.PURPLE);
+-        configureAdaptiveSourceBadge(src, 112);
+-        row.addView(src, Ui.lp(-2, -2));
++        LinearLayout src = platformDotsView(song, 8, 5);
++        LinearLayout.LayoutParams sourceDotsLp = Ui.lp(-2, Ui.dp(this, 34));
++        sourceDotsLp.leftMargin = Ui.dp(this, 2);
++        sourceDotsLp.rightMargin = Ui.dp(this, 5);
++        row.addView(src, sourceDotsLp);
+         src.post(() -> teachMultiCatalogIfNeeded(src, song));
+ 
+         FrameLayout fav = Ui.iconButton(this, IconView.Type.HEART, 38, isFavorite(song) ? Ui.PINK : Ui.DIM, Color.TRANSPARENT);
+@@ -6437,10 +6457,11 @@
+             texts.addView(artist, new LinearLayout.LayoutParams(-1, 0, 1f));
+             row.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(MainActivity.this, 48), 1f));
+ 
+-            TextView source = Ui.pill(MainActivity.this, song.sourceLabel(),
+-                    song.variant("tx") != null && song.variant("wy") == null ? Ui.CYAN : Ui.PURPLE);
+-            configureAdaptiveSourceBadge(source, 104);
+-            row.addView(source, Ui.lp(-2, -2));
++            LinearLayout source = platformDotsView(song, 8, 5);
++            LinearLayout.LayoutParams sourceDotsLp = Ui.lp(-2, Ui.dp(MainActivity.this, 32));
++            sourceDotsLp.leftMargin = Ui.dp(MainActivity.this, 2);
++            sourceDotsLp.rightMargin = Ui.dp(MainActivity.this, 4);
++            row.addView(source, sourceDotsLp);
+ 
+             FrameLayout drag = Ui.iconButton(MainActivity.this, IconView.Type.DRAG, 42,
+                     (targetBefore || targetAfterLast) ? Ui.CYAN : Ui.TEXT_2, Color.TRANSPARENT);
+@@ -7564,7 +7585,11 @@
+         desktopLyricQuick.postDelayed(() -> maybeShowContextCoach(COACH_DESKTOP_LYRIC, desktopLyricQuick,
+                 "桌面歌词", "点这里可以直接把当前歌词显示到桌面。"), 260L);
+ 
+-        nowSource = Ui.pill(this, "", Ui.CYAN);
++        nowSource = Ui.row(this);
++        nowSource.setGravity(Gravity.CENTER);
++        nowSource.setPadding(Ui.dp(this, 8), 0, Ui.dp(this, 8), 0);
++        nowSource.setBackground(Ui.stroke(Color.argb(14, 255, 255, 255), 15,
++                Color.argb(38, 255, 255, 255), this));
+         metaRow.addView(nowSource, Ui.frame(-2, Ui.dp(this, 30), Gravity.CENTER));
+         FrameLayout addToPlaylist = Ui.iconButton(this, IconView.Type.PLUS, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
+         addToPlaylist.setContentDescription("添加到歌单");
+@@ -7801,11 +7826,8 @@
+         if (playerOverlay == null || playerOverlay.getVisibility() != View.VISIBLE || s.song == null) return;
+         nowTitle.setText(s.song.title);
+         nowArtist.setText(s.song.artist + (s.song.album.isEmpty() ? "" : "  ·  " + s.song.album));
+-        nowSource.setText(s.song.sourceLabel());
++        bindPlatformDots(nowSource, s.song, 8, 6);
+         int sourceTint = s.song.variants().size() > 1 ? Ui.CYAN : ("tx".equals(s.song.source) ? Ui.GREEN : Ui.GOLD);
+-        nowSource.setTextColor(sourceTint);
+-        nowSource.setBackground(Ui.stroke(Color.argb(24, Color.red(sourceTint), Color.green(sourceTint), Color.blue(sourceTint)),
+-                13, Color.argb(72, Color.red(sourceTint), Color.green(sourceTint), Color.blue(sourceTint)), this));
+         nowPlayIcon.setType(s.playing ? IconView.Type.PAUSE : IconView.Type.PLAY);
+         nowFavoriteIcon.setIconColor(isFavorite(s.song) ? Ui.PINK : Ui.TEXT_2);
+         if (nowModeIcon != null && playback != null) {
+--- /tmp/v70base/LunaxyMusic-V70/app/build.gradle.kts	2026-08-19 07:22:49.000000000 +0000
++++ app/build.gradle.kts	2026-08-19 08:43:42.748138333 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 700
+-        versionName = "70.0.0"
++        versionCode = 710
++        versionName = "71.0.0"
+     }
+ 
+     buildTypes {
+@@ -35,12 +35,12 @@
+ 
+ // Keep AGP's internal APK name intact for Android Studio install/run tasks, then export a
+ // share-ready copy with the product name after assembly. This avoids relying on deprecated
+-// internal VariantOutput APIs while ensuring the file users share is named "Lunaxy Music.apk".
++// internal VariantOutput APIs while ensuring the file users share is named "Lunaxy Music V71.apk".
+ tasks.matching { it.name == "assembleDebug" }.configureEach {
+     doLast {
+         val apkDir = project.layout.buildDirectory.dir("outputs/apk/debug").get().asFile
+         val source = apkDir.resolve("app-debug.apk")
+-        if (source.isFile) source.copyTo(apkDir.resolve("Lunaxy Music.apk"), overwrite = true)
++        if (source.isFile) source.copyTo(apkDir.resolve("Lunaxy Music V71.apk"), overwrite = true)
+     }
+ }
+ 
+@@ -49,6 +49,6 @@
+         val apkDir = project.layout.buildDirectory.dir("outputs/apk/release").get().asFile
+         val source = listOf(apkDir.resolve("app-release.apk"), apkDir.resolve("app-release-unsigned.apk"))
+             .firstOrNull { it.isFile }
+-        if (source != null) source.copyTo(apkDir.resolve("Lunaxy Music.apk"), overwrite = true)
++        if (source != null) source.copyTo(apkDir.resolve("Lunaxy Music V71.apk"), overwrite = true)
+     }
+ }
+--- /tmp/v70base/LunaxyMusic-V70/BUILD_APK.bat	2026-08-14 07:46:23.000000000 +0000
++++ BUILD_APK.bat	2026-08-19 08:44:40.935815171 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   Lunaxy Music V69 - Debug APK Build
++echo   Lunaxy Music V71 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\Lunaxy Music.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\Lunaxy Music V71.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\Lunaxy Music.apk
++echo [OK] APK: %CD%\dist\Lunaxy Music V71.apk
+ pause

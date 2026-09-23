@@ -1,0 +1,1035 @@
+--- /mnt/data/SunflowerMusic-V2-baseline/SunflowerMusic-V1/app/build.gradle.kts	2026-08-11 11:26:43.000000000 +0000
++++ app/build.gradle.kts	2026-08-11 15:45:59.295711818 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.sunflowermusic"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 100
+-        versionName = "1.0.0-test"
++        versionCode = 200
++        versionName = "2.0.0-test"
+     }
+ 
+     buildTypes {
+--- /mnt/data/SunflowerMusic-V2-baseline/SunflowerMusic-V1/BUILD_APK.bat	2026-08-11 11:37:53.000000000 +0000
++++ BUILD_APK.bat	2026-08-11 16:02:48.253931291 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   Sunflower Music V1 - Debug APK Build
++echo   Sunflower Music V2 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\SunflowerMusic-V1-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\SunflowerMusic-V2-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\SunflowerMusic-V1-debug.apk
++echo [OK] APK: %CD%\dist\SunflowerMusic-V2-debug.apk
+ pause
+--- /mnt/data/SunflowerMusic-V2-baseline/SunflowerMusic-V1/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 11:37:53.000000000 +0000
++++ app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 16:02:48.253789450 +0000
+@@ -95,7 +95,7 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Sunflower Music 1.0 test branch, forked from the Lunaxy Music V47 golden UI/data baseline.
++ * Sunflower Music 2.0 test branch, forked from the Lunaxy Music V47 golden UI/data baseline.
+  *
+  * V47 search, playlists, lyrics, recommendation UI and queue interaction remain intentionally stable.
+  * The experimental scope is the Song -> AudioCandidate domain: replaceable Provider Hub routing,
+@@ -732,7 +732,7 @@
+ 
+     private void showSourceStatus() {
+         String status = playback == null ? "音源管理器正在启动…" : playback.sourceStatus();
+-        showGlassMessage("Sunflower Provider Hub", status + "\n\n当前 QQ / 网易只作为歌曲目录身份。Huibq、QDY、Juhe、LX、Flower、Grass、SixYin、ikun 都是可替换候选 Provider；只有 Media3 真正进入 READY 才会记成功并缓存。单曲失败不会永久拉黑整个源，同一首歌曾 READY 的 Provider 会优先复用。",
++        showGlassMessage("Sunflower Provider Hub V2", status + "\n\nV2 把 QQ(tx) 与网易(wy) 的健康状态彻底拆开，并重做 LX Mobile 2.0 Host 兼容层。当前仍以平台原生 ID 为首选，不会为了提高成功率把 QQ 独家歌曲模糊替换成网易同名翻唱；只有 Media3 READY 且通过 Exact Gate 的候选才会记成功。",
+                 "关闭", null, "更新社区源", () -> {
+                     if (playback == null) { toast("播放器正在连接"); return; }
+                     playback.resetCommunityProviderScripts();
+--- /mnt/data/SunflowerMusic-V2-baseline/SunflowerMusic-V1/app/src/main/java/com/xingyu/music/data/AudioProvider.java	2026-08-11 11:34:32.000000000 +0000
++++ app/src/main/java/com/xingyu/music/data/AudioProvider.java	2026-08-11 16:02:48.251962110 +0000
+@@ -14,8 +14,15 @@
+     int basePriority(String platform);
+     boolean aggregate();
+ 
++    /** Whether this provider advertises the catalog platform at all. */
++    default boolean supportsPlatform(SourceVariant variant) throws Exception { return variant != null; }
++
++    /** Whether this exact platform/quality route is advertised. */
+     boolean supports(SourceVariant variant, String quality) throws Exception;
+ 
++    /** Cached/non-blocking capability text for diagnostics; must never trigger network by itself. */
++    default String capabilityHint() { return ""; }
++
+     AudioCandidate resolve(SourceVariant variant,
+                            Song song,
+                            String quality,
+--- /mnt/data/SunflowerMusic-V2-baseline/SunflowerMusic-V1/app/src/main/java/com/xingyu/music/data/AudioProviderHub.java	2026-08-11 11:34:32.000000000 +0000
++++ app/src/main/java/com/xingyu/music/data/AudioProviderHub.java	2026-08-11 16:10:19.350708919 +0000
+@@ -80,14 +80,23 @@
+                                   Song song,
+                                   String quality,
+                                   Set<String> excludedRoutes,
++                                  Set<String> excludedProvidersAcrossQuality,
+                                   PlaybackTrace trace) throws Exception {
+-        if (variant == null) throw new Exception("歌曲平台信息为空");
+-        if (song == null) throw new Exception("Canonical Track 为空");
++        if (variant == null) throw new ResolverFailure(ResolverFailure.Kind.UNKNOWN, "歌曲平台信息为空", false);
++        if (song == null) throw new ResolverFailure(ResolverFailure.Kind.UNKNOWN, "Canonical Track 为空", false);
+         Set<String> excluded = excludedRoutes == null ? Collections.emptySet() : excludedRoutes;
++        Set<String> qualityIndependentSkips = excludedProvidersAcrossQuality == null
++                ? java.util.concurrent.ConcurrentHashMap.newKeySet() : excludedProvidersAcrossQuality;
+         List<AudioProvider> ranked = ranked(song, variant.source, quality);
+-        Exception last = null;
++        ResolverFailure last = null;
++        boolean lowerQualityMayHelp = false;
++        int attempted = 0;
+ 
+         for (AudioProvider provider : ranked) {
++            if (qualityIndependentSkips.contains(provider.id())) {
++                trace.add("resolver-skip", provider.label() + " · 上一档音质已证明失败与码率无关");
++                continue;
++            }
+             String route = SourceHealthStore.routeKey(provider.id(), variant.source, quality);
+             if (excluded.contains(route)) {
+                 trace.add("route-skip", provider.label() + " / " + variant.source + "/" + quality + " · 本轮已失败");
+@@ -103,28 +112,50 @@
+             for (int tryIndex = 0; tryIndex < tries; tryIndex++) {
+                 long start = System.currentTimeMillis();
+                 try {
++                    if (!provider.supportsPlatform(variant)) {
++                        trace.add("resolver-skip", provider.label() + " 不支持平台 " + variant.source);
++                        qualityIndependentSkips.add(provider.id());
++                        break;
++                    }
+                     if (!provider.supports(variant, quality)) {
+-                        trace.add("resolver-skip", provider.label() + " 不支持 " + variant.source + "/" + quality);
++                        trace.add("resolver-skip", provider.label() + " 平台可用但不支持音质 " + variant.source + "/" + quality);
++                        if (!"128k".equalsIgnoreCase(quality)) lowerQualityMayHelp = true;
+                         break;
+                     }
++                    attempted++;
+                     trace.add("provider", provider.label() + " · " + provider.type() + " → "
+                             + variant.source + "/" + quality
+                             + (tryIndex > 0 ? " · Runtime 重建重试" : ""));
+ 
+                     AudioCandidate candidate = provider.resolve(variant, song, quality, trace);
+-                    if (candidate == null || !candidate.valid()) throw new Exception(provider.label() + " 返回无效音频候选");
++                    if (candidate == null || !candidate.valid())
++                        throw new ResolverFailure(ResolverFailure.Kind.INVALID_CANDIDATE, provider.label() + " 返回无效音频候选", false);
++                    // Exact Track Gate: Sunflower never trades correctness for a higher play rate.
++                    // Current platform-native routes are confidence=1.0. Future cross-catalog adapters
++                    // must prove an exact recording (>=0.98) or they are rejected before Media3.
++                    if (candidate.matchConfidence < 0.98d) {
++                        trace.add("exact-gate", provider.label() + " / confidence "
++                                + Math.round(candidate.matchConfidence * 100d) + "% · REJECT");
++                        throw new ResolverFailure(ResolverFailure.Kind.INVALID_CANDIDATE,
++                                "Exact Track Gate 拒绝低置信候选", false);
++                    }
+ 
+-                    // Aggregators are the routes most likely to return a syntactically valid
+-                    // but already-dead inner URL.  One tiny Range probe prevents feeding obvious
+-                    // 404/403 candidates into Media3, while non-aggregators stay one-request-only.
+                     if (provider.aggregate()) {
+                         AudioUrlProbe.Result probe = AudioUrlProbe.check(candidate.url);
+                         if (probe.checked && !probe.playable) {
+-                            trace.add("candidate-reject", provider.label() + " / " + probe.reason);
+-                            health.routeFailure(provider.id(), variant.source, quality,
+-                                    "候选音频失效：" + probe.reason, 0L);
+-                            applyProbeBreaker(provider, variant.source, quality, probe.statusCode, probe.reason);
+-                            last = new Exception(provider.label() + " 返回失效候选：" + probe.reason);
++                            ResolverFailure failure = ResolverFailure.http(probe.statusCode, "HTTP " + probe.statusCode + " · " + probe.reason);
++                            // Probe failures belong to the returned audio candidate, not automatically
++                            // to the provider service itself.  A signed/CDN URL can be 403/5xx for one song
++                            // while the same provider still works for another song or another platform.
++                            // Only an explicit 429 from the candidate is promoted to provider-wide cooling.
++                            if ((probe.statusCode >= 500 && probe.statusCode <= 599)
++                                    || probe.statusCode == 401 || probe.statusCode == 403)
++                                failure = new ResolverFailure(ResolverFailure.Kind.TRACK_UNAVAILABLE, failure.getMessage(), false);
++                            trace.add("candidate-reject", provider.label() + " / " + failure.getMessage());
++                            health.routeFailure(provider.id(), variant.source, quality, failure.getMessage(), 0L);
++                            if (probe.statusCode == 429) applyFailureScope(provider, variant.source, quality, failure);
++                            if (!failure.lowerQualityMayHelp) qualityIndependentSkips.add(provider.id());
++                            last = failure;
+                             if (tryIndex == 0 && (probe.statusCode == 404 || probe.statusCode == 410)) {
+                                 provider.recycle();
+                                 continue;
+@@ -141,35 +172,39 @@
+                             + candidate.protocol + " / " + latency + "ms · 等待 Media3 READY");
+                     return candidate;
+                 } catch (Exception e) {
+-                    last = e;
+                     String raw = safe(e);
+-                    if (raw.startsWith("UNSUPPORTED ")) {
+-                        trace.add("resolver-skip", provider.label() + " 不支持 " + raw.substring("UNSUPPORTED ".length()));
+-                        break;
+-                    }
+-                    String friendly = friendlyReason(raw);
+-                    long cooldown = classifyCooldown(raw);
+-                    boolean global = isGlobalFailure(raw);
++                    ResolverFailure failure = e instanceof ResolverFailure
++                            ? (ResolverFailure) e : ResolverFailure.classify(raw);
++                    last = failure;
++                    lowerQualityMayHelp |= failure.lowerQualityMayHelp;
++                    String friendly = friendlyReason(failure.getMessage());
+ 
+                     if ("huibq".equals(provider.id())) {
+                         int http = ResolverHttpDiagnostics.huibqHttpCodeSince(start);
+                         if (http >= 500 && http <= 599) {
+-                            friendly = "HTTP " + http + " · Huibq 服务暂不可用，短休后再探";
+-                            cooldown = SERVICE_COOLDOWN;
+-                            global = true;
++                            failure = ResolverFailure.http(http, "HTTP " + http + " · Huibq 服务暂不可用，短休后再探");
++                            last = failure;
++                            friendly = failure.getMessage();
+                         }
+                     }
+ 
+                     health.routeFailure(provider.id(), variant.source, quality, friendly, 0L);
+-                    if (global && cooldown > 0) health.globalFailure(provider.id(), friendly, cooldown);
+-                    else if (cooldown > 0) health.routeCooldown(provider.id(), variant.source, quality, friendly, cooldown);
++                    applyFailureScope(provider, variant.source, quality, failure);
++                    if (!failure.lowerQualityMayHelp) qualityIndependentSkips.add(provider.id());
+                     trace.add("resolver-fail", provider.label() + " / " + friendly);
+                     break;
+                 }
+             }
+         }
+-        throw last == null ? new Exception("当前 Provider Pool 暂无可播放候选")
+-                : new Exception(friendlyReason(safe(last)));
++
++        String platformLabel = Song.providerLabel(variant.source);
++        String message = attempted == 0
++                ? platformLabel + " 当前没有 Provider 声明支持 " + quality
++                : platformLabel + " 原生线路暂时没有可靠音频候选";
++        if (last != null && last.kind == ResolverFailure.Kind.AUTH_OR_FORBIDDEN)
++            message += "（存在权限/403拒绝）";
++        throw new ResolverFailure(last == null ? ResolverFailure.Kind.TRACK_UNAVAILABLE : last.kind,
++                message, lowerQualityMayHelp);
+     }
+ 
+     public void markPlaybackSuccess(AudioCandidate candidate, Song song, long totalLatencyMs) {
+@@ -179,7 +214,7 @@
+                 Math.max(1L, totalLatencyMs));
+         trackRoutes.markReady(song.key(), candidate.variant.source, candidate.quality,
+                 candidate.providerId, candidate.providerLabel);
+-        recentReady.put(candidate.providerId, System.currentTimeMillis());
++        recentReady.put(candidate.providerId + "|" + candidate.variant.source, System.currentTimeMillis());
+     }
+ 
+     public void markPlaybackFailure(AudioCandidate candidate, Song song, String reason) {
+@@ -212,37 +247,44 @@
+ 
+     public String statusText() {
+         StringBuilder b = new StringBuilder();
+-        b.append("Sunflower Audio Provider Hub\n")
+-                .append("QQ / 网易只负责歌曲身份；实际音频由 Provider Pool 动态提供。\n")
+-                .append("只有 Media3 READY 才记成功；单曲 404/403 不会永久污染整个 Provider。\n")
+-                .append("同一首歌曾 READY 的 Provider 会优先；近期在其他歌曲 READY 的 Provider 只做 10 分钟会话级加速。\n\n");
++        b.append("Sunflower Audio Provider Hub V2\n")
++                .append("统计已拆成平台维度：QQ=tx，网易=wy。某 Provider 的网易 READY 不再伪装成 QQ 可用。\n")
++                .append("只有 Media3 READY + Exact Gate 才记成功；候选 URL 的 403/5xx 保持歌曲级；解析接口明确 403 才冷却当前平台，503/初始化失败才按 Provider 级处理。\n")
++                .append("失败类型与音质无关时，不再把 320k 的失败完整重复到 128k。\n\n");
+         for (AudioProvider p : providers) {
++            int txOk = health.platformOk(p.id(), "tx");
++            int txFail = health.platformFail(p.id(), "tx");
++            int wyOk = health.platformOk(p.id(), "wy");
++            int wyFail = health.platformFail(p.id(), "wy");
+             int ok = health.totalOk(p.id());
+             int fail = health.totalFail(p.id());
+-            b.append(ok > 0 ? "● " : "○ ").append(p.label())
+-                    .append(" · ").append(p.type());
+-            if (ok > 0) b.append(" · READY ").append(ok);
+-            else b.append(" · 等待验证");
+-            if (fail > 0) b.append(" · fail ").append(fail);
+-            String last = health.lastReason(p.id());
+-            if (ok == 0 && last != null && !last.isEmpty()) b.append("\n   ").append(last);
++            b.append(ok > 0 ? "● " : "○ ").append(p.label()).append(" · ").append(p.type()).append('\n');
++            b.append("   QQ(tx)   ").append(txOk > 0 ? "READY " + txOk : "未验证");
++            if (txFail > 0) b.append(" · fail ").append(txFail);
+             b.append('\n');
++            b.append("   网易(wy) ").append(wyOk > 0 ? "READY " + wyOk : "未验证");
++            if (wyFail > 0) b.append(" · fail ").append(wyFail);
++            b.append('\n');
++            String caps = p.capabilityHint();
++            if (caps != null && !caps.isEmpty()) b.append("   声明：").append(caps).append('\n');
++            String last = health.lastReason(p.id());
++            if (last != null && !last.isEmpty()) b.append("   最近：").append(last).append('\n');
++            if (ok == 0 && fail == 0) b.append("   尚无实播样本\n");
+         }
+-        b.append("\nCommunity LX scripts 首次用到时才下载并固定到本机；Huibq 继续使用 APK 内置快照。\n")
+-                .append("脚本 Runtime 禁止文件/Content 访问，只暴露受控 HTTP / Buffer / Crypto bridge；播放成功仍由 Media3 裁决。");
++        b.append("\nLX Host V2 对齐官方 mobile 2.0 行为：Promise on/send、脚本信息、Uint8Array Buffer/Crypto、二进制 HTTP、AES-ECB/RSA NoPadding 等。\n")
++                .append("Community scripts 仍按显式‘更新社区源’才换版本；Huibq 保留 APK 内置历史快照。");
+         return b.toString();
+     }
+ 
+     public String compactStatus() {
+-        int readyProviders = 0;
+-        int totalReady = 0;
++        int txReady = 0, wyReady = 0, totalReady = 0;
+         for (AudioProvider p : providers) {
+-            int ok = health.totalOk(p.id());
+-            if (ok > 0) readyProviders++;
+-            totalReady += ok;
++            txReady += health.platformOk(p.id(), "tx");
++            wyReady += health.platformOk(p.id(), "wy");
++            totalReady += health.totalOk(p.id());
+         }
+-        if (totalReady == 0) return "Provider Hub · " + providers.size() + " 源候选 · 等待首次 READY";
+-        return "Provider Hub · " + readyProviders + "/" + providers.size() + " 源已 READY · " + totalReady + " 次实播验证";
++        if (totalReady == 0) return "Provider Hub V2 · QQ/网易等待首次 READY";
++        return "Provider Hub V2 · QQ READY " + txReady + " · 网易 READY " + wyReady;
+     }
+ 
+     public void destroy() {
+@@ -264,16 +306,37 @@
+     private int rankScore(AudioProvider p, String preferred, String platform, long now) {
+         int score = p.basePriority(platform);
+         if (!preferred.isEmpty() && preferred.equals(p.id())) score += 100_000;
+-        Long lastReady = recentReady.get(p.id());
++        Long lastReady = recentReady.get(p.id() + "|" + platform);
+         if (lastReady != null && now - lastReady >= 0L && now - lastReady <= RECENT_READY_WINDOW) score += 1_000;
+         return score;
+     }
+ 
+-    private void applyProbeBreaker(AudioProvider provider, String platform, String quality, int statusCode, String reason) {
+-        String text = "HTTP " + statusCode + " · " + reason;
+-        if (statusCode == 429) health.globalFailure(provider.id(), text, RATE_COOLDOWN);
+-        else if (statusCode >= 500 && statusCode <= 599) health.routeCooldown(provider.id(), platform, quality, text, 30_000L);
+-        // 401/403/404/409/410 stay candidate/route-local.  The next song is allowed to try.
++    private void applyFailureScope(AudioProvider provider, String platform, String quality, ResolverFailure failure) {
++        if (failure == null) return;
++        String reason = friendlyReason(failure.getMessage());
++        switch (failure.kind) {
++            case RATE_LIMITED:
++                health.globalFailure(provider.id(), reason, RATE_COOLDOWN);
++                break;
++            case PROVIDER_INIT_FAILED:
++                health.globalFailure(provider.id(), reason, INIT_COOLDOWN);
++                break;
++            case PROVIDER_UNAVAILABLE:
++                health.globalFailure(provider.id(), reason, SERVICE_COOLDOWN);
++                break;
++            case AUTH_OR_FORBIDDEN:
++                // QDY tx=403 must not suppress QDY wy. Scope authorization rejection to platform.
++                health.platformFailure(provider.id(), platform, reason, 5L * 60L * 1000L);
++                break;
++            case PLATFORM_UNSUPPORTED:
++                health.platformFailure(provider.id(), platform, reason, 10L * 60L * 1000L);
++                break;
++            case NETWORK:
++                health.routeCooldown(provider.id(), platform, quality, reason, SOFT_NETWORK_COOLDOWN);
++                break;
++            default:
++                break;
++        }
+     }
+ 
+     private void add(Context app, ResolverProvider spec) { providers.add(new LxAudioProvider(app, spec)); }
+@@ -282,29 +345,18 @@
+         return "https://fastly.jsdelivr.net/gh/pdone/lx-music-source@main/" + folder + "/latest.js";
+     }
+ 
+-    private static boolean isGlobalFailure(String m) {
+-        String s = m == null ? "" : m.toLowerCase(java.util.Locale.ROOT);
+-        return s.contains("block ip") || s.contains("too many") || s.contains("频繁")
+-                || s.contains("429") || s.contains("rate");
+-    }
+-
+-    private static long classifyCooldown(String m) {
+-        String s = m == null ? "" : m.toLowerCase(java.util.Locale.ROOT);
+-        if (s.contains("block ip") || s.contains("ip 被限制")) return BLOCK_COOLDOWN;
+-        if (s.contains("too many") || s.contains("频繁") || s.contains("429") || s.contains("rate")) return RATE_COOLDOWN;
+-        if (s.contains("初始化") || s.contains("脚本")) return INIT_COOLDOWN;
+-        if (s.contains("unable to resolve host") || s.contains("unknownhost") || s.contains("timeout") || s.contains("timed out")) return SOFT_NETWORK_COOLDOWN;
+-        return 0L;
+-    }
+-
+     private static String friendlyReason(String m) {
+-        String s = m == null ? "" : m;
+-        String lower = s.toLowerCase(java.util.Locale.ROOT);
++        String s = m == null ? "" : m.trim();
++        String first = s.replace('\r', '\n').split("\n", 2)[0].trim();
++        String lower = first.toLowerCase(java.util.Locale.ROOT);
+         if (lower.contains("block ip") || lower.contains("ip 被限制")) return "当前网络被该 Provider 限制，已进入保护冷却";
+-        if (lower.contains("too many") || s.contains("请求过于频繁") || lower.contains("429")) return "请求频率受限，已进入保护冷却";
+-        if (s.contains("初始化")) return "Provider 初始化失败" + suffix(s);
+-        if (s.length() > 150) return s.substring(0, 150) + "…";
+-        return s.isEmpty() ? "暂时不可用" : s;
++        if (lower.contains("too many") || first.contains("请求过于频繁") || lower.contains("429")) return "请求频率受限，已进入保护冷却";
++        if (first.contains("初始化")) {
++            String compact = "Provider 初始化失败" + suffix(first);
++            return compact.length() > 110 ? compact.substring(0, 110) + "…" : compact;
++        }
++        if (first.length() > 130) return first.substring(0, 130) + "…";
++        return first.isEmpty() ? "暂时不可用" : first;
+     }
+ 
+     private static String suffix(String s) {
+--- /mnt/data/SunflowerMusic-V2-baseline/SunflowerMusic-V1/app/src/main/java/com/xingyu/music/data/Http.java	2026-08-11 04:54:47.000000000 +0000
++++ app/src/main/java/com/xingyu/music/data/Http.java	2026-08-11 16:09:27.312348647 +0000
+@@ -1,8 +1,7 @@
+ package com.xingyu.music.data;
+ 
+-import java.io.BufferedReader;
+ import java.io.InputStream;
+-import java.io.InputStreamReader;
++import java.io.ByteArrayOutputStream;
+ import java.io.OutputStream;
+ import java.net.HttpURLConnection;
+ import java.net.URL;
+@@ -19,10 +18,13 @@
+         public final String body;
+         public final String finalUrl;
+         public final Map<String,String> headers;
+-        Response(int code, String body, String finalUrl) { this(code, body, finalUrl, new LinkedHashMap<>()); }
+-        Response(int code, String body, String finalUrl, Map<String,String> headers) {
++        public final byte[] bodyBytes;
++        Response(int code, String body, String finalUrl) { this(code, body, finalUrl, new LinkedHashMap<>(), body == null ? new byte[0] : body.getBytes(StandardCharsets.UTF_8)); }
++        Response(int code, String body, String finalUrl, Map<String,String> headers) { this(code, body, finalUrl, headers, body == null ? new byte[0] : body.getBytes(StandardCharsets.UTF_8)); }
++        Response(int code, String body, String finalUrl, Map<String,String> headers, byte[] bodyBytes) {
+             this.code = code; this.body = body; this.finalUrl = finalUrl;
+             this.headers = headers == null ? new LinkedHashMap<>() : headers;
++            this.bodyBytes = bodyBytes == null ? new byte[0] : bodyBytes;
+         }
+     }
+ 
+@@ -99,10 +101,11 @@
+         int code = c.getResponseCode();
+         String finalUrl = c.getURL().toString();
+         InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+-        String text = read(in);
++        byte[] raw = readBytes(in);
++        String text = new String(raw, StandardCharsets.UTF_8);
+         Map<String,String> responseHeaders = flattenHeaders(c);
+         c.disconnect();
+-        Response response = new Response(code, text, finalUrl, responseHeaders);
++        Response response = new Response(code, text, finalUrl, responseHeaders, raw);
+         // V38 observation-only hook: summarizes an already-completed Huibq response.
+         // It does not perform/retry requests and cannot mutate the response or route health.
+         ResolverHttpDiagnostics.observe(url, response);
+@@ -140,13 +143,12 @@
+         return out;
+     }
+ 
+-    private static String read(InputStream in) throws Exception {
+-        if (in == null) return "";
+-        StringBuilder sb = new StringBuilder();
+-        try (BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+-            char[] buf = new char[4096]; int n;
+-            while ((n = br.read(buf)) >= 0) sb.append(buf, 0, n);
++    private static byte[] readBytes(InputStream in) throws Exception {
++        if (in == null) return new byte[0];
++        try (InputStream input = in; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
++            byte[] buf = new byte[8192]; int n;
++            while ((n = input.read(buf)) >= 0) out.write(buf, 0, n);
++            return out.toByteArray();
+         }
+-        return sb.toString();
+     }
+ }
+--- /mnt/data/SunflowerMusic-V2-baseline/SunflowerMusic-V1/app/src/main/java/com/xingyu/music/data/LxAudioProvider.java	2026-08-11 11:34:32.000000000 +0000
++++ app/src/main/java/com/xingyu/music/data/LxAudioProvider.java	2026-08-11 16:02:48.252351397 +0000
+@@ -35,11 +35,21 @@
+         return base;
+     }
+ 
++    @Override public boolean supportsPlatform(SourceVariant variant) throws Exception {
++        if (variant == null) return false;
++        return runtime().supportsPlatform(variant.source);
++    }
++
+     @Override public boolean supports(SourceVariant variant, String quality) throws Exception {
+         if (variant == null) return false;
+         return runtime().supportsRoute(variant.source, quality);
+     }
+ 
++    @Override public String capabilityHint() {
++        LxSourceRuntime current = runtime;
++        return current == null ? "脚本尚未加载" : current.capabilitySummary();
++    }
++
+     @Override public AudioCandidate resolve(SourceVariant variant, Song song, String quality,
+                                             PlaybackTrace trace) throws Exception {
+         long start = System.currentTimeMillis();
+--- /mnt/data/SunflowerMusic-V2-baseline/SunflowerMusic-V1/app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java	2026-08-09 18:50:44.000000000 +0000
++++ app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java	2026-08-11 16:02:48.252258019 +0000
+@@ -38,9 +38,12 @@
+ import javax.crypto.spec.SecretKeySpec;
+ 
+ /**
+- * LX mobile-compatible custom-source host.
+- * V8 preserves each platform's raw musicInfo and implements the documented
+- * mobile request/formData/buffer/AES/RSA helpers used by real LX source scripts.
++ * LX Mobile 2.0 compatibility host for custom-source scripts.
++ *
++ * V2 keeps WebView as the JS engine but mirrors the public preload contract much more
++ * closely: source init filtering, request callback shape, Uint8Array buffer/crypto,
++ * binary HTTP, AES/RSA modes and the dynamic-code restrictions used by LX Mobile.
++ * It deliberately does not claim byte-for-byte QuickJS engine parity.
+  */
+ public final class LxSourceRuntime {
+     public static final String LX_CUSTOM_API_VERSION = "2.0.0";
+@@ -84,6 +87,44 @@
+     public String initError() { return initError; }
+     public JSONObject sourceInfo() { return sourceInfo; }
+ 
++    /** Non-blocking snapshot only; used by diagnostics and never initializes a source. */
++    public String capabilitySummary() {
++        if (destroyed) return "Runtime 已关闭";
++        if (ready.getCount() > 0) return "脚本初始化中";
++        if (initError != null) return "初始化失败";
++        JSONObject info = sourceInfo;
++        JSONObject sources = info == null ? null : info.optJSONObject("sources");
++        if (sources == null) return "脚本未声明能力";
++        StringBuilder b = new StringBuilder();
++        for (String platform : new String[]{"tx","wy","kw","kg","mg"}) {
++            JSONObject item = sources.optJSONObject(platform);
++            if (item == null) continue;
++            if (b.length() > 0) b.append(" · ");
++            b.append(platform);
++            JSONArray qs = item.optJSONArray("qualitys");
++            if (qs != null && qs.length() > 0) {
++                b.append('[');
++                for (int i = 0; i < qs.length(); i++) {
++                    if (i > 0) b.append('/');
++                    b.append(qs.optString(i, ""));
++                }
++                b.append(']');
++            }
++        }
++        return b.length() == 0 ? "未声明可用音乐平台" : b.toString();
++    }
++
++    public boolean supportsPlatform(String platform) throws Exception {
++        if (destroyed) return false;
++        if (!ready.await(14, TimeUnit.SECONDS)) throw new Exception(provider.label + " 音源初始化超时");
++        if (initError != null) throw new Exception(provider.label + " 初始化失败：" + initError);
++        JSONObject info = sourceInfo;
++        if (info == null) return true;
++        JSONObject sources = info.optJSONObject("sources");
++        if (sources == null) return true;
++        return sources.optJSONObject(platform) != null;
++    }
++
+     public boolean supportsRoute(String platform, String quality) throws Exception {
+         if (destroyed) return false;
+         if (!ready.await(14, TimeUnit.SECONDS)) throw new Exception(provider.label + " 音源初始化超时");
+@@ -163,7 +204,7 @@
+             settings.setDomStorageEnabled(false);
+             settings.setAllowFileAccess(false);
+             settings.setAllowContentAccess(false);
+-            settings.setBlockNetworkLoads(false);
++            settings.setBlockNetworkLoads(true);
+             w.addJavascriptInterface(new NativeHttpBridge(), "NativeHttpBridge");
+             w.addJavascriptInterface(new NativeSourceBridge(), "NativeSourceBridge");
+             w.addJavascriptInterface(new NativeCryptoBridge(), "NativeCryptoBridge");
+@@ -188,73 +229,160 @@
+         String nameQuoted = JSONObject.quote(parsedName.isEmpty() ? provider.label : parsedName);
+         String versionQuoted = JSONObject.quote(scriptMeta(rawSource, "version"));
+         String authorQuoted = JSONObject.quote(scriptMeta(rawSource, "author"));
++        String descQuoted = JSONObject.quote(scriptMeta(rawSource, "description"));
++        String homepageQuoted = JSONObject.quote(scriptMeta(rawSource, "homepage"));
+         String template = """
+                 (function(){
+                   'use strict';
+                   const __handlers = Object.create(null);
+                   const __httpCallbacks = Object.create(null);
+                   let __httpSeq = 0;
+-                  const __EVENT_NAMES = { inited:'inited', request:'request', updateAlert:'updateAlert' };
++                  let __didInit = false;
++                  let __didUpdateAlert = false;
++                  const __EVENT_NAMES = Object.freeze({ request:'request', inited:'inited', updateAlert:'updateAlert' });
++                  const __KNOWN_SOURCES = ['kw','kg','tx','wy','mg','local'];
++                  function __errText(e){ return String(e && (e.stack || e.message || e) || 'unknown error'); }
+                   function __asBytes(v, enc){
+-                    if (Array.isArray(v)) return v.slice();
+-                    if (v && typeof v.length === 'number' && typeof v !== 'string') return Array.from(v);
+-                    return JSON.parse(NativeCryptoBridge.bufferFrom(String(v == null ? '' : v), String(enc || 'utf8')));
++                    if (v instanceof Uint8Array) return new Uint8Array(v);
++                    if (Array.isArray(v)) return new Uint8Array(v.map(function(x){return Number(x)&255;}));
++                    if (v && typeof v.length === 'number' && typeof v !== 'string') return new Uint8Array(Array.from(v));
++                    return new Uint8Array(JSON.parse(NativeCryptoBridge.bufferFrom(String(v == null ? '' : v), String(enc || 'utf8'))));
+                   }
+-                  const __buffer = {
++                  const __buffer = Object.freeze({
+                     from:function(v, enc){ return __asBytes(v, enc); },
+                     bufToString:function(v, format){
+-                      if (typeof v === 'string' && (!format || format === 'utf8' || format === 'utf-8')) return v;
+-                      return NativeCryptoBridge.bufferToString(JSON.stringify(__asBytes(v, 'utf8')), String(format || 'utf8'));
++                      format=String(format || 'utf8').toLowerCase();
++                      if (format === 'binary') return v;
++                      if (typeof v === 'string' && (format === 'utf8' || format === 'utf-8')) return v;
++                      return NativeCryptoBridge.bufferToString(JSON.stringify(Array.from(__asBytes(v, 'utf8'))), format);
+                     }
+-                  };
+-                  function __byteJson(v){ return JSON.stringify(__asBytes(v, 'utf8')); }
+-                  globalThis.lx = {
++                  });
++                  function __byteJson(v){ return JSON.stringify(Array.from(__asBytes(v, 'utf8'))); }
++                  function __normaliseSourceInfo(data){
++                    if (!data || typeof data !== 'object' || !data.sources || typeof data.sources !== 'object')
++                      throw new Error('Missing required parameter init info');
++                    const allowedQualitys={
++                      kw:['128k','320k','flac','flac24bit'], kg:['128k','320k','flac','flac24bit'],
++                      tx:['128k','320k','flac','flac24bit'], wy:['128k','320k','flac','flac24bit'],
++                      mg:['128k','320k','flac','flac24bit'], local:[]
++                    };
++                    const allowedActions={kw:['musicUrl'],kg:['musicUrl'],tx:['musicUrl'],wy:['musicUrl'],mg:['musicUrl'],local:['musicUrl','lyric','pic']};
++                    const out={sources:{}};
++                    __KNOWN_SOURCES.forEach(function(key){
++                      const item=data.sources[key];
++                      if(!item || item.type !== 'music') return;
++                      if(!Array.isArray(item.actions) || !Array.isArray(item.qualitys)) throw new Error('invalid source info: '+key);
++                      out.sources[key]={
++                        type:'music',
++                        actions:allowedActions[key].filter(function(a){return item.actions.indexOf(a)>=0;}),
++                        qualitys:allowedQualitys[key].filter(function(q){return item.qualitys.indexOf(q)>=0;})
++                      };
++                    });
++                    return out;
++                  }
++                  const __crypto = Object.freeze({
++                    md5:function(v){ return NativeCryptoBridge.md5(String(v == null ? '' : v)); },
++                    randomBytes:function(size){ return new Uint8Array(JSON.parse(NativeCryptoBridge.randomBytes(Number(size)||16))); },
++                    aesEncrypt:function(buffer, mode, key, iv){
++                      return new Uint8Array(JSON.parse(NativeCryptoBridge.aesEncrypt(__byteJson(buffer), String(mode||''), __byteJson(key), __byteJson(iv == null ? [] : iv))));
++                    },
++                    rsaEncrypt:function(buffer, key){
++                      return new Uint8Array(JSON.parse(NativeCryptoBridge.rsaEncrypt(__byteJson(buffer), String(key == null ? '' : key))));
++                    }
++                  });
++                  const __utils = Object.freeze({buffer:__buffer, crypto:__crypto});
++                  const __scriptInfo = Object.freeze({
++                    name:__SOURCE_NAME__, description:__SOURCE_DESC__, version:__SOURCE_VERSION__,
++                    author:__SOURCE_AUTHOR__, homepage:__SOURCE_HOMEPAGE__, rawScript:__RAW_SOURCE__
++                  });
++                  const __lx = {
+                     version:'2.0.0',
+                     env:'mobile',
+-                    currentScriptInfo:{ name:__SOURCE_NAME__, description:'', version:__SOURCE_VERSION__, author:__SOURCE_AUTHOR__, homepage:'', rawScript:__RAW_SOURCE__ },
++                    currentScriptInfo:__scriptInfo,
+                     EVENT_NAMES:__EVENT_NAMES,
+-                    on:function(name, handler){ __handlers[name] = handler; },
+-                    send:function(name, data){ NativeSourceBridge.onSend(String(name), JSON.stringify(data == null ? null : data)); },
++                    on:function(name, handler){
++                      return new Promise(function(resolve, reject){
++                        try {
++                          name=String(name); if (name !== __EVENT_NAMES.request) throw new Error('invalid event: '+name);
++                          if (typeof handler !== 'function') throw new Error('event handler must be function');
++                          __handlers[name]=handler; resolve();
++                        } catch(e){ reject(e); }
++                      });
++                    },
++                    send:function(name, data){
++                      return new Promise(function(resolve, reject){
++                        try {
++                          name=String(name);
++                          if (name !== __EVENT_NAMES.inited && name !== __EVENT_NAMES.updateAlert) throw new Error('invalid event: '+name);
++                          if (name === __EVENT_NAMES.inited) {
++                            if (__didInit) throw new Error('inited event can only be sent once');
++                            __didInit=true;
++                            try { data=__normaliseSourceInfo(data); }
++                            catch(initErr) { NativeSourceBridge.onFatal(__errText(initErr)); resolve(); return; }
++                          } else {
++                            if (__didUpdateAlert) throw new Error('updateAlert event can only be sent once');
++                            __didUpdateAlert=true;
++                          }
++                          NativeSourceBridge.onSend(name, JSON.stringify(data == null ? null : data)); resolve();
++                        } catch(e){ reject(e); }
++                      });
++                    },
+                     request:function(url, options, callback){
+-                      const id = 'h' + (++__httpSeq) + '_' + Date.now();
+-                      __httpCallbacks[id] = callback;
+-                      NativeHttpBridge.request(id, String(url), JSON.stringify(options || {}));
+-                      return function(){ try { NativeHttpBridge.cancel(id); } catch(e){} delete __httpCallbacks[id]; };
++                      if (typeof options === 'function') { callback=options; options={}; }
++                      options=options || {};
++                      if (typeof callback !== 'function') throw new Error('lx.request callback required');
++                      const id='h'+(++__httpSeq)+'_'+Date.now();
++                      __httpCallbacks[id]=callback;
++                      NativeHttpBridge.request(id, String(url), JSON.stringify(options));
++                      return function(){ try{NativeHttpBridge.cancel(id);}catch(e){} delete __httpCallbacks[id]; };
+                     },
+-                    utils:{
+-                      buffer:__buffer,
+-                      crypto:{
+-                        md5:function(v){ return NativeCryptoBridge.md5(String(v == null ? '' : v)); },
+-                        randomBytes:function(size){ return NativeCryptoBridge.randomBytes(Number(size)||16); },
+-                        aesEncrypt:function(buffer, mode, key, iv){
+-                          return JSON.parse(NativeCryptoBridge.aesEncrypt(__byteJson(buffer), String(mode||''), __byteJson(key), __byteJson(iv == null ? [] : iv)));
+-                        },
+-                        rsaEncrypt:function(buffer, key){
+-                          return JSON.parse(NativeCryptoBridge.rsaEncrypt(__byteJson(buffer), String(key == null ? '' : key)));
+-                        }
+-                      },
+-                      zlib:{}
+-                    }
++                    utils:__utils
+                   };
+-                  globalThis.__lxHttpComplete = function(id, error, response, body){
+-                    const cb = __httpCallbacks[id]; if (!cb) return; delete __httpCallbacks[id];
+-                    try { cb(error ? new Error(String(error)) : null, response || null, body == null ? (response && response.body) : body); }
+-                    catch(e) { console.error(e); }
++                  Object.freeze(__lx);
++                  globalThis.lx=__lx;
++                  // LX mobile runs sources in QuickJS with dynamic code execution disabled.
++                  // WebView remains our host engine, but expose the same restriction surface.
++                  try { globalThis.eval=function(){ throw new Error('eval is not available'); }; } catch(e){}
++                  try {
++                    const __fnCtor = Function.prototype.constructor;
++                    const __blockedCtor = new Proxy(__fnCtor, {
++                      apply:function(){ throw new Error('Dynamic code execution is not allowed.'); },
++                      construct:function(){ throw new Error('Dynamic code execution is not allowed.'); }
++                    });
++                    Object.defineProperty(Function.prototype,'constructor',{value:__blockedCtor,writable:false,configurable:false,enumerable:false});
++                    globalThis.Function=__blockedCtor;
++                  } catch(e){}
++                  globalThis.__lxHttpComplete=function(id,error,response,body){
++                    const cb=__httpCallbacks[id]; if(!cb)return; delete __httpCallbacks[id];
++                    try {
++                      let realBody = body == null ? (response && response.body) : body;
++                      if (response && response.__binary && Array.isArray(realBody)) realBody = new Uint8Array(realBody);
++                      if (response) { try { delete response.__binary; } catch(e){} response.body=realBody; }
++                      cb(error ? new Error(String(error)) : null, response || null, realBody);
++                    } catch(e){ console.error(e); }
+                   };
+-                  globalThis.__lxInvoke = function(id, source, action, infoJson){
++                  globalThis.__lxInvoke=function(id,source,action,infoJson){
+                     try {
+-                      const handler = __handlers[__EVENT_NAMES.request];
+-                      if (!handler) throw new Error('source request handler missing');
+-                      const info = JSON.parse(infoJson);
+-                      Promise.resolve(handler({source:source, action:action, info:info}))
+-                        .then(function(result){ NativeSourceBridge.onResult(id, true, JSON.stringify(result)); })
+-                        .catch(function(err){ NativeSourceBridge.onResult(id, false, JSON.stringify(String(err && (err.message || err) || 'unknown error'))); });
+-                    } catch(err) { NativeSourceBridge.onResult(id, false, JSON.stringify(String(err && (err.message || err) || 'unknown error'))); }
++                      const handler=__handlers[__EVENT_NAMES.request];
++                      if(!handler) throw new Error('source request handler missing');
++                      const info=JSON.parse(infoJson);
++                      Promise.resolve(handler({source:String(source), action:String(action), info:info}))
++                        .then(function(result){
++                          if (action === 'musicUrl' && (typeof result !== 'string' || result.length > 2048 || !/^https?:\\/\\//i.test(result)))
++                            throw new Error('invalid musicUrl result');
++                          NativeSourceBridge.onResult(id,true,JSON.stringify(result));
++                        })
++                        .catch(function(err){NativeSourceBridge.onResult(id,false,JSON.stringify(__errText(err)));});
++                    } catch(err){NativeSourceBridge.onResult(id,false,JSON.stringify(__errText(err)));}
+                   };
+                 })();
+                 """;
+-        return template.replace("__RAW_SOURCE__", rawQuoted).replace("__SOURCE_NAME__", nameQuoted)
+-                .replace("__SOURCE_VERSION__", versionQuoted).replace("__SOURCE_AUTHOR__", authorQuoted);
++        return template.replace("__RAW_SOURCE__", rawQuoted)
++                .replace("__SOURCE_NAME__", nameQuoted)
++                .replace("__SOURCE_DESC__", descQuoted)
++                .replace("__SOURCE_VERSION__", versionQuoted)
++                .replace("__SOURCE_AUTHOR__", authorQuoted)
++                .replace("__SOURCE_HOMEPAGE__", homepageQuoted);
+     }
+ 
+     private final class NativeSourceBridge {
+@@ -320,8 +448,10 @@
+                     resp.put("statusCode", response.code);
+                     resp.put("statusMessage", "");
+                     resp.put("headers", new JSONObject(response.headers));
+-                    Object decoded = decodeBody(response.body);
++                    boolean binary = options.optBoolean("binary", false);
++                    Object decoded = binary ? byteArrayJsonArray(response.bodyBytes) : decodeBody(response.body);
+                     resp.put("body", decoded);
++                    if (binary) resp.put("__binary", true);
+                     completeHttp(id, null, resp, decoded);
+                 } catch (Exception e) {
+                     completeHttp(id, safe(e), null, null);
+@@ -351,9 +481,9 @@
+         }
+ 
+         @JavascriptInterface public String randomBytes(int size) {
+-            byte[] b = new byte[Math.max(1, Math.min(256, size))];
++            byte[] b = new byte[Math.max(1, Math.min(4096, size))];
+             random.nextBytes(b);
+-            return Base64.encodeToString(b, Base64.NO_WRAP);
++            return byteArrayJson(b);
+         }
+ 
+         @JavascriptInterface public String bufferFrom(String value, String encoding) {
+@@ -381,7 +511,7 @@
+                 byte[] key = normalizeKey(parseByteArray(keyJson), 16);
+                 byte[] iv = normalizeKey(parseByteArray(ivJson), 16);
+                 String lower = mode == null ? "" : mode.toLowerCase(java.util.Locale.ROOT);
+-                String transformation = lower.contains("ecb") ? "AES/ECB/PKCS5Padding" : "AES/CBC/PKCS5Padding";
++                String transformation = lower.contains("ecb") ? "AES/ECB/NoPadding" : "AES/CBC/PKCS5Padding";
+                 Cipher cipher = Cipher.getInstance(transformation);
+                 SecretKeySpec sk = new SecretKeySpec(key, "AES");
+                 if (transformation.contains("ECB")) cipher.init(Cipher.ENCRYPT_MODE, sk);
+@@ -399,7 +529,7 @@
+                         .replaceAll("\\s+", "");
+                 byte[] der = Base64.decode(clean, Base64.DEFAULT);
+                 java.security.PublicKey key = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(der));
+-                Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
++                Cipher cipher = Cipher.getInstance("RSA/ECB/NoPadding");
+                 cipher.init(Cipher.ENCRYPT_MODE, key);
+                 return byteArrayJson(cipher.doFinal(data));
+             } catch (Exception e) { return "[]"; }
+@@ -451,6 +581,12 @@
+         });
+     }
+ 
++    private static JSONArray byteArrayJsonArray(byte[] bytes) {
++        JSONArray a = new JSONArray();
++        if (bytes != null) for (byte x : bytes) a.put(x & 0xff);
++        return a;
++    }
++
+     private static Object decodeBody(String body) {
+         String t = body == null ? "" : body.trim();
+         if (t.isEmpty()) return "";
+--- /mnt/data/SunflowerMusic-V2-baseline/SunflowerMusic-V1/app/src/main/java/com/xingyu/music/data/SourceCoordinator.java	2026-08-11 11:34:32.000000000 +0000
++++ app/src/main/java/com/xingyu/music/data/SourceCoordinator.java	2026-08-11 15:59:59.823340993 +0000
+@@ -9,6 +9,7 @@
+ import java.util.Collections;
+ import java.util.List;
+ import java.util.Set;
++import java.util.HashSet;
+ import java.util.concurrent.CompletableFuture;
+ import java.util.concurrent.ConcurrentHashMap;
+ import java.util.concurrent.ExecutionException;
+@@ -65,16 +66,25 @@
+ 
+         Exception last = null;
+         for (SourceVariant variant : variants) {
++            // Shared only across quality attempts for this exact catalog variant.  A provider
++            // that failed for a quality-independent reason (403/init/source mismatch/etc.) is
++            // not hammered again merely because another provider needs a 128k fallback.
++            Set<String> qualityIndependentProviderSkips = new HashSet<>();
+             trace.add("catalog", Song.providerLabel(variant.source) + " / " + variant.sourceId
+                     + (variant.rawMusicInfoJson().isEmpty() ? " / compact metadata" : " / native metadata"));
+             List<String> qualities = qualities(variant);
+             for (String quality : qualities) {
+                 try {
+-                    Resolution r = resolveVariant(song, variant, quality, excluded, trace);
++                    Resolution r = resolveVariant(song, variant, quality, excluded, qualityIndependentProviderSkips, trace);
+                     if (r != null) return r;
+                 } catch (Exception e) {
+                     last = e;
+                     trace.add("quality-fail", Song.providerLabel(variant.source) + "/" + quality + " / " + safe(e));
++                    if (e instanceof ResolverFailure && !((ResolverFailure) e).lowerQualityMayHelp) {
++                        trace.add("quality-stop", Song.providerLabel(variant.source) + " / " + quality
++                                + " · 失败类型与音质无关，不重复降码率轰炸 Provider");
++                        break;
++                    }
+                 }
+             }
+         }
+@@ -82,7 +92,8 @@
+     }
+ 
+     private Resolution resolveVariant(Song song, SourceVariant variant, String quality,
+-                                      Set<String> excluded, PlaybackTrace trace) throws Exception {
++                                      Set<String> excluded, Set<String> qualityIndependentProviderSkips,
++                                      PlaybackTrace trace) throws Exception {
+         PlaybackUrlStore.Entry stored = cache.get(variant.source, variant.sourceId, quality);
+         if (stored != null) {
+             String route = stored.providerId.isEmpty()
+@@ -109,12 +120,14 @@
+             trace.add("cache-skip", "cached route already failed / " + route);
+         }
+         trace.add("ready-cache", "miss " + variant.source + "/" + quality);
+-        return resolveFresh(song, variant, quality, excluded, trace);
++        return resolveFresh(song, variant, quality, excluded, qualityIndependentProviderSkips, trace);
+     }
+ 
+     private Resolution resolveFresh(Song song, SourceVariant variant, String quality,
+-                                    Set<String> excluded, PlaybackTrace trace) throws Exception {
+-        String key = song.key() + ":" + variant.key() + ":" + quality + ":" + excluded.hashCode();
++                                    Set<String> excluded, Set<String> qualityIndependentProviderSkips,
++                                    PlaybackTrace trace) throws Exception {
++        String key = song.key() + ":" + variant.key() + ":" + quality + ":" + excluded.hashCode()
++                + ":" + qualityIndependentProviderSkips.hashCode();
+         CompletableFuture<Resolution> mine = new CompletableFuture<>();
+         CompletableFuture<Resolution> existing = inFlight.putIfAbsent(key, mine);
+         if (existing != null) {
+@@ -124,7 +137,8 @@
+         }
+ 
+         try {
+-            AudioCandidate candidate = providerHub.resolve(variant, song, quality, excluded, trace);
++            AudioCandidate candidate = providerHub.resolve(variant, song, quality, excluded,
++                    qualityIndependentProviderSkips, trace);
+             Resolution resolved = new Resolution(candidate, song, false);
+             trace.add("url", candidate.providerLabel + " / AudioCandidate obtained / waiting Media3");
+             mine.complete(resolved);
+@@ -157,7 +171,7 @@
+ 
+     public void resetCommunityScripts() { providerHub.resetCommunityScripts(); }
+ 
+-    public String runtimeInfo() { return "Sunflower Provider Hub 1.0 · LX Runtime 2.0.0"; }
++    public String runtimeInfo() { return "Sunflower Provider Hub 2.0 · LX Host Compat 2.0.0"; }
+     public String sourceStatus() { return providerHub.statusText(); }
+     public String compactSourceStatus() { return providerHub.compactStatus(); }
+     public void destroy() { providerHub.destroy(); }
+@@ -172,6 +186,8 @@
+ 
+     private static Exception unwrap(ExecutionException e) {
+         Throwable c = e.getCause();
++        if (c instanceof ResolverFailure) return (ResolverFailure) c;
++        if (c instanceof Exception) return (Exception) c;
+         return new Exception(c == null || c.getMessage() == null ? "source failed" : c.getMessage());
+     }
+ 
+--- /mnt/data/SunflowerMusic-V2-baseline/SunflowerMusic-V1/app/src/main/java/com/xingyu/music/data/SourceHealthStore.java	2026-08-11 11:34:32.000000000 +0000
++++ app/src/main/java/com/xingyu/music/data/SourceHealthStore.java	2026-08-11 15:50:29.607429646 +0000
+@@ -137,7 +137,19 @@
+     }
+ 
+     public String lastRoute(String providerId) { return prefs.getString(providerId + ".lastRoute", ""); }
+-    public String lastReason(String providerId) { return prefs.getString(providerId + ".lastReason", ""); }
++    public String lastReason(String providerId) { return compactReason(prefs.getString(providerId + ".lastReason", "")); }
++
++    public int platformOk(String providerId, String platform) {
++        int total = 0;
++        for (String q : new String[]{"320k","128k"}) total += ok(providerId, platform, q);
++        return total;
++    }
++
++    public int platformFail(String providerId, String platform) {
++        int total = 0;
++        for (String q : new String[]{"320k","128k"}) total += fail(providerId, platform, q);
++        return total;
++    }
+ 
+     public int totalOk(String providerId) {
+         int total = 0;
+@@ -174,5 +186,11 @@
+         return 100;
+     }
+ 
++    private static String compactReason(String s) {
++        if (s == null) return "";
++        String first = s.replace('\r', '\n').split("\n", 2)[0].trim();
++        return first.length() > 120 ? first.substring(0, 120) + "…" : first;
++    }
++
+     private static String safe(String s) { return s == null ? "" : s; }
+ }
+--- /mnt/data/SunflowerMusic-V2-baseline/SunflowerMusic-V1/app/src/main/java/com/xingyu/music/data/SourceScriptStore.java	2026-08-11 11:26:56.000000000 +0000
++++ app/src/main/java/com/xingyu/music/data/SourceScriptStore.java	2026-08-11 15:45:59.295834289 +0000
+@@ -61,7 +61,7 @@
+         // Fresh install: fetch once, pin once. No 24h auto-refresh afterwards.
+         if (!provider.scriptUrl.isEmpty()) {
+             Map<String,String> headers = new LinkedHashMap<>();
+-            headers.put("User-Agent", "SunflowerMusic/1.0 Android");
++            headers.put("User-Agent", "SunflowerMusic/2.0 Android");
+             headers.put("Accept", "text/plain, application/javascript, */*");
+             for (String candidate : candidates(provider.scriptUrl)) {
+                 try {
+--- /dev/null	2026-08-11 15:08:54.434506932 +0000
++++ app/src/main/java/com/xingyu/music/data/ResolverFailure.java	2026-08-11 15:42:48.658739620 +0000
+@@ -0,0 +1,70 @@
++package com.xingyu.music.data;
++
++import java.util.Locale;
++
++/**
++ * Typed resolver failure used by Sunflower V2 to decide scope and whether
++ * dropping quality can possibly help.  It deliberately separates a route
++ * failure from provider/platform outages so one bad QQ candidate cannot poison
++ * a provider's working Netease route.
++ */
++public final class ResolverFailure extends Exception {
++    public enum Kind {
++        QUALITY_UNSUPPORTED,
++        PLATFORM_UNSUPPORTED,
++        AUTH_OR_FORBIDDEN,
++        RATE_LIMITED,
++        PROVIDER_UNAVAILABLE,
++        PROVIDER_INIT_FAILED,
++        TRACK_UNAVAILABLE,
++        NETWORK,
++        INVALID_CANDIDATE,
++        UNKNOWN
++    }
++
++    public final Kind kind;
++    public final boolean lowerQualityMayHelp;
++
++    public ResolverFailure(Kind kind, String message, boolean lowerQualityMayHelp) {
++        super(message == null || message.trim().isEmpty() ? "暂时不可用" : message.trim());
++        this.kind = kind == null ? Kind.UNKNOWN : kind;
++        this.lowerQualityMayHelp = lowerQualityMayHelp;
++    }
++
++    public static ResolverFailure classify(String raw) {
++        String text = raw == null ? "" : raw.trim();
++        String s = text.toLowerCase(Locale.ROOT);
++        if (s.startsWith("unsupported ") || s.contains("quality unsupported") || s.contains("音质不支持"))
++            return new ResolverFailure(Kind.QUALITY_UNSUPPORTED, text, true);
++        if (s.contains("source not match") || s.contains("platform unsupported") || s.contains("不支持 tx") || s.contains("不支持 wy"))
++            return new ResolverFailure(Kind.PLATFORM_UNSUPPORTED, text, false);
++        if (s.contains("http 401") || s.contains("http 403") || s.contains(" 401") || s.contains(" 403") || s.contains("forbidden") || s.contains("unauthorized"))
++            return new ResolverFailure(Kind.AUTH_OR_FORBIDDEN, text, false);
++        if (s.contains("429") || s.contains("too many") || s.contains("rate limit") || s.contains("请求过于频繁") || s.contains("频繁"))
++            return new ResolverFailure(Kind.RATE_LIMITED, text, false);
++        if (s.contains("初始化") || s.contains("init failed") || s.contains("加载音源信息失败") || s.contains("脚本错误"))
++            return new ResolverFailure(Kind.PROVIDER_INIT_FAILED, text, false);
++        if (s.contains("http 503") || s.contains("http 502") || s.contains("http 504") || s.contains("service unavailable"))
++            return new ResolverFailure(Kind.PROVIDER_UNAVAILABLE, text, false);
++        if (s.contains("404") || s.contains("410") || s.contains("get music url failed") || s.contains("not found") || s.contains("无可用播放") || s.contains("解析失败"))
++            return new ResolverFailure(Kind.TRACK_UNAVAILABLE, text, false);
++        if (s.contains("timeout") || s.contains("timed out") || s.contains("unknownhost") || s.contains("unable to resolve host") || s.contains("network"))
++            return new ResolverFailure(Kind.NETWORK, text, false);
++        if (s.contains("无效音频") || s.contains("invalid") || s.contains("candidate"))
++            return new ResolverFailure(Kind.INVALID_CANDIDATE, text, false);
++        return new ResolverFailure(Kind.UNKNOWN, text, false);
++    }
++
++    public static ResolverFailure http(int statusCode, String message) {
++        String text = (message == null || message.isEmpty()) ? "HTTP " + statusCode : message;
++        if (statusCode == 401 || statusCode == 403)
++            return new ResolverFailure(Kind.AUTH_OR_FORBIDDEN, text, false);
++        if (statusCode == 429)
++            return new ResolverFailure(Kind.RATE_LIMITED, text, false);
++        if (statusCode == 404 || statusCode == 410)
++            return new ResolverFailure(Kind.TRACK_UNAVAILABLE, text, false);
++        if (statusCode >= 500)
++            return new ResolverFailure(Kind.PROVIDER_UNAVAILABLE, text, false);
++        return new ResolverFailure(Kind.INVALID_CANDIDATE, text, false);
++    }
++}
+--- /dev/null	2026-08-11 15:08:54.434506932 +0000
++++ app/src/main/java/com/xingyu/music/data/OfficialPlaybackProvider.java	2026-08-11 15:47:16.839341491 +0000
+@@ -0,0 +1,15 @@
++package com.xingyu.music.data;
++
++import com.xingyu.music.model.Song;
++import com.xingyu.music.model.SourceVariant;
++
++/**
++ * Reserved seam for first-party authorized playback SDKs (for example an
++ * officially provisioned QQ/QPlay integration).  V2 intentionally ships no
++ * credentials, private endpoints, or entitlement bypass.  An implementation
++ * can be added later without changing SourceCoordinator/Media3.
++ */
++public interface OfficialPlaybackProvider extends AudioProvider {
++    boolean isConfigured();
++    boolean hasPlaybackEntitlement(SourceVariant variant, Song song) throws Exception;
++}
+--- /mnt/data/SunflowerMusic-V2-baseline/SunflowerMusic-V1/app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-11 11:37:53.000000000 +0000
++++ app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-11 15:45:59.296041046 +0000
+@@ -580,7 +580,7 @@
+         if (target == null) return true;
+         long expectedMs = target.durationMs;
+         if (expectedMs < 60_000L || actualMs == C.TIME_UNSET || actualMs <= 0L) return true;
+-        long tolerance = Math.max(15_000L, Math.round(expectedMs * 0.12d));
++        long tolerance = Math.max(7_000L, Math.min(12_000L, Math.round(expectedMs * 0.03d)));
+         return Math.abs(actualMs - expectedMs) <= tolerance;
+     }
+ 

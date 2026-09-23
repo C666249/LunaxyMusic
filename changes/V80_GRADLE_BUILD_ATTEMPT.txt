@@ -1,0 +1,7 @@
+Gradle build attempt
+
+Command: ./gradlew :app:compileDebugJavaWithJavac --offline
+Result: environment blocked before Gradle execution because wrapper Gradle 9.5.0 is not cached and services.gradle.org DNS resolution fails.
+Observed: curl: (6) Could not resolve host: services.gradle.org
+
+This is an environment/dependency bootstrap limitation, not a reported Java compile error. Modified adapters separately passed isolated javac syntax/type-shape compilation with stubs.

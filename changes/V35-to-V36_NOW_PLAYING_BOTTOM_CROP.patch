@@ -1,0 +1,49 @@
+--- /mnt/data/v35work/LunaxyMusic-V35/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 16:51:28.801291172 +0000
++++ /mnt/data/v36work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 17:18:34.773279414 +0000
+@@ -3691,7 +3691,11 @@
+         });
+         LinearLayout content = Ui.column(this);
+         content.setGravity(Gravity.CENTER_HORIZONTAL);
+-        content.setPadding(Ui.dp(this, 20), Ui.dp(this, 12), Ui.dp(this, 20), Ui.dp(this, 38));
++        // V36: trim only the trailing bottom spacer of the outer now-playing page.
++        // At the outer ScrollView's bottom limit this reduces maxScroll by ~32dp, so the
++        // whole composition rests lower and exposes more of the vinyl at the top. All
++        // internal spacing (especially transport -> lyricPanel's 44dp gap) stays unchanged.
++        content.setPadding(Ui.dp(this, 20), Ui.dp(this, 12), Ui.dp(this, 20), Ui.dp(this, 6));
+         scroll.addView(content);
+         playerSafe.addView(scroll, Ui.frame(-1, -1, Gravity.FILL));
+ 
+--- /mnt/data/v35work/LunaxyMusic-V35/app/build.gradle.kts	2026-08-10 16:50:48.496241239 +0000
++++ /mnt/data/v36work/LunaxyMusic-V36/app/build.gradle.kts	2026-08-10 17:18:34.773453593 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 38
+-        versionName = "35.0.0"
++        versionCode = 39
++        versionName = "36.0.0"
+     }
+ 
+     buildTypes {
+--- /mnt/data/v35work/LunaxyMusic-V35/BUILD_APK.bat	2026-08-10 16:50:48.496288019 +0000
++++ /mnt/data/v36work/LunaxyMusic-V36/BUILD_APK.bat	2026-08-10 17:18:34.773505490 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   LunaxyMusic V35 - Debug APK Build
++echo   LunaxyMusic V36 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V35-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V36-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\LunaxyMusic-V35-debug.apk
++echo [OK] APK: %CD%\dist\LunaxyMusic-V36-debug.apk
+ pause

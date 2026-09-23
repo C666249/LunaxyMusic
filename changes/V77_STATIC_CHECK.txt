@@ -1,0 +1,13 @@
+Lunaxy Music V77 static review
+
+PASS MainActivity delimiter/comment/string lexical structure check.
+PASS old initial-indicator tabs.post(...) pattern removed.
+PASS one-shot OnPreDrawListener present.
+PASS positionSearchTabIndicator(..., false) executes before first draw of rebuilt Tab.
+PASS app/src/main diff vs Stable V76: MainActivity.java only.
+PASS Locked Core: 25/25 byte-identical.
+PASS Stable V77 and Beta V9 MainActivity.java byte-identical.
+PASS Stable V77 and Beta V9 app/src/main differ only in res/values/strings.xml App identity.
+
+Build note:
+The companion Beta build attempt in the same environment could not download Gradle 9.5.0 because services.gradle.org DNS resolution failed. Since V77 shares the exact same runtime MainActivity and wrapper requirements, this package is delivered with static/regression checks only; final Android compile remains your Android Studio build.

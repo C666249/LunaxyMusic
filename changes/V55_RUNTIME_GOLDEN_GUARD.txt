@@ -1,0 +1,13 @@
+V54 -> V55 app/src/main Golden Guard
+
+UNCHANGED=80
+CHANGED=3
+
+CHANGE	MODIFIED	java/com/xingyu/music/MainActivity.java	2e24381d59817d566aa9a6ab7f88e239cac23f458f32f2cbe1d70b1338bd7708	53e8401fddfe77e2e02cc0edb3c21aa21ae9fea5b37d1c0363b8f891bde1a89b
+CHANGE	MODIFIED	java/com/xingyu/music/ui/Starfield3DView.java	57016a662fdfbd21d28cffde859c13971cf857b81e74ccc128422d34e23d3030	42a87450fabb2b08a986d9baf648af8a1f065228441bd741efb6c8e309d74035
+CHANGE	ADDED	java/com/xingyu/music/ui/StarfieldBackdropView.java
+
+2D V49 GOLDEN:
+V49 StarfieldView 4fea3486177b4ea36bd52f38351ecd30e4ed351b2cd941435904adc057b4b5eb
+V55 StarfieldView 4fea3486177b4ea36bd52f38351ecd30e4ed351b2cd941435904adc057b4b5eb
+PASS

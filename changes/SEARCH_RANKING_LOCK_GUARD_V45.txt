@@ -1,0 +1,8 @@
+Lunaxy Music V45 — SEARCH RANKING LOCK GUARD
+===============================================
+
+Baseline: V44
+Result: PASS
+SHA-256: 4b820a8affb5f29bf61061ce2358cf45c25c58cb61c80c759ade0448236e0fc3
+
+Original/official recording priority, alternate-version penalties and same-version quality bias remain unchanged.

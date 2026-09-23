@@ -1,0 +1,29 @@
+Lunaxy Music V66 — Static Check
+
+PASS Java delimiter 79/79
+PASS XML 17/17
+PASS PNG 2/2
+PASS SourceHealthStore + TrackRouteStore + DownloadRouteStore synthetic javac
+PASS AudioProviderHub synthetic javac
+PASS DownloadDiscoveryResolver synthetic javac
+PASS OfflineDownloadService synthetic javac
+PASS KugouPlaylistImportApi synthetic javac
+PASS changed Java javac syntax-error pattern hits = 0
+
+PASS Learning V4 provider route half-life = 14 days
+PASS Exact-track route affinity half-life = 7 days
+PASS legacy lifetime counters seed recent learning only weakly/capped
+PASS soft reset does not clear SharedPreferences wholesale and does not touch PlaybackUrlStore
+PASS safety cooldown keys remain outside soft-reset removal set
+PASS Download Matrix max real resolver calls/round = 14
+PASS Download active discovery budget/round = 20000ms
+PASS playback gate checked before each real download resolver request
+PASS playback wait time excluded from active discovery budget
+PASS download plane reads playback decayed learning but does not write playback READY/Health/TrackRoute
+PASS TX cold-download exclusion retained
+PASS Exact Gate 0.98 retained
+PASS stable-play full-speed transfer retained; resolving/BUFFERING pauses transfer
+PASS Kugou share prose URL extraction present; QQ/WY/KW importer source files unchanged
+PASS Onboarding remains 5 steps and Context Coach synced
+
+REAL ANDROID BUILD: attempted `./gradlew :app:assembleDebug`; Gradle 9.5.0 download could not resolve services.gradle.org and the attempt timed out while curl retried. Real Android build is NOT claimed as passed.

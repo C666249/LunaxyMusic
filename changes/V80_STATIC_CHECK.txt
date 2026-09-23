@@ -1,0 +1,13 @@
+Modified-adapter static check
+
+PASS: isolated javac -source 17/-target 17 compilation using minimal model/JSON/HTTP stubs.
+PASS: NeteaseLyricSearchApi.java and QQMusicLyricSearchApi.java are byte-identical between Beta V12 and Stable V80.
+PASS: Beta/Stable app/src/main differ only at res/values/strings.xml (App identity).
+PASS: no findLocalLyricMatches/addLocalLyricCandidates/local lyric-discovery scan remains.
+PASS: Locked Core 25/25 byte-identical to previous delivered versions.
+
+Remote route audit:
+- NetEase primary: EAPI apiPath /api/cloudsearch/pc, type=1006.
+- QQ primary: DoSearchForQQMusicDesktop, search_type=7, grp=1, comm ct=19/cv=1859/uin=0.
+
+Full Android Gradle compile was attempted but the project wrapper tried to download Gradle 9.5.0 and the container could not resolve services.gradle.org. Therefore no claim of full Android compilation is made.

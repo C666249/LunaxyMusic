@@ -1,0 +1,745 @@
+diff -ruN '--exclude=.gradle' '--exclude=build' '--exclude=dist' '--exclude=SHA256SUMS.txt' '--exclude=V44-to-V45_COMMERCIAL_PAGING.patch' /mnt/data/LunaxyMusic-V44-baseline-for-v45/BUILD_APK.bat /mnt/data/v45work/LunaxyMusic-V45/BUILD_APK.bat
+--- /mnt/data/LunaxyMusic-V44-baseline-for-v45/BUILD_APK.bat	2026-08-11 08:18:57.000000000 +0000
++++ /mnt/data/v45work/LunaxyMusic-V45/BUILD_APK.bat	2026-08-11 08:52:03.247076335 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   LunaxyMusic V44 - Debug APK Build
++echo   LunaxyMusic V45 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V44-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V45-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\LunaxyMusic-V44-debug.apk
++echo [OK] APK: %CD%\dist\LunaxyMusic-V45-debug.apk
+ pause
+diff -ruN '--exclude=.gradle' '--exclude=build' '--exclude=dist' '--exclude=SHA256SUMS.txt' '--exclude=V44-to-V45_COMMERCIAL_PAGING.patch' "/mnt/data/LunaxyMusic-V44-baseline-for-v45/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt" "/mnt/data/v45work/LunaxyMusic-V45/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"
+--- "/mnt/data/LunaxyMusic-V44-baseline-for-v45/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-11 08:23:42.000000000 +0000
++++ "/mnt/data/v45work/LunaxyMusic-V45/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-11 08:52:03.247115103 +0000
+@@ -1,14 +1,18 @@
+-LunaxyMusic V44.0 — 搜索分页 · 分区简化 · 播放核心锁定
++LunaxyMusic V45.0 — 商业级搜索分页 · 歌单无感加载 · 播放核心锁定
+ 
+-1. 可直接覆盖安装 V43；收藏、歌单、READY URL 缓存等本机数据继续保留。
+-2. 搜索结果顶部网易/QQ统计胶囊继续支持来源筛选。
+-3. “歌曲 / 歌手”固定在上，“歌词”固定在下；两个分区每次搜索默认展开，右侧三角可独立收起/展开。
+-4. 不再根据 8 字阈值交换两个分区，也删除标题中的“匹配”二字。
+-5. “歌曲 / 歌手”底部增加继续加载。未筛选时网易/QQ下一页并行；筛选后只加载当前平台。
+-6. 加载后保持当前滚动位置，不回顶部；只刷新结果容器，不重建整个搜索 Tab。
+-7. 每次新增结果都会重新走原 SearchRanker，继续保持原唱/标准录音优先，同等版本下音质优先。
+-8. 歌词搜索独立并行，不阻塞普通歌名/歌手结果；1-2字极短关键词不额外发歌词网络请求。
+-9. 新增 SearchPaginationApi 只负责用户点击后的搜索下一页，不解析音频URL、不写健康状态、不写READY缓存。
+-10. 播放+调度锁定核验：changes\PLAYBACK_SCHEDULING_LOCK_GUARD_V44.txt，19/19 与V43字节级一致。
+-11. BUILD_APK.bat 成功后输出 dist\LunaxyMusic-V44-debug.apk。
+-12. 容器无法下载 Gradle 9.5.0，因此最终 APK 仍请在本机 Android Studio / BUILD_APK.bat 构建。
++本版验收重点：
++1. 搜索综合页继续固定“歌曲 / 歌手”在上、“歌词”在下；两区默认展开，均可手动收起。
++2. 搜索结果标题保持简洁：只显示“歌曲 / 歌手”“歌词”，没有“匹配”二字。
++3. 网易 / QQ 统计胶囊仍可单击筛选来源。
++4. 综合页取消大号“继续加载”按钮；歌曲 / 歌手标题右侧在有更多结果时显示“全部 ›”。
++5. 点“全部 ›”进入独立全结果页：ListView 虚拟化显示，只创建屏幕附近行。
++6. 全结果页接近底部约 7 首时自动分页；未筛选时网易+QQ并行，筛选后只请求对应来源。
++7. 自动分页后保持当前可见歌曲作为锚点；即使 SearchRanker 把新发现的原唱重新排到前面，当前阅读位置不会突然跳走。
++8. 原唱优先、正式录音优先、同版本音质优先继续由原 SearchRanker 负责，SearchRanker 本版不改。
++9. 歌单详情首批只渲染 40 首；接近底部时本地无感追加 40 首，不再显示“继续加载 40 首”与说明文字。
++10. 歌单点击任意已显示歌曲时，播放队列仍使用完整歌单，不会只播放当前已渲染的 40/80 首。
++11. 收藏/所有歌单手动排序、拖拽保存逻辑保持 V44。
++12. 播放+调度锁定核验：changes\PLAYBACK_SCHEDULING_LOCK_GUARD_V45.txt，必须 19/19 与 V44 字节级一致。
++13. BUILD_APK.bat 成功后输出 dist\LunaxyMusic-V45-debug.apk。
++
++注意：V45 只调整搜索/歌单 UI 与数据分页展示，不修改 Huibq/QDY、SourceHealth、Media3、READY URL 缓存或播放调度。
+diff -ruN '--exclude=.gradle' '--exclude=build' '--exclude=dist' '--exclude=SHA256SUMS.txt' '--exclude=V44-to-V45_COMMERCIAL_PAGING.patch' "/mnt/data/LunaxyMusic-V44-baseline-for-v45/V45.0_\346\220\234\347\264\242\344\270\216\346\255\214\345\215\225\346\227\240\346\204\237\345\210\206\351\241\265\344\274\230\345\214\226.md" "/mnt/data/v45work/LunaxyMusic-V45/V45.0_\346\220\234\347\264\242\344\270\216\346\255\214\345\215\225\346\227\240\346\204\237\345\210\206\351\241\265\344\274\230\345\214\226.md"
+--- "/mnt/data/LunaxyMusic-V44-baseline-for-v45/V45.0_\346\220\234\347\264\242\344\270\216\346\255\214\345\215\225\346\227\240\346\204\237\345\210\206\351\241\265\344\274\230\345\214\226.md"	1970-01-01 00:00:00.000000000 +0000
++++ "/mnt/data/v45work/LunaxyMusic-V45/V45.0_\346\220\234\347\264\242\344\270\216\346\255\214\345\215\225\346\227\240\346\204\237\345\210\206\351\241\265\344\274\230\345\214\226.md"	2026-08-11 08:52:03.247345496 +0000
+@@ -0,0 +1,23 @@
++# Lunaxy Music V45.0
++
++## 目标
++把 V44 的显式“继续加载”进一步收敛成商业音乐 App 常见的无感分页，同时保持 V41 已锁定播放/调度完全不变。
++
++## 搜索
++- 综合页维持“歌曲 / 歌手”→“歌词”的固定顺序，默认均展开。
++- 去掉综合页底部大号“继续加载”按钮。
++- 有更多普通歌曲结果时，标题行提供轻量“全部 ›”。
++- 全结果页使用 Android 原生 ListView 虚拟化。
++- 距离底部约 7 项自动请求下一页；全部来源时网易/QQ并行，筛选后只请求当前来源。
++- 加载后重新经过原 SearchRanker；使用当前首个可见 song key + top offset 保持锚点，不回顶部。
++- 网络失败设置短暂自动加载节流，避免滚动到底后连续轰炸。
++
++## 歌单详情
++- 首屏仍只创建 40 首歌曲 View。
++- 距离页面底部约 620dp 时直接从已经在内存中的完整歌单追加下一批 40 首。
++- 不刷新 pageHost、不保存/恢复 scrollY、不出现按钮或加载等待。
++- UI 分批展示与真实完整播放队列分离，点击任一行仍把整张歌单交给原 playQueue。
++- 手动排序继续使用既有 ListView 虚拟化拖拽模式。
++
++## 播放安全边界
++本版不修改：SourceCoordinator、MultiSourceManager、SourceHealthStore、PlaybackUrlStore、LxSourceRuntime、AudioUrlProbe、ResolverProvider、SourceScriptStore、QQMusicApi、NeteaseApi、V14PlaybackStateMigration、PlaybackTrace、ResolverHttpDiagnostics、Http、PlaybackService、BeatAudioProcessor、Song、SourceVariant、huibq-latest.js。
+diff -ruN '--exclude=.gradle' '--exclude=build' '--exclude=dist' '--exclude=SHA256SUMS.txt' '--exclude=V44-to-V45_COMMERCIAL_PAGING.patch' "/mnt/data/LunaxyMusic-V44-baseline-for-v45/V45.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt" "/mnt/data/v45work/LunaxyMusic-V45/V45.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"
+--- "/mnt/data/LunaxyMusic-V44-baseline-for-v45/V45.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"	1970-01-01 00:00:00.000000000 +0000
++++ "/mnt/data/v45work/LunaxyMusic-V45/V45.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"	2026-08-11 08:52:03.247379316 +0000
+@@ -0,0 +1,13 @@
++Lunaxy Music V45.0 自测结果
++=============================
++[PASS] 搜索综合页无“继续加载”按钮，使用“全部 ›”进入全结果页。
++[PASS] 全结果页使用 ListView/BaseAdapter 虚拟化，不把几百首一次塞进 LinearLayout。
++[PASS] 距离底部自动分页；来源筛选状态决定请求网易、QQ或两者并行。
++[PASS] 自动分页保留当前可见歌曲锚点，不强制 scrollTo(0)。
++[PASS] 搜索综合页最多展示前 50 个普通结果；在全结果页加载更多后返回也不会把几百行全部重画。
++[PASS] 歌单详情取消显式“继续加载 40 首”，首批40，近底部本地追加40。
++[PASS] 歌单懒加载只改变 UI 已渲染数量，playlistSongList 仍使用完整 fullPlaylist 构建真实播放队列。
++[PASS] SearchRanker 与 V44 字节一致，原唱/版本/音质排序规则没有改。
++[PASS] MainActivity javac PARSE 级检查未发现 expected / illegal start / unclosed / reached end 等语法错误。
++[PASS] 播放与调度锁定对象按 V44 基线逐文件 SHA-256 核验（见 changes/PLAYBACK_SCHEDULING_LOCK_GUARD_V45.txt）。
++[NOTE] 当前容器无 Android SDK 且 Gradle wrapper 无法在线拉取完整环境，最终 APK 仍请在本机 Android Studio / BUILD_APK.bat 构建。
+diff -ruN '--exclude=.gradle' '--exclude=build' '--exclude=dist' '--exclude=SHA256SUMS.txt' '--exclude=V44-to-V45_COMMERCIAL_PAGING.patch' /mnt/data/LunaxyMusic-V44-baseline-for-v45/app/build.gradle.kts /mnt/data/v45work/LunaxyMusic-V45/app/build.gradle.kts
+--- /mnt/data/LunaxyMusic-V44-baseline-for-v45/app/build.gradle.kts	2026-08-11 08:18:57.000000000 +0000
++++ /mnt/data/v45work/LunaxyMusic-V45/app/build.gradle.kts	2026-08-11 08:52:03.246956547 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 47
+-        versionName = "44.0.0"
++        versionCode = 48
++        versionName = "45.0.0"
+     }
+ 
+     buildTypes {
+diff -ruN '--exclude=.gradle' '--exclude=build' '--exclude=dist' '--exclude=SHA256SUMS.txt' '--exclude=V44-to-V45_COMMERCIAL_PAGING.patch' /mnt/data/LunaxyMusic-V44-baseline-for-v45/app/src/main/java/com/xingyu/music/MainActivity.java /mnt/data/v45work/LunaxyMusic-V45/app/src/main/java/com/xingyu/music/MainActivity.java
+--- /mnt/data/LunaxyMusic-V44-baseline-for-v45/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 08:22:51.000000000 +0000
++++ /mnt/data/v45work/LunaxyMusic-V45/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 08:53:48.367053250 +0000
+@@ -95,11 +95,11 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V44.0 – Playback core locked; paged search loading without scroll reset.
++ * Lunaxy Music V45.0 – Playback core locked; commercial-style search paging and playlist lazy rendering.
+  *
+  * The optional music download/offline subsystem remains removed. Playback resolution, Media3 READY
+  * validation, URL cache and the V41 fixed source scheduling/health policy are treated as a locked zone;
+- * V44 changes only search-result pagination/UI behavior outside that zone.
++ * V45 changes only search/list rendering and navigation outside that zone.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(4);
+@@ -218,6 +218,8 @@
+     private int searchTxNextPage = 2;
+     private static final int SEARCH_PAGE_SIZE = 30;
+     private int searchRequestToken;
++    private boolean searchAllResultsOpen;
++    private long searchAutoLoadNotBeforeMs;
+ 
+     private static final class LyricSearchResult {
+         final Song song;
+@@ -444,6 +446,7 @@
+                 tab = idx;
+                 openPlaylist = null;
+                 openSmartCollection = null;
++                searchAllResultsOpen = false;
+                 refreshNav();
+                 renderTab();
+             });
+@@ -751,6 +754,7 @@
+         View page;
+         if (openSmartCollection != null) page = smartCollectionPage(openSmartCollection);
+         else if (openPlaylist != null) page = playlistDetailPage(openPlaylist);
++        else if (searchAllResultsOpen && tab == 1) page = searchAllResultsPage();
+         else if (tab == 0) page = homePage();
+         else if (tab == 1) page = searchPage();
+         else if (tab == 2) page = playlistsPage();
+@@ -1755,8 +1759,10 @@
+         final int requestToken = ++searchRequestToken;
+         lastQuery = keyword;
+         searchSourceFilter = "";
++        searchAllResultsOpen = false;
++        searchAutoLoadNotBeforeMs = 0L;
+         lyricSearchResults = new ArrayList<>();
+-        // V44: section order is stable for every query. Title/artist is always first and both
++        // V45: section order is stable for every query. Title/artist is always first and both
+         // sections start expanded; the user can collapse either one manually.
+         searchMetadataExpanded = true;
+         searchLyricsExpanded = true;
+@@ -1942,7 +1948,7 @@
+             }
+         }
+         // A metadata-only coincidence is weaker than real lyric evidence. Keep this ranking rule
+-        // independent of the old 8-character presentation threshold removed in V44.
++        // independent of the old 8-character presentation threshold removed before V45.
+         if (needle.length() >= 3 && metadataContainsQuery(hit.song, keyword) && !snippet.contains(needle)) score -= 1200;
+         return score;
+     }
+@@ -2055,9 +2061,11 @@
+             return;
+         }
+ 
+-        // V44 keeps a predictable hierarchy for every query: title/artist first, lyrics second.
++        // V45 keeps a predictable hierarchy for every query: title/artist first, lyrics second.
+         // Both sections are independently collapsible and start expanded on each new search.
+-        addMetadataSearchSection(holder, visibleSongs, true);
++        List<Song> summarySongs = visibleSongs.size() > 50
++                ? new ArrayList<>(visibleSongs.subList(0, 50)) : visibleSongs;
++        addMetadataSearchSection(holder, summarySongs, true);
+         addLyricSearchSection(holder, visibleLyrics, true);
+     }
+ 
+@@ -2077,22 +2085,15 @@
+             content.addView(empty, Ui.lp(-1, Ui.dp(this, 40)));
+         } else {
+             content.addView(songList(safeSongs, safeSongs), Ui.lp(-1, -2));
+-            if (searchHasMoreForCurrentFilter()) {
+-                TextView more = outlineAction(searchMoreLoading ? "加载中…" : searchMoreLabel());
+-                more.setEnabled(!searchMoreLoading);
+-                more.setAlpha(searchMoreLoading ? .58f : 1f);
+-                more.setOnClickListener(v -> loadMoreSearchResults(holder, more));
+-                LinearLayout.LayoutParams mp = Ui.lp(-1, Ui.dp(this, 44));
+-                mp.topMargin = Ui.dp(this, 12);
+-                content.addView(more, mp);
+-
+-            }
+         }
++        boolean hasAllPage = !safeSongs.isEmpty()
++                && (searchHasMoreForCurrentFilter() || visibleSearchSongs().size() > safeSongs.size());
++        String allAction = hasAllPage ? "全部 ›" : "";
+         LinearLayout header = searchSectionHeader("歌曲 / 歌手", status,
+                 searchMetadataExpanded, expanded -> {
+                     searchMetadataExpanded = expanded;
+                     setSearchSectionExpanded(content, expanded);
+-                });
++                }, allAction, v -> openAllSearchResults());
+         LinearLayout.LayoutParams hp = marginTop(14);
+         holder.addView(header, hp);
+         holder.addView(content, marginTop(4));
+@@ -2113,42 +2114,150 @@
+         return searchWyHasMore || searchTxHasMore;
+     }
+ 
+-    private String searchMoreLabel() {
+-        if ("wy".equals(searchSourceFilter)) {
+-            return "继续加载网易结果" + searchProgressText(lastWySearchSongs.size(), lastWyCount);
+-        }
+-        if ("tx".equals(searchSourceFilter)) {
+-            return "继续加载QQ结果" + searchProgressText(lastTxSearchSongs.size(), lastTxCount);
+-        }
+-        if (searchWyHasMore && searchTxHasMore) return "继续加载更多结果";
+-        if (searchWyHasMore) return "继续加载网易结果";
+-        if (searchTxHasMore) return "继续加载QQ结果";
+-        return "已加载全部结果";
++    private void openAllSearchResults() {
++        if (lastQuery == null || lastQuery.trim().isEmpty() || visibleSearchSongs().isEmpty()) return;
++        hideSearchSuggestions();
++        searchAllResultsOpen = true;
++        suppressNextPageAnimation = false;
++        renderTab();
+     }
+ 
+-    private String searchProgressText(int loaded, int total) {
+-        if (total <= 0) return " · 已加载 " + loaded;
+-        return " · " + Math.min(loaded, total) + "/" + total;
++    /**
++     * V45 commercial-style full search page. The comprehensive search page stays compact; this
++     * dedicated page owns the virtualized list and silently requests another provider page when the
++     * user approaches the bottom. Pagination never resolves audio URLs and never touches playback.
++     */
++    private View searchAllResultsPage() {
++        LinearLayout root = Ui.column(this);
++        root.setPadding(Ui.dp(this, 20), Ui.dp(this, 20), Ui.dp(this, 20), 0);
++
++        LinearLayout top = Ui.row(this);
++        top.setGravity(Gravity.CENTER_VERTICAL);
++        FrameLayout back = Ui.iconButton(this, IconView.Type.BACK, 42, Ui.TEXT_2, Color.TRANSPARENT);
++        back.setContentDescription("返回搜索综合页");
++        back.setOnClickListener(v -> {
++            searchAllResultsOpen = false;
++            suppressNextPageAnimation = true;
++            renderTab();
++        });
++        top.addView(back, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
++
++        LinearLayout titles = Ui.column(this);
++        titles.setPadding(Ui.dp(this, 10), 0, 0, 0);
++        TextView title = Ui.text(this, "歌曲 / 歌手", 21f, Ui.TEXT, true);
++        title.setSingleLine(true);
++        TextView subtitle = Ui.text(this, "“" + lastQuery + "” · 原唱与正式版本优先", 10.8f, Ui.TEXT_2, false);
++        subtitle.setSingleLine(true); subtitle.setEllipsize(TextUtils.TruncateAt.END);
++        titles.addView(title, new LinearLayout.LayoutParams(-1, 0, 1f));
++        titles.addView(subtitle, new LinearLayout.LayoutParams(-1, 0, 1f));
++        top.addView(titles, new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f));
++        root.addView(top, Ui.lp(-1, Ui.dp(this, 48)));
++
++        LinearLayout filters = Ui.row(this);
++        filters.setGravity(Gravity.CENTER_VERTICAL);
++        filters.addView(searchAllSourceChip("网易", "wy", lastWyCount, lastWyError),
++                new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
++        Space filterGap = new Space(this); filters.addView(filterGap, Ui.lp(Ui.dp(this, 8), 1));
++        filters.addView(searchAllSourceChip("QQ", "tx", lastTxCount, lastTxError),
++                new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
++        LinearLayout.LayoutParams fp = Ui.lp(-1, Ui.dp(this, 34)); fp.topMargin = Ui.dp(this, 12);
++        root.addView(filters, fp);
++
++        TextView status = Ui.text(this, searchAllStatusText(), 10.6f, Ui.DIM, false);
++        status.setGravity(Gravity.CENTER_VERTICAL);
++        LinearLayout.LayoutParams sp = Ui.lp(-1, Ui.dp(this, 32)); sp.topMargin = Ui.dp(this, 4);
++        root.addView(status, sp);
++
++        ListView list = new ListView(this);
++        list.setDivider(null);
++        list.setDividerHeight(0);
++        list.setSelector(android.R.color.transparent);
++        list.setCacheColorHint(Color.TRANSPARENT);
++        list.setVerticalScrollBarEnabled(false);
++        list.setScrollingCacheEnabled(true);
++        list.setClipToPadding(false);
++        list.setPadding(0, 0, 0, Ui.dp(this, 158));
++        list.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
++
++        TextView footer = Ui.text(this, "", 10.4f, Ui.DIM, false);
++        footer.setGravity(Gravity.CENTER);
++        footer.setVisibility(View.GONE);
++        footer.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 18));
++        list.addFooterView(footer, null, false);
++
++        SearchAllAdapter adapter = new SearchAllAdapter(visibleSearchSongs());
++        list.setAdapter(adapter);
++        list.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
++            @Override public void onScrollStateChanged(android.widget.AbsListView view, int scrollState) { }
++            @Override public void onScroll(android.widget.AbsListView view, int firstVisibleItem,
++                                           int visibleItemCount, int totalItemCount) {
++                if (!searchAllResultsOpen || searchMoreLoading || visibleItemCount <= 0) return;
++                if (SystemClock.uptimeMillis() < searchAutoLoadNotBeforeMs) return;
++                int dataCount = adapter.getCount();
++                if (dataCount <= 0 || !searchHasMoreForCurrentFilter()) return;
++                int lastVisible = firstVisibleItem + visibleItemCount - 1;
++                if (lastVisible >= Math.max(0, dataCount - 7)) {
++                    loadMoreSearchAllResults(list, adapter, footer, status);
++                }
++            }
++        });
++
++        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1f);
++        lp.topMargin = Ui.dp(this, 2);
++        root.addView(list, lp);
++        return root;
+     }
+ 
+-    private void loadMoreSearchResults(LinearLayout holder, TextView button) {
+-        if (holder == null || searchMoreLoading || lastQuery == null || lastQuery.trim().isEmpty()) return;
++    private TextView searchAllSourceChip(String name, String source, int count, String error) {
++        boolean ok = count > 0;
++        boolean selected = source.equals(searchSourceFilter);
++        int accent = "wy".equals(source) ? Ui.PURPLE : Ui.CYAN;
++        int tint = ok ? accent : (error == null || error.isEmpty() ? Ui.DIM : Ui.RED);
++        String label = (selected ? "✓  " : "") + (ok ? name + "  " + count
++                : (error == null || error.isEmpty() ? name + "  0" : name + "  暂不可用"));
++        TextView chip = Ui.pill(this, label, tint);
++        chip.setClickable(true); chip.setFocusable(true);
++        chip.setAlpha(selected ? 1f : .84f);
++        if (selected) chip.setBackground(Ui.tintedGlass(tint, 22, this));
++        Ui.applyRipple(chip, Color.TRANSPARENT);
++        chip.setOnClickListener(v -> {
++            searchSourceFilter = source.equals(searchSourceFilter) ? "" : source;
++            suppressNextPageAnimation = true;
++            renderTab();
++        });
++        if (error != null && !error.isEmpty()) chip.setOnLongClickListener(v -> { showSearchDebug(); return true; });
++        return chip;
++    }
++
++    private String searchAllStatusText() {
++        int loaded;
++        if ("wy".equals(searchSourceFilter)) loaded = lastWySearchSongs.size();
++        else if ("tx".equals(searchSourceFilter)) loaded = lastTxSearchSongs.size();
++        else loaded = visibleSearchSongs().size();
++        if (searchMoreLoading) return "已加载 " + loaded + " 首 · 正在获取更多";
++        if (searchHasMoreForCurrentFilter()) return "已加载 " + loaded + " 首 · 继续下滑会自动加载";
++        return "已加载 " + loaded + " 首 · 已到全部结果";
++    }
++
++    private void loadMoreSearchAllResults(ListView list, SearchAllAdapter adapter, TextView footer, TextView status) {
++        if (list == null || adapter == null || searchMoreLoading || lastQuery == null || lastQuery.trim().isEmpty()) return;
+         final boolean loadWy = !"tx".equals(searchSourceFilter) && searchWyHasMore;
+         final boolean loadTx = !"wy".equals(searchSourceFilter) && searchTxHasMore;
+-        if (!loadWy && !loadTx) { toast("已经加载全部搜索结果"); return; }
++        if (!loadWy && !loadTx) return;
+ 
+         final int token = searchRequestToken;
+         final int wyOffset = searchWyNextOffset;
+         final int txPage = searchTxNextPage;
+-        final ScrollView scroll = ancestorScrollView(holder);
+-        final int savedY = scroll == null ? 0 : scroll.getScrollY();
++        final int firstVisible = list.getFirstVisiblePosition();
++        final Song anchorSong = firstVisible >= 0 && firstVisible < adapter.getCount()
++                ? (Song) adapter.getItem(firstVisible) : null;
++        final String anchorKey = anchorSong == null ? "" : anchorSong.key();
++        final View firstChild = list.getChildCount() > 0 ? list.getChildAt(0) : null;
++        final int anchorTop = firstChild == null ? 0 : firstChild.getTop();
+ 
+         searchMoreLoading = true;
+-        if (button != null) {
+-            button.setEnabled(false);
+-            button.setAlpha(.58f);
+-            button.setText("加载中…");
+-        }
++        if (footer != null) { footer.setText("正在加载更多…"); footer.setVisibility(View.VISIBLE); }
++        if (status != null) status.setText(searchAllStatusText());
+ 
+         final Future<SearchPaginationApi.Page> wyFuture = loadWy
+                 ? io.submit(() -> searchPagination.netease(lastQuery, wyOffset, SEARCH_PAGE_SIZE)) : null;
+@@ -2181,6 +2290,7 @@
+             final SearchPaginationApi.Page finalTx = txPageResult;
+             main.post(() -> {
+                 if (token != searchRequestToken || isFinishing()) return;
++                boolean hadError = false;
+                 searchMoreLoading = false;
+ 
+                 if (loadWy && finalWy != null) {
+@@ -2188,7 +2298,7 @@
+                     appendUniqueProviderSongs(lastWySearchSongs, finalWy.songs, "wy");
+                     int added = lastWySearchSongs.size() - before;
+                     if (finalWy.total > 0) lastWyCount = Math.max(lastWyCount, finalWy.total);
+-                    if (!finalWy.error.isEmpty()) lastWyError = finalWy.error;
++                    if (!finalWy.error.isEmpty()) { lastWyError = finalWy.error; hadError = true; }
+                     else if (added > 0) lastWyError = "";
+                     if (finalWy.error.isEmpty()) searchWyNextOffset += Math.max(1, finalWy.songs.size());
+                     searchWyHasMore = finalWy.error.isEmpty()
+@@ -2202,7 +2312,7 @@
+                     appendUniqueProviderSongs(lastTxSearchSongs, finalTx.songs, "tx");
+                     int added = lastTxSearchSongs.size() - before;
+                     if (finalTx.total > 0) lastTxCount = Math.max(lastTxCount, finalTx.total);
+-                    if (!finalTx.error.isEmpty()) lastTxError = finalTx.error;
++                    if (!finalTx.error.isEmpty()) { lastTxError = finalTx.error; hadError = true; }
+                     else if (added > 0) lastTxError = "";
+                     if (finalTx.error.isEmpty()) searchTxNextPage++;
+                     int requestedThrough = Math.max(0, (searchTxNextPage - 1) * SEARCH_PAGE_SIZE);
+@@ -2214,12 +2324,142 @@
+ 
+                 searchResults = mergeSearch(lastQuery, lastWySearchSongs, lastTxSearchSongs);
+                 if (!lyricSearchResults.isEmpty()) lyricSearchResults = enrichAndRerankLyricResults(lastQuery, lyricSearchResults);
+-                renderSearchResults(holder);
+-                if (scroll != null) scroll.post(() -> scroll.scrollTo(0, savedY));
++                searchAutoLoadNotBeforeMs = SystemClock.uptimeMillis() + (hadError ? 2600L : 260L);
++
++                if (searchAllResultsOpen && list.isAttachedToWindow()) {
++                    List<Song> next = visibleSearchSongs();
++                    adapter.replace(next);
++                    if (!anchorKey.isEmpty()) {
++                        int anchorIndex = adapter.indexOfKey(anchorKey);
++                        if (anchorIndex >= 0) list.post(() -> list.setSelectionFromTop(anchorIndex, anchorTop));
++                    }
++                    if (status != null) status.setText(searchAllStatusText());
++                    if (footer != null) {
++                        if (hadError) {
++                            footer.setText("部分来源加载失败 · 稍后继续下滑可重试");
++                            footer.setVisibility(View.VISIBLE);
++                            footer.postDelayed(() -> {
++                                if (footer.isAttachedToWindow() && !searchMoreLoading) footer.setVisibility(View.GONE);
++                            }, 1800L);
++                        } else {
++                            footer.setVisibility(View.GONE);
++                        }
++                    }
++                }
+             });
+         });
+     }
+ 
++    private static final class SearchAllHolder {
++        LinearLayout row;
++        ImageView cover;
++        TextView title;
++        TextView artist;
++        TextView source;
++        FrameLayout favorite;
++        IconView favoriteIcon;
++        FrameLayout next;
++        FrameLayout more;
++    }
++
++    private final class SearchAllAdapter extends BaseAdapter {
++        private final List<Song> items = new ArrayList<>();
++        SearchAllAdapter(List<Song> source) { replace(source); }
++        void replace(List<Song> source) {
++            items.clear();
++            if (source != null) items.addAll(source);
++            notifyDataSetChanged();
++        }
++        int indexOfKey(String key) {
++            if (key == null || key.isEmpty()) return -1;
++            for (int i = 0; i < items.size(); i++) if (key.equals(items.get(i).key())) return i;
++            return -1;
++        }
++        @Override public int getCount() { return items.size(); }
++        @Override public Object getItem(int position) { return items.get(position); }
++        @Override public long getItemId(int position) { return position; }
++
++        @Override public View getView(int position, View convertView, ViewGroup parent) {
++            SearchAllHolder holder;
++            LinearLayout wrapper;
++            if (convertView == null) {
++                wrapper = Ui.column(MainActivity.this);
++                holder = new SearchAllHolder();
++                holder.row = Ui.row(MainActivity.this);
++                holder.row.setGravity(Gravity.CENTER_VERTICAL);
++                holder.row.setPadding(Ui.dp(MainActivity.this, 9), Ui.dp(MainActivity.this, 7), Ui.dp(MainActivity.this, 7), Ui.dp(MainActivity.this, 7));
++                holder.row.setBackground(Ui.glass(126, 17, 18, MainActivity.this));
++                holder.row.setClickable(true); holder.row.setFocusable(true);
++                Ui.applyRipple(holder.row, Color.argb(32, 255, 255, 255));
++
++                holder.cover = new ImageView(MainActivity.this);
++                holder.cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
++                holder.cover.setBackground(Ui.round(Color.rgb(22, 22, 28), 12, MainActivity.this));
++                holder.cover.setClipToOutline(true);
++                holder.row.addView(holder.cover, Ui.lp(Ui.dp(MainActivity.this, 52), Ui.dp(MainActivity.this, 52)));
++
++                LinearLayout texts = Ui.column(MainActivity.this);
++                texts.setPadding(Ui.dp(MainActivity.this, 11), Ui.dp(MainActivity.this, 2), Ui.dp(MainActivity.this, 6), Ui.dp(MainActivity.this, 2));
++                holder.title = Ui.text(MainActivity.this, "", 13.7f, Ui.TEXT, true);
++                holder.title.setSingleLine(true); holder.title.setEllipsize(TextUtils.TruncateAt.END);
++                holder.artist = Ui.text(MainActivity.this, "", 10.8f, Ui.TEXT_2, false);
++                holder.artist.setSingleLine(true); holder.artist.setEllipsize(TextUtils.TruncateAt.END);
++                texts.addView(holder.title, new LinearLayout.LayoutParams(-1, 0, 1f));
++                texts.addView(holder.artist, new LinearLayout.LayoutParams(-1, 0, 1f));
++                holder.row.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(MainActivity.this, 52), 1f));
++
++                holder.source = Ui.text(MainActivity.this, "", 9.4f, Ui.TEXT_2, true);
++                holder.source.setGravity(Gravity.CENTER);
++                holder.row.addView(holder.source, Ui.lp(Ui.dp(MainActivity.this, 68), Ui.dp(MainActivity.this, 27)));
++
++                holder.favorite = Ui.iconButton(MainActivity.this, IconView.Type.HEART, 36, Ui.DIM, Color.TRANSPARENT);
++                holder.favoriteIcon = (IconView) holder.favorite.getChildAt(0);
++                holder.row.addView(holder.favorite, Ui.lp(Ui.dp(MainActivity.this, 32), Ui.dp(MainActivity.this, 32)));
++
++                holder.next = Ui.iconButton(MainActivity.this, IconView.Type.PLUS, 32, Ui.TEXT_2, Color.TRANSPARENT);
++                holder.next.setContentDescription("添加到下一首");
++                holder.row.addView(holder.next, Ui.lp(Ui.dp(MainActivity.this, 30), Ui.dp(MainActivity.this, 30)));
++
++                holder.more = Ui.iconButton(MainActivity.this, IconView.Type.MORE, 30, Ui.DIM, Color.TRANSPARENT);
++                holder.row.addView(holder.more, Ui.lp(Ui.dp(MainActivity.this, 29), Ui.dp(MainActivity.this, 29)));
++                wrapper.addView(holder.row, Ui.lp(-1, Ui.dp(MainActivity.this, 68)));
++                wrapper.addView(new Space(MainActivity.this), Ui.lp(-1, Ui.dp(MainActivity.this, 7)));
++                wrapper.setTag(holder);
++            } else {
++                wrapper = (LinearLayout) convertView;
++                holder = (SearchAllHolder) wrapper.getTag();
++            }
++
++            Song song = items.get(position);
++            holder.title.setText(song.title);
++            holder.artist.setText(subtitleFor(song));
++            holder.cover.setImageDrawable(null);
++            holder.cover.setTag(song.coverUrl == null ? "" : song.coverUrl);
++            if (song.coverUrl != null && !song.coverUrl.trim().isEmpty()) ImageLoader.load(song.coverUrl, holder.cover, null);
++
++            int sourceAccent = song.variants().size() > 1 ? Ui.CYAN : Ui.PURPLE;
++            holder.source.setText(song.sourceLabel());
++            holder.source.setTextColor(sourceAccent);
++            holder.source.setBackground(Ui.tintedGlass(sourceAccent, 12, MainActivity.this));
++            holder.favoriteIcon.setIconColor(isFavorite(song) ? Ui.PINK : Ui.DIM);
++
++            SearchAllHolder bound = holder;
++            holder.favorite.setOnClickListener(v -> {
++                favorites = store.toggleFavorite(song);
++                bound.favoriteIcon.setIconColor(isFavorite(song) ? Ui.PINK : Ui.DIM);
++            });
++            holder.next.setOnClickListener(v -> {
++                ensurePlaybackServiceStarted();
++                if (playback != null) playback.enqueueNext(song);
++                else pendingNextSongs.add(song);
++                toast("已添加到下一首");
++            });
++            holder.more.setOnClickListener(v -> showSongActions(song));
++            holder.row.setOnClickListener(v -> playPickedSong(song));
++            return wrapper;
++        }
++    }
++
+     private void appendUniqueProviderSongs(List<Song> target, List<Song> incoming, String source) {
+         if (target == null || incoming == null || incoming.isEmpty()) return;
+         LinkedHashSet<String> seen = new LinkedHashSet<>();
+@@ -2276,6 +2516,11 @@
+     private interface SearchSectionToggle { void onToggle(boolean expanded); }
+ 
+     private LinearLayout searchSectionHeader(String title, String meta, boolean expanded, SearchSectionToggle toggle) {
++        return searchSectionHeader(title, meta, expanded, toggle, "", null);
++    }
++
++    private LinearLayout searchSectionHeader(String title, String meta, boolean expanded, SearchSectionToggle toggle,
++                                             String actionLabel, View.OnClickListener action) {
+         LinearLayout row = Ui.row(this);
+         row.setGravity(Gravity.CENTER_VERTICAL);
+         TextView t = Ui.text(this, title, 13.3f, Ui.TEXT, true);
+@@ -2288,6 +2533,15 @@
+         row.addView(m, mp);
+         Space fill = new Space(this);
+         row.addView(fill, new LinearLayout.LayoutParams(0, Ui.dp(this, 36), 1f));
++        if (actionLabel != null && !actionLabel.trim().isEmpty()) {
++            TextView actionView = Ui.text(this, actionLabel, 11.2f, Ui.CYAN, true);
++            actionView.setGravity(Gravity.CENTER);
++            actionView.setPadding(Ui.dp(this, 8), 0, Ui.dp(this, 8), 0);
++            actionView.setClickable(true); actionView.setFocusable(true);
++            Ui.applyRipple(actionView, Color.TRANSPARENT);
++            actionView.setOnClickListener(v -> { if (action != null) action.onClick(v); });
++            row.addView(actionView, Ui.lp(-2, Ui.dp(this, 36)));
++        }
+         TextView arrow = Ui.text(this, "▾", 18f, Ui.TEXT_2, true);
+         arrow.setGravity(Gravity.CENTER);
+         arrow.setRotation(expanded ? 0f : -90f);
+@@ -2773,27 +3027,17 @@
+         body.addView(hero, Ui.lp(-1, -2));
+ 
+         body.addView(sortableSongsHeader("歌曲", p.songs.size(), () -> showManualSongOrder(p.name, p.songs, p.id)), marginTop(22));
++        final LinearLayout[] lazySongHost = new LinearLayout[1];
++        final int[] lazyLoaded = new int[]{0};
+         if (p.songs.isEmpty()) {
+             body.addView(compactEmpty("这个歌单还没有歌曲，点上方 + 从收藏、搜索或其他歌单添加"), marginTop(6));
+         } else {
+             int visible = Math.min(Math.max(40, playlistVisibleCount), p.songs.size());
+-            List<Song> pageSongs = new ArrayList<>(p.songs.subList(0, visible));
+-            body.addView(playlistSongList(pageSongs, p.songs, p.id), marginTop(6));
+-            if (visible < p.songs.size()) {
+-                int left = p.songs.size() - visible;
+-                TextView more = outlineAction("继续加载 " + Math.min(40, left) + " 首");
+-                more.setOnClickListener(v -> {
+-                    View currentPage = pageHost == null || pageHost.getChildCount() == 0 ? null : pageHost.getChildAt(0);
+-                    if (currentPage instanceof ScrollView) playlistScrollRestoreY = ((ScrollView) currentPage).getScrollY();
+-                    restorePlaylistPosition = true;
+-                    suppressNextPageAnimation = true;
+-                    playlistVisibleCount = Math.min(p.songs.size(), visible + 40);
+-                    renderTab();
+-                });
+-                LinearLayout.LayoutParams mp = Ui.lp(-1, Ui.dp(this, 44)); mp.topMargin = Ui.dp(this, 12); body.addView(more, mp);
+-                TextView hint = Ui.text(this, "为避免大歌单一次创建数百个视图导致卡死，按 40 首分段加载。", 10.3f, Ui.DIM, false);
+-                hint.setGravity(Gravity.CENTER); body.addView(hint, Ui.lp(-1, Ui.dp(this, 34)));
+-            }
++            LinearLayout host = Ui.column(this);
++            lazySongHost[0] = host;
++            lazyLoaded[0] = visible;
++            appendPlaylistRows(host, p, 0, visible);
++            body.addView(host, marginTop(6));
+         }
+         LinearLayout playlistActions = Ui.row(this);
+         playlistActions.setGravity(Gravity.CENTER_VERTICAL);
+@@ -2820,7 +3064,36 @@
+         playlistSearch.setOnClickListener(v -> showPlaylistSearch(p));
+         playlistActions.addView(playlistSearch, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
+ 
+-        return pageScaffold("歌单详情", "已保存到本机", body, playlistActions);
++        View page = pageScaffold("歌单详情", "已保存到本机", body, playlistActions);
++        if (page instanceof ScrollView && lazySongHost[0] != null && lazyLoaded[0] < p.songs.size()) {
++            ScrollView scroll = (ScrollView) page;
++            scroll.setOnScrollChangeListener((v, scrollX, scrollY, oldScrollX, oldScrollY) ->
++                    maybeAppendPlaylistRows(scroll, lazySongHost[0], p, lazyLoaded));
++        }
++        return page;
++    }
++
++    private void appendPlaylistRows(LinearLayout host, ImportedPlaylist playlist, int from, int to) {
++        if (host == null || playlist == null || playlist.songs == null || from < 0 || to <= from) return;
++        int safeTo = Math.min(to, playlist.songs.size());
++        if (safeTo <= from) return;
++        List<Song> chunk = new ArrayList<>(playlist.songs.subList(from, safeTo));
++        LinearLayout.LayoutParams lp = marginTop(from == 0 ? 0 : 7);
++        host.addView(playlistSongList(chunk, playlist.songs, playlist.id), lp);
++    }
++
++    private void maybeAppendPlaylistRows(ScrollView scroll, LinearLayout host, ImportedPlaylist playlist, int[] loadedRef) {
++        if (scroll == null || host == null || playlist == null || loadedRef == null || loadedRef.length == 0) return;
++        int loaded = loadedRef[0];
++        if (loaded >= playlist.songs.size()) return;
++        View content = scroll.getChildCount() > 0 ? scroll.getChildAt(0) : null;
++        if (content == null) return;
++        int remainingPx = content.getHeight() - (scroll.getScrollY() + scroll.getHeight());
++        if (remainingPx > Ui.dp(this, 620)) return;
++        int next = Math.min(playlist.songs.size(), loaded + 40);
++        appendPlaylistRows(host, playlist, loaded, next);
++        loadedRef[0] = next;
++        playlistVisibleCount = next;
+     }
+ 
+     /** V15: local, instant search inside one playlist by title or artist. */
+@@ -5188,6 +5461,12 @@
+             closeNowPlaying();
+             return;
+         }
++        if (searchAllResultsOpen) {
++            searchAllResultsOpen = false;
++            suppressNextPageAnimation = true;
++            renderTab();
++            return;
++        }
+         if (openSmartCollection != null) {
+             closeSmartCollectionToHome();
+             return;
+diff -ruN '--exclude=.gradle' '--exclude=build' '--exclude=dist' '--exclude=SHA256SUMS.txt' '--exclude=V44-to-V45_COMMERCIAL_PAGING.patch' /mnt/data/LunaxyMusic-V44-baseline-for-v45/app/src/main/java/com/xingyu/music/data/SearchPaginationApi.java /mnt/data/v45work/LunaxyMusic-V45/app/src/main/java/com/xingyu/music/data/SearchPaginationApi.java
+--- /mnt/data/LunaxyMusic-V44-baseline-for-v45/app/src/main/java/com/xingyu/music/data/SearchPaginationApi.java	2026-08-11 08:18:51.000000000 +0000
++++ /mnt/data/v45work/LunaxyMusic-V45/app/src/main/java/com/xingyu/music/data/SearchPaginationApi.java	2026-08-11 08:51:29.584881226 +0000
+@@ -17,11 +17,11 @@
+ import java.util.Map;
+ 
+ /**
+- * Search-only pagination helper for V44.
++ * Search-only pagination helper for V45.
+  *
+  * This class is deliberately separate from NeteaseApi/QQMusicApi so the locked playback +
+  * scheduling objects (and the already-proven first-page metadata adapters) remain byte-identical.
+- * It is invoked only after the user taps "继续加载". It never resolves audio URLs, never touches
++ * It is invoked only by the dedicated search-results list when it approaches the bottom. It never resolves audio URLs, never touches
+  * SourceHealthStore, and never reads/writes PlaybackUrlStore.
+  */
+ public final class SearchPaginationApi {
+diff -ruN '--exclude=.gradle' '--exclude=build' '--exclude=dist' '--exclude=SHA256SUMS.txt' '--exclude=V44-to-V45_COMMERCIAL_PAGING.patch' /mnt/data/LunaxyMusic-V44-baseline-for-v45/changes/PLAYBACK_SCHEDULING_LOCK_GUARD_V45.txt /mnt/data/v45work/LunaxyMusic-V45/changes/PLAYBACK_SCHEDULING_LOCK_GUARD_V45.txt
+--- /mnt/data/LunaxyMusic-V44-baseline-for-v45/changes/PLAYBACK_SCHEDULING_LOCK_GUARD_V45.txt	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/v45work/LunaxyMusic-V45/changes/PLAYBACK_SCHEDULING_LOCK_GUARD_V45.txt	2026-08-11 08:54:24.175496051 +0000
+@@ -0,0 +1,33 @@
++Lunaxy Music V45 — PLAYBACK + SCHEDULING LOCK GUARD
++==========================================================
++
++Baseline: LunaxyMusic-V44-Full.zip
++Result: 19/19 byte-identical (PASS)
++
++Locked behavior:
++- QQ: Huibq PRIMARY -> QDY fallback
++- NetEase: QDY PRIMARY -> Huibq fallback
++- V41 short-term health/circuit breaker unchanged
++- only Media3 STATE_READY is true playback success
++- READY URL cache + stale URL invalidation unchanged
++- Huibq/QDY resolver/HTTP/probe/diagnostics unchanged
++
++PASS  cdcc6afe54a7a70251a64689a1fa851eda251d220ec4438bd4c607018c86b37c  app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
++PASS  b160593e8ea71dcb2f7a7f829981eca3dd232128b0b6d1d898db1e8062bfb91e  app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
++PASS  4c47a3648e87b9f3c2f982e8486bdf5ea9ebf4fa81f9f3d4911e645819927e44  app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
++PASS  013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
++PASS  7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
++PASS  522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c  app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
++PASS  dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068  app/src/main/java/com/xingyu/music/data/ResolverProvider.java
++PASS  590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2  app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
++PASS  bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384  app/src/main/java/com/xingyu/music/data/QQMusicApi.java
++PASS  5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795  app/src/main/java/com/xingyu/music/data/NeteaseApi.java
++PASS  9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1  app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
++PASS  24ce07eaeb3e28264dde1f0deea0c4a3aad8e7556ebb181b79cec6d88ca5366b  app/src/main/java/com/xingyu/music/data/PlaybackTrace.java
++PASS  c67378353614a4aa39c189becf1c43283cd56995c3b179341da9d96000c4cad9  app/src/main/java/com/xingyu/music/data/ResolverHttpDiagnostics.java
++PASS  5534bb9abb377d1a5896d054e6f488c6393ffe14fd463d4e16eb966d0d477a39  app/src/main/java/com/xingyu/music/data/Http.java
++PASS  8e1b7d154d0d51613666327b2f5d2a63aa331396d351b7ccb434f3163f0e8860  app/src/main/java/com/xingyu/music/playback/PlaybackService.java
++PASS  cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f  app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java
++PASS  e32ff681fce5313644e3b963554a65f4912bcfbf0935ce8fc4c8b6a5a434743d  app/src/main/java/com/xingyu/music/model/Song.java
++PASS  333af304393ce3eb126f6b168dbcfafb0fed7c0e30a056860db99a9d52cb18fb  app/src/main/java/com/xingyu/music/model/SourceVariant.java
++PASS  a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146  app/src/main/assets/source/huibq-latest.js
+diff -ruN '--exclude=.gradle' '--exclude=build' '--exclude=dist' '--exclude=SHA256SUMS.txt' '--exclude=V44-to-V45_COMMERCIAL_PAGING.patch' /mnt/data/LunaxyMusic-V44-baseline-for-v45/changes/SEARCH_RANKING_LOCK_GUARD_V45.txt /mnt/data/v45work/LunaxyMusic-V45/changes/SEARCH_RANKING_LOCK_GUARD_V45.txt
+--- /mnt/data/LunaxyMusic-V44-baseline-for-v45/changes/SEARCH_RANKING_LOCK_GUARD_V45.txt	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/v45work/LunaxyMusic-V45/changes/SEARCH_RANKING_LOCK_GUARD_V45.txt	2026-08-11 08:54:24.175673785 +0000
+@@ -0,0 +1,8 @@
++Lunaxy Music V45 — SEARCH RANKING LOCK GUARD
++===============================================
++
++Baseline: V44
++Result: PASS
++SHA-256: 4b820a8affb5f29bf61061ce2358cf45c25c58cb61c80c759ade0448236e0fc3
++
++Original/official recording priority, alternate-version penalties and same-version quality bias remain unchanged.

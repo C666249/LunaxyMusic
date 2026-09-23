@@ -1,0 +1,21 @@
+--- /tmp/v76base/LunaxyMusic-V76/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-25 20:23:31.000000000 +0000
++++ /mnt/data/lunaxy_v77_work/LunaxyMusic-V77/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-25 20:34:52.939129001 +0000
+@@ -3323,7 +3323,17 @@
+         FrameLayout.LayoutParams ip = new FrameLayout.LayoutParams(Ui.dp(this, 30), Ui.dp(this, 3), Gravity.START | Gravity.BOTTOM);
+         tabs.addView(indicator, ip);
+         tabs.setTag(indicator);
+-        tabs.post(() -> positionSearchTabIndicator(tabs, indicator, searchResultMode, false));
++
++        // renderSearchResults() rebuilds this tab bar after a mode switch. Position the
++        // new indicator before its first draw so it never flashes once at translationX=0.
++        tabs.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
++            @Override public boolean onPreDraw() {
++                android.view.ViewTreeObserver observer = tabs.getViewTreeObserver();
++                if (observer.isAlive()) observer.removeOnPreDrawListener(this);
++                positionSearchTabIndicator(tabs, indicator, searchResultMode, false);
++                return true;
++            }
++        });
+         return tabs;
+     }
+ 

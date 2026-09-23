@@ -1,0 +1,90 @@
+--- a/app/src/main/java/com/xingyu/music/MainActivity.java
++++ b/app/src/main/java/com/xingyu/music/MainActivity.java
+@@ -116,7 +116,7 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V55.0 – V54 cinematic starfield refined with breathing light and visual-only Starfield Studio controls.
++ * Lunaxy Music V56.0 – V55 Starfield Studio with a brighter, larger, denser default 3D star presence.
+  *
+  * V47 search, playlists, lyrics, recommendation UI and queue interaction remain intentionally stable.
+  * V3 extends the experimental playback domain into a multi-catalog route matrix: TX/KW/KG/WY
+@@ -372,6 +372,10 @@
+     private int starfieldColorMode = 0;       // 0 cover, 1..6 preset
+     private int starfieldBackgroundMode = 0;  // 0 black, 1 cover, 2..5 preset
+     private float starfieldBackgroundGlow = .24f;
++    // V56 official default: stronger visual presence while keeping V55's refined light texture.
++    private float starfieldStarSize = 1.18f;
++    private float starfieldStarBrightness = 1.20f;
++    private float starfieldStarDensity = 1.16f;
+     private int starfieldStudioTab;
+ 
+     private final BroadcastReceiver downloadReceiver = new BroadcastReceiver() {
+@@ -475,6 +479,9 @@
+         starfieldColorMode = Math.max(0, Math.min(6, p.getInt("particle_color", 0)));
+         starfieldBackgroundMode = Math.max(0, Math.min(5, p.getInt("background_mode", 0)));
+         starfieldBackgroundGlow = clampFloat(p.getFloat("background_glow", .24f), 0f, 1f);
++        starfieldStarSize = clampFloat(p.getFloat("star_size", 1.18f), .70f, 1.55f);
++        starfieldStarBrightness = clampFloat(p.getFloat("star_brightness", 1.20f), .65f, 1.55f);
++        starfieldStarDensity = clampFloat(p.getFloat("star_density", 1.16f), .60f, 1.35f);
+     }
+ 
+     private void saveStarfieldPreferences() {
+@@ -486,6 +493,9 @@
+                 .putInt("particle_color", starfieldColorMode)
+                 .putInt("background_mode", starfieldBackgroundMode)
+                 .putFloat("background_glow", starfieldBackgroundGlow)
++                .putFloat("star_size", starfieldStarSize)
++                .putFloat("star_brightness", starfieldStarBrightness)
++                .putFloat("star_density", starfieldStarDensity)
+                 .apply();
+     }
+ 
+@@ -497,6 +507,9 @@
+         starfieldColorMode = 0;
+         starfieldBackgroundMode = 0;
+         starfieldBackgroundGlow = .24f;
++        starfieldStarSize = 1.18f;
++        starfieldStarBrightness = 1.20f;
++        starfieldStarDensity = 1.16f;
+         saveStarfieldPreferences();
+         applyStarfieldPreferences();
+     }
+@@ -541,6 +554,9 @@
+             playerStars.setSpeedMultiplier(starfieldSpeed);
+             playerStars.setSensitivity(starfieldSensitivity);
+             playerStars.setMotionProfile(starfieldMotionProfile);
++            playerStars.setStarSizeMultiplier(starfieldStarSize);
++            playerStars.setStarBrightnessMultiplier(starfieldStarBrightness);
++            playerStars.setStarDensityMultiplier(starfieldStarDensity);
+             playerStars.setVisibility(starfieldUse3D ? View.VISIBLE : View.GONE);
+         }
+         if (playerStars2D != null) playerStars2D.setVisibility(starfieldUse3D ? View.GONE : View.VISIBLE);
+@@ -6339,7 +6355,26 @@
+             }
+             body.addView(line, marginTop(row == 0 ? 8 : 7));
+         }
+-        body.addView(starInfoCard("颜色仍然是光，不是染色圆点", "V55 的亮芯保持接近白色，主题色主要进入星体和柔光层；这样既能和歌词/进度条统一，又保留真实星点质感。", resolvedStarfieldColor()), marginTop(12));
++        body.addView(starStudioSection("星点质感", "单独控制 3D 星点的视觉存在感；默认值已比 V55 更大、更亮、更密。"), marginTop(16));
++        body.addView(starStudioSlider("星点大小", "放大真实光核与柔光范围，不改变粒子运动轨迹。",
++                .70f, 1.55f, starfieldStarSize, v -> {
++                    starfieldStarSize = v; saveStarfieldPreferences(); applyStarfieldPreferences();
++                }, true), marginTop(8));
++        body.addView(starStudioSlider("星点亮度", "同时增强亮芯、星体与柔光，但仍保留远近层次和呼吸变化。",
++                .65f, 1.55f, starfieldStarBrightness, v -> {
++                    starfieldStarBrightness = v; saveStarfieldPreferences(); applyStarfieldPreferences();
++                }, true), marginTop(10));
++        body.addView(starStudioSlider("星点密度", "实时增减可见星点数量；采用预分配粒子池，不会边拖动边创建对象。",
++                .60f, 1.35f, starfieldStarDensity, v -> {
++                    starfieldStarDensity = v; saveStarfieldPreferences(); applyStarfieldPreferences();
++                }, true), marginTop(10));
++
++        if (!starfieldUse3D) {
++            body.addView(starInfoCard("2D 经典仍保持 V49 原版", "大小、亮度、密度三个新参数只调节 3D 星空；2D StarfieldView 继续字节级保留 V49 原逻辑，切回 3D 后设置会立即生效。", Ui.PURPLE), marginTop(12));
++        } else {
++            body.addView(starInfoCard("V56 默认更接近 V49 的第一眼观感", "默认大小 1.18×、亮度 1.20×、密度 1.16×；不是把星点做成大圆，而是在 V55 精细光核基础上恢复更明显的星河存在感。", resolvedStarfieldColor()), marginTop(12));
++        }
++        body.addView(starInfoCard("颜色仍然是光，不是染色圆点", "亮芯保持接近白色，主题色主要进入星体和柔光层；这样既能和歌词/进度条统一，又保留真实星点质感。", resolvedStarfieldColor()), marginTop(10));
+     }
+ 
+     private void renderStarfieldBackgroundTab(LinearLayout body, Runnable redraw) {

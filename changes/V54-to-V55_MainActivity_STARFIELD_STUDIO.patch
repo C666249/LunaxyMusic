@@ -1,0 +1,564 @@
+--- LunaxyMusic-V54/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-12 10:14:29.000000000 +0000
++++ LunaxyMusic-V55/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-12 12:44:52.556206938 +0000
+@@ -94,6 +94,7 @@
+ import com.xingyu.music.ui.LyricGestureScrollView;
+ import com.xingyu.music.ui.StarfieldView;
+ import com.xingyu.music.ui.Starfield3DView;
++import com.xingyu.music.ui.StarfieldBackdropView;
+ import com.xingyu.music.ui.SwipeAwareScrollView;
+ import com.xingyu.music.ui.Ui;
+ import com.xingyu.music.ui.VinylRecordView;
+@@ -115,7 +116,7 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V49.0 – validated Sunflower V4.4 playback/download/ringtone/context-coach branch merged back to mainline.
++ * Lunaxy Music V55.0 – V54 cinematic starfield refined with breathing light and visual-only Starfield Studio controls.
+  *
+  * V47 search, playlists, lyrics, recommendation UI and queue interaction remain intentionally stable.
+  * V3 extends the experimental playback domain into a multi-catalog route matrix: TX/KW/KG/WY
+@@ -153,6 +154,8 @@
+     private FrameLayout miniBar;
+     private FrameLayout playerOverlay;
+     private Starfield3DView playerStars;
++    private StarfieldView playerStars2D;
++    private StarfieldBackdropView playerStarBackdrop;
+     private FrameLayout busyOverlay;
+     private FrameLayout modalOverlay;
+     private TextView snackbar;
+@@ -360,6 +363,17 @@
+     private int nowAccent = Ui.PURPLE;
+     private String nowArtworkKey = "";
+ 
++    // V55 visual-only starfield studio.  Stored separately from playback/library preferences.
++    private static final String STARFIELD_PREFS = "lunaxy_starfield_v1";
++    private boolean starfieldUse3D = true;
++    private float starfieldSpeed = 1f;
++    private float starfieldSensitivity = 1f;
++    private int starfieldMotionProfile = Starfield3DView.PROFILE_LIVING;
++    private int starfieldColorMode = 0;       // 0 cover, 1..6 preset
++    private int starfieldBackgroundMode = 0;  // 0 black, 1 cover, 2..5 preset
++    private float starfieldBackgroundGlow = .24f;
++    private int starfieldStudioTab;
++
+     private final BroadcastReceiver downloadReceiver = new BroadcastReceiver() {
+         @Override public void onReceive(android.content.Context context, Intent intent) {
+             if (intent == null || !OfflineDownloadService.ACTION_CHANGED.equals(intent.getAction())) return;
+@@ -417,6 +431,7 @@
+         weatherMood = new WeatherMoodProvider(this);
+         reloadLibrary();
+         loadUiPreferences();
++        loadStarfieldPreferences();
+         configureWindow();
+         buildShell();
+         installSystemBackHandler();
+@@ -451,6 +466,91 @@
+         lyricUseCoverColor = prefs.getBoolean("lyric_gradient_cover", false);
+     }
+ 
++    private void loadStarfieldPreferences() {
++        SharedPreferences p = getSharedPreferences(STARFIELD_PREFS, MODE_PRIVATE);
++        starfieldUse3D = p.getBoolean("mode_3d", true);
++        starfieldSpeed = clampFloat(p.getFloat("speed", 1f), .45f, 1.90f);
++        starfieldSensitivity = clampFloat(p.getFloat("sensitivity", 1f), .35f, 1.85f);
++        starfieldMotionProfile = p.getInt("motion", Starfield3DView.PROFILE_LIVING);
++        starfieldColorMode = Math.max(0, Math.min(6, p.getInt("particle_color", 0)));
++        starfieldBackgroundMode = Math.max(0, Math.min(5, p.getInt("background_mode", 0)));
++        starfieldBackgroundGlow = clampFloat(p.getFloat("background_glow", .24f), 0f, 1f);
++    }
++
++    private void saveStarfieldPreferences() {
++        getSharedPreferences(STARFIELD_PREFS, MODE_PRIVATE).edit()
++                .putBoolean("mode_3d", starfieldUse3D)
++                .putFloat("speed", starfieldSpeed)
++                .putFloat("sensitivity", starfieldSensitivity)
++                .putInt("motion", starfieldMotionProfile)
++                .putInt("particle_color", starfieldColorMode)
++                .putInt("background_mode", starfieldBackgroundMode)
++                .putFloat("background_glow", starfieldBackgroundGlow)
++                .apply();
++    }
++
++    private void resetStarfieldPreferences() {
++        starfieldUse3D = true;
++        starfieldSpeed = 1f;
++        starfieldSensitivity = 1f;
++        starfieldMotionProfile = Starfield3DView.PROFILE_LIVING;
++        starfieldColorMode = 0;
++        starfieldBackgroundMode = 0;
++        starfieldBackgroundGlow = .24f;
++        saveStarfieldPreferences();
++        applyStarfieldPreferences();
++    }
++
++    private int resolvedStarfieldColor() {
++        switch (starfieldColorMode) {
++            case 1: return Color.rgb(151, 220, 255);   // ice blue
++            case 2: return Color.rgb(255, 214, 143);   // warm gold
++            case 3: return Color.rgb(191, 166, 255);   // stellar violet
++            case 4: return Color.rgb(142, 232, 198);   // mint
++            case 5: return Color.rgb(255, 167, 210);   // rose
++            case 6: return Color.rgb(226, 235, 248);   // silver
++            case 0:
++            default: return nowAccent;
++        }
++    }
++
++    private int resolvedStarfieldBackgroundColor() {
++        switch (starfieldBackgroundMode) {
++            case 1: return nowAccent;
++            case 2: return Color.rgb(62, 113, 182);
++            case 3: return Color.rgb(126, 92, 201);
++            case 4: return Color.rgb(198, 133, 72);
++            case 5: return Color.rgb(180, 81, 132);
++            case 0:
++            default: return Color.BLACK;
++        }
++    }
++
++    private void applyPlayerStarfieldAccent() {
++        int color = resolvedStarfieldColor();
++        if (playerStars != null) playerStars.setAccentColor(color);
++        if (playerStars2D != null) playerStars2D.setAccentColor(color);
++        if (playerStarBackdrop != null) {
++            playerStarBackdrop.setAmbientColor(resolvedStarfieldBackgroundColor());
++            playerStarBackdrop.setStrength(starfieldBackgroundMode == 0 ? 0f : starfieldBackgroundGlow);
++        }
++    }
++
++    private void applyStarfieldPreferences() {
++        if (playerStars != null) {
++            playerStars.setSpeedMultiplier(starfieldSpeed);
++            playerStars.setSensitivity(starfieldSensitivity);
++            playerStars.setMotionProfile(starfieldMotionProfile);
++            playerStars.setVisibility(starfieldUse3D ? View.VISIBLE : View.GONE);
++        }
++        if (playerStars2D != null) playerStars2D.setVisibility(starfieldUse3D ? View.GONE : View.VISIBLE);
++        applyPlayerStarfieldAccent();
++    }
++
++    private static float clampFloat(float value, float lo, float hi) {
++        return Math.max(lo, Math.min(hi, value));
++    }
++
+     private void configureWindow() {
+         getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
+@@ -667,6 +767,7 @@
+     private interface InputAction { void run(String value); }
+     private interface ViewAction { void run(View view); }
+     private interface OptionAction { void run(int index); }
++    private interface FloatAction { void run(float value); }
+     private interface PlaylistAction { void run(ImportedPlaylist playlist); }
+ 
+     private void buildModalLayer() {
+@@ -5390,9 +5491,15 @@
+         playerOverlay.setBackgroundColor(Color.BLACK);
+         appRoot.addView(playerOverlay, Ui.frame(-1, -1, Gravity.FILL));
+ 
+-        // Full-bleed star field extends behind the status/navigation bars.
++        // Full-bleed star field extends behind the status/navigation bars.  V55 keeps the exact
++        // V49 2D renderer as a switchable classic mode and layers the newer 3D engine beside it.
++        // Only one renderer is visible/running at a time; both remain touch-transparent.
++        playerStars2D = new StarfieldView(this);
++        playerOverlay.addView(playerStars2D, Ui.frame(-1, -1, Gravity.FILL));
+         playerStars = new Starfield3DView(this);
+         playerOverlay.addView(playerStars, Ui.frame(-1, -1, Gravity.FILL));
++        playerStarBackdrop = new StarfieldBackdropView(this);
++        playerOverlay.addView(playerStarBackdrop, Ui.frame(-1, -1, Gravity.FILL));
+ 
+         // Native Media3 PCM envelopes drive both the star field and cover ripple rings.
+         // No RECORD_AUDIO permission/microphone capture is involved.
+@@ -5403,6 +5510,8 @@
+             @Override public float beat() { return playback == null ? 0f : playback.visualBeat(); }
+         };
+         playerStars.setAudioLevelProvider(visualLevels);
++        playerStars2D.setAudioLevelProvider(visualLevels);
++        applyStarfieldPreferences();
+ 
+         FrameLayout playerSafe = new FrameLayout(this);
+         playerSafe.setPadding(0, systemTopInset, 0, systemBottomInset);
+@@ -5453,6 +5562,10 @@
+         TextView label = Ui.text(this, "正在播放", 12.2f, Ui.TEXT, true);
+         label.setGravity(Gravity.CENTER);
+         top.addView(label, new LinearLayout.LayoutParams(0, Ui.dp(this, 42), 1f));
++        FrameLayout starStudio = Ui.iconButton(this, IconView.Type.PALETTE, 42, Ui.CYAN, Color.TRANSPARENT);
++        starStudio.setContentDescription("自定义星空背景");
++        starStudio.setOnClickListener(v -> showStarfieldStudio());
++        top.addView(starStudio, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
+         FrameLayout more = Ui.iconButton(this, IconView.Type.MORE, 42, Ui.TEXT_2, Color.TRANSPARENT);
+         more.setOnClickListener(v -> {
+             Song song = playback == null ? null : playback.currentSong();
+@@ -5751,7 +5864,7 @@
+             nowAccent = sourceTint;
+             nowVinyl.setCoverBitmap(null);
+             nowVinyl.setAccentColor(nowAccent);
+-            playerStars.setAccentColor(nowAccent);
++            applyPlayerStarfieldAccent();
+             if (nowPlayButton != null) nowPlayButton.setBackground(Ui.primaryFill(nowAccent, 33, this));
+             if (lyricUseCoverColor) applyCoverLyricGradient(nowAccent);
+             if (Build.VERSION.SDK_INT >= 21) {
+@@ -5762,7 +5875,7 @@
+                 nowAccent = color;
+                 nowVinyl.setCoverBitmap(bmp);
+                 nowVinyl.setAccentColor(color);
+-                playerStars.setAccentColor(color);
++                applyPlayerStarfieldAccent();
+                 if (nowPlayButton != null) nowPlayButton.setBackground(Ui.primaryFill(color, 33, this));
+                 if (lyricUseCoverColor) applyCoverLyricGradient(color);
+                 if (Build.VERSION.SDK_INT >= 21) {
+@@ -6034,6 +6147,354 @@
+         });
+     }
+ 
++    /**
++     * V55 Starfield Studio: a visual-only control surface inspired by compact commercial media
++     * panels.  Four tabs keep mode/motion/colour/atmosphere separate; every change previews live
++     * on the player behind the sheet and persists independently from playback/library state.
++     */
++    private void showStarfieldStudio() {
++        LinearLayout card = Ui.column(this);
++        card.setPadding(Ui.dp(this, 18), Ui.dp(this, 16), Ui.dp(this, 18), Ui.dp(this, 14));
++        card.setBackground(Ui.glass(250, 27, 32, this));
++        card.setElevation(Ui.dp(this, 12));
++
++        LinearLayout header = Ui.row(this);
++        LinearLayout titleStack = Ui.column(this);
++        TextView title = Ui.text(this, "星空实验室", 19.5f, Ui.TEXT, true);
++        TextView subtitle = Ui.text(this, "实时预览 · 只影响播放详情背景", 10.8f, Ui.TEXT_2, false);
++        titleStack.addView(title, Ui.lp(-1, Ui.dp(this, 29)));
++        titleStack.addView(subtitle, Ui.lp(-1, Ui.dp(this, 22)));
++        header.addView(titleStack, new LinearLayout.LayoutParams(0, Ui.dp(this, 54), 1f));
++
++        TextView reset = Ui.text(this, "重置", 10.8f, Ui.TEXT_2, true);
++        reset.setGravity(Gravity.CENTER);
++        reset.setBackground(Ui.glass(72, 14, 20, this));
++        reset.setClickable(true); Ui.applyRipple(reset, Color.TRANSPARENT);
++        header.addView(reset, Ui.lp(Ui.dp(this, 54), Ui.dp(this, 34)));
++
++        TextView done = Ui.text(this, "完成", 10.8f, Color.rgb(10, 17, 21), true);
++        done.setGravity(Gravity.CENTER);
++        done.setBackground(Ui.primaryFill(Ui.CYAN, 14, this));
++        done.setClickable(true); Ui.applyRipple(done, Color.TRANSPARENT);
++        LinearLayout.LayoutParams dp = Ui.lp(Ui.dp(this, 58), Ui.dp(this, 34)); dp.leftMargin = Ui.dp(this, 8);
++        header.addView(done, dp);
++        card.addView(header, Ui.lp(-1, Ui.dp(this, 56)));
++
++        LinearLayout tabs = Ui.row(this);
++        tabs.setPadding(Ui.dp(this, 3), Ui.dp(this, 3), Ui.dp(this, 3), Ui.dp(this, 3));
++        tabs.setBackground(Ui.glass(58, 17, 18, this));
++        LinearLayout.LayoutParams tp = Ui.lp(-1, Ui.dp(this, 44)); tp.topMargin = Ui.dp(this, 9);
++        card.addView(tabs, tp);
++
++        ScrollView scroll = new ScrollView(this);
++        scroll.setVerticalScrollBarEnabled(false);
++        scroll.setClipToPadding(false);
++        LinearLayout body = Ui.column(this);
++        body.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 10));
++        scroll.addView(body);
++        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, 0, 1f); sp.topMargin = Ui.dp(this, 4);
++        card.addView(scroll, sp);
++
++        final Runnable[] redraw = new Runnable[1];
++        redraw[0] = () -> {
++            tabs.removeAllViews();
++            body.removeAllViews();
++            String[] names = {"模式", "动态", "星光", "背景"};
++            for (int i = 0; i < names.length; i++) {
++                final int idx = i;
++                TextView t = starStudioTab(names[i], starfieldStudioTab == i);
++                t.setOnClickListener(v -> { starfieldStudioTab = idx; redraw[0].run(); });
++                LinearLayout.LayoutParams p2 = new LinearLayout.LayoutParams(0, -1, 1f);
++                if (i > 0) p2.leftMargin = Ui.dp(this, 3);
++                tabs.addView(t, p2);
++            }
++            renderStarfieldStudioTab(body, redraw[0]);
++        };
++
++        reset.setOnClickListener(v -> {
++            resetStarfieldPreferences();
++            redraw[0].run();
++            toast("星空设置已恢复默认");
++        });
++        done.setOnClickListener(v -> hideModal());
++        redraw[0].run();
++        presentFractionModal(card, .82f);
++    }
++
++    private TextView starStudioTab(String label, boolean selected) {
++        TextView v = Ui.text(this, label, 11.1f, selected ? Ui.TEXT : Ui.DIM, true);
++        v.setGravity(Gravity.CENTER);
++        v.setClickable(true); Ui.applyRipple(v, Color.TRANSPARENT);
++        if (selected) v.setBackground(Ui.tintedGlass(Ui.CYAN, 14, this));
++        else v.setBackgroundColor(Color.TRANSPARENT);
++        return v;
++    }
++
++    private void renderStarfieldStudioTab(LinearLayout body, Runnable redraw) {
++        if (starfieldStudioTab == 0) renderStarfieldModeTab(body, redraw);
++        else if (starfieldStudioTab == 1) renderStarfieldMotionTab(body, redraw);
++        else if (starfieldStudioTab == 2) renderStarfieldLightTab(body, redraw);
++        else renderStarfieldBackgroundTab(body, redraw);
++    }
++
++    private void renderStarfieldModeTab(LinearLayout body, Runnable redraw) {
++        body.addView(starStudioHero(
++                starfieldUse3D ? "3D 沉浸星空" : "2D 经典星河",
++                starfieldUse3D ? "360° 姿态相机 · 所有粒子持续运动" : "完整保留 V49 原版 StarfieldView 的轨迹与质感",
++                starfieldUse3D ? Ui.CYAN : Ui.PURPLE), marginTop(3));
++
++        body.addView(starStudioSection("渲染模式", "两套引擎随时切换，不影响歌曲、歌词或播放状态。"), marginTop(12));
++        LinearLayout modes = Ui.row(this);
++        View mode3d = starStudioChoice("3D 沉浸", "空间镜头", starfieldUse3D, Ui.CYAN, v -> {
++            starfieldUse3D = true; saveStarfieldPreferences(); applyStarfieldPreferences(); redraw.run();
++        });
++        View mode2d = starStudioChoice("2D 经典", "V49 原版", !starfieldUse3D, Ui.PURPLE, v -> {
++            starfieldUse3D = false; saveStarfieldPreferences(); applyStarfieldPreferences(); redraw.run();
++        });
++        modes.addView(mode3d, new LinearLayout.LayoutParams(0, Ui.dp(this, 64), 1f));
++        LinearLayout.LayoutParams m2 = new LinearLayout.LayoutParams(0, Ui.dp(this, 64), 1f); m2.leftMargin = Ui.dp(this, 8);
++        modes.addView(mode2d, m2);
++        body.addView(modes, marginTop(7));
++
++        body.addView(starStudioSection("运动方式", starfieldUse3D
++                ? "3D 模式可在灵性多人格与原版式持续穿越之间切换。"
++                : "2D 经典模式直接使用 V49 原始运动逻辑，不做二次改写。"), marginTop(16));
++        LinearLayout motion = Ui.row(this);
++        boolean living = starfieldMotionProfile == Starfield3DView.PROFILE_LIVING;
++        View mix = starStudioChoice("灵性混合", "Flow · Curve · Orbit", living, Ui.CYAN, v -> {
++            starfieldMotionProfile = Starfield3DView.PROFILE_LIVING;
++            saveStarfieldPreferences(); applyStarfieldPreferences(); redraw.run();
++        });
++        View classic = starStudioChoice("经典穿越", "持续向镜头飞来", !living, Ui.GREEN, v -> {
++            starfieldMotionProfile = Starfield3DView.PROFILE_CLASSIC_FORWARD;
++            saveStarfieldPreferences(); applyStarfieldPreferences(); redraw.run();
++        });
++        mix.setAlpha(starfieldUse3D ? 1f : .42f); classic.setAlpha(starfieldUse3D ? 1f : .42f);
++        mix.setEnabled(starfieldUse3D); classic.setEnabled(starfieldUse3D);
++        motion.addView(mix, new LinearLayout.LayoutParams(0, Ui.dp(this, 64), 1f));
++        LinearLayout.LayoutParams c2 = new LinearLayout.LayoutParams(0, Ui.dp(this, 64), 1f); c2.leftMargin = Ui.dp(this, 8);
++        motion.addView(classic, c2);
++        body.addView(motion, marginTop(7));
++
++        if (!starfieldUse3D) {
++            body.addView(starInfoCard("2D 是真正的原版", "当前项目中的 StarfieldView.java 与 Lunaxy V49 SHA-256 一致；这里只负责切换显示，没有重写它的粒子逻辑。", Ui.PURPLE), marginTop(12));
++        }
++    }
++
++    private void renderStarfieldMotionTab(LinearLayout body, Runnable redraw) {
++        body.addView(starStudioSection("快速手感", "三个预设会同时调整 3D 粒子速度和手机姿态灵敏度。"), marginTop(4));
++        LinearLayout quick = Ui.row(this);
++        String[] names = {"轻柔", "标准", "沉浸"};
++        float[][] vals = {{.72f, .68f}, {1f, 1f}, {1.38f, 1.30f}};
++        for (int i = 0; i < 3; i++) {
++            final int idx = i;
++            boolean selected = Math.abs(starfieldSpeed - vals[i][0]) < .05f && Math.abs(starfieldSensitivity - vals[i][1]) < .05f;
++            TextView b = starQuickPreset(names[i], selected);
++            b.setOnClickListener(v -> {
++                starfieldSpeed = vals[idx][0]; starfieldSensitivity = vals[idx][1];
++                saveStarfieldPreferences(); applyStarfieldPreferences(); redraw.run();
++            });
++            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(0, Ui.dp(this, 42), 1f);
++            if (i > 0) bp.leftMargin = Ui.dp(this, 7);
++            quick.addView(b, bp);
++        }
++        body.addView(quick, marginTop(8));
++
++        body.addView(starStudioSlider("粒子速度", "改变 3D 世界向你推进的节奏，不影响播放速度。",
++                .45f, 1.90f, starfieldSpeed, v -> {
++                    starfieldSpeed = v; saveStarfieldPreferences(); applyStarfieldPreferences();
++                }, true), marginTop(16));
++        body.addView(starStudioSlider("晃动灵敏度", "控制手机旋转多少会映射成多少 3D 镜头转向。",
++                .35f, 1.85f, starfieldSensitivity, v -> {
++                    starfieldSensitivity = v; saveStarfieldPreferences(); applyStarfieldPreferences();
++                }, true), marginTop(10));
++
++        if (!starfieldUse3D) {
++            body.addView(starInfoCard("当前正在使用 2D 经典模式", "上面的数值会保存，但只在切回 3D 时生效；2D 模式保持 V49 原始速度和倾斜手感。", Ui.PURPLE), marginTop(12));
++        } else {
++            body.addView(starInfoCard("相机与粒子彼此独立", "无论你怎样转手机，粒子生命周期都会持续推进；灵敏度只改变观察方向，不会暂停星光。", Ui.CYAN), marginTop(12));
++        }
++    }
++
++    private void renderStarfieldLightTab(LinearLayout body, Runnable redraw) {
++        body.addView(starStudioSection("粒子颜色", "像歌词主题一样选择星光色；“跟随封面”会随歌曲自动切换。"), marginTop(4));
++        String[] names = {"跟随封面", "冰蓝", "暖黄", "星紫", "薄荷", "玫瑰", "银白"};
++        int[] colors = {nowAccent, Color.rgb(151,220,255), Color.rgb(255,214,143), Color.rgb(191,166,255),
++                Color.rgb(142,232,198), Color.rgb(255,167,210), Color.rgb(226,235,248)};
++        for (int row = 0; row < 4; row++) {
++            LinearLayout line = Ui.row(this);
++            for (int col = 0; col < 2; col++) {
++                int idx = row * 2 + col;
++                if (idx >= names.length) {
++                    line.addView(new Space(this), new LinearLayout.LayoutParams(0, Ui.dp(this, 50), 1f));
++                    continue;
++                }
++                final int mode = idx;
++                View c = starColorChoice(names[idx], colors[idx], starfieldColorMode == mode, v -> {
++                    starfieldColorMode = mode; saveStarfieldPreferences(); applyStarfieldPreferences(); redraw.run();
++                });
++                LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, Ui.dp(this, 50), 1f);
++                if (col > 0) cp.leftMargin = Ui.dp(this, 8);
++                line.addView(c, cp);
++            }
++            body.addView(line, marginTop(row == 0 ? 8 : 7));
++        }
++        body.addView(starInfoCard("颜色仍然是光，不是染色圆点", "V55 的亮芯保持接近白色，主题色主要进入星体和柔光层；这样既能和歌词/进度条统一，又保留真实星点质感。", resolvedStarfieldColor()), marginTop(12));
++    }
++
++    private void renderStarfieldBackgroundTab(LinearLayout body, Runnable redraw) {
++        body.addView(starStudioSection("背景氛围", "保持黑色宇宙底色，只叠一层非常克制的柔光；纯黑模式完全不绘制氛围层。"), marginTop(4));
++        String[] names = {"纯黑", "封面微光", "深空蓝", "星云紫", "暖琥珀", "暮光玫瑰"};
++        int[] colors = {Color.BLACK, nowAccent, Color.rgb(62,113,182), Color.rgb(126,92,201), Color.rgb(198,133,72), Color.rgb(180,81,132)};
++        for (int row = 0; row < 3; row++) {
++            LinearLayout line = Ui.row(this);
++            for (int col = 0; col < 2; col++) {
++                int idx = row * 2 + col;
++                final int mode = idx;
++                View c = starAmbientChoice(names[idx], colors[idx], starfieldBackgroundMode == mode, v -> {
++                    starfieldBackgroundMode = mode; saveStarfieldPreferences(); applyStarfieldPreferences(); redraw.run();
++                });
++                LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, Ui.dp(this, 56), 1f);
++                if (col > 0) cp.leftMargin = Ui.dp(this, 8);
++                line.addView(c, cp);
++            }
++            body.addView(line, marginTop(row == 0 ? 8 : 7));
++        }
++        View glow = starStudioSlider("光晕强度", starfieldBackgroundMode == 0
++                        ? "纯黑模式不绘制背景光晕；选择其它氛围后即可调节。"
++                        : "只影响大范围背景空气感，不改变星点亮度和 UI 颜色。",
++                0f, .62f, starfieldBackgroundGlow, v -> {
++                    starfieldBackgroundGlow = v; saveStarfieldPreferences(); applyStarfieldPreferences();
++                }, false);
++        glow.setAlpha(starfieldBackgroundMode == 0 ? .42f : 1f);
++        glow.setEnabled(starfieldBackgroundMode != 0);
++        body.addView(glow, marginTop(14));
++    }
++
++    private View starStudioHero(String title, String subtitle, int accent) {
++        LinearLayout card = Ui.column(this);
++        card.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12));
++        card.setBackground(Ui.tintedGlass(accent, 18, this));
++        TextView t = Ui.text(this, title, 14.2f, Ui.TEXT, true);
++        TextView s = Ui.text(this, subtitle, 10.7f, Ui.TEXT_2, false);
++        card.addView(t, Ui.lp(-1, Ui.dp(this, 27)));
++        card.addView(s, Ui.lp(-1, Ui.dp(this, 24)));
++        return card;
++    }
++
++    private View starStudioSection(String title, String subtitle) {
++        LinearLayout c = Ui.column(this);
++        TextView t = Ui.text(this, title, 13.2f, Ui.TEXT, true);
++        TextView s = Ui.text(this, subtitle, 10.4f, Ui.DIM, false);
++        s.setLineSpacing(0, 1.12f);
++        c.addView(t, Ui.lp(-1, Ui.dp(this, 28)));
++        c.addView(s, Ui.lp(-1, -2));
++        return c;
++    }
++
++    private View starStudioChoice(String title, String subtitle, boolean selected, int accent, View.OnClickListener action) {
++        LinearLayout c = Ui.column(this);
++        c.setGravity(Gravity.CENTER_VERTICAL);
++        c.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 12), 0);
++        c.setBackground(selected ? Ui.tintedGlass(accent, 17, this) : Ui.glass(62, 17, 18, this));
++        c.setClickable(true); Ui.applyRipple(c, Color.TRANSPARENT); c.setOnClickListener(action);
++        TextView t = Ui.text(this, (selected ? "✓  " : "") + title, 12f, selected ? Ui.TEXT : Ui.TEXT_2, true);
++        TextView s = Ui.text(this, subtitle, 9.7f, selected ? Ui.mix(accent, Color.WHITE, .28f) : Ui.DIM, false);
++        c.addView(t, Ui.lp(-1, Ui.dp(this, 28)));
++        c.addView(s, Ui.lp(-1, Ui.dp(this, 21)));
++        return c;
++    }
++
++    private TextView starQuickPreset(String label, boolean selected) {
++        TextView t = Ui.text(this, label, 10.8f, selected ? Ui.TEXT : Ui.TEXT_2, true);
++        t.setGravity(Gravity.CENTER); t.setClickable(true); Ui.applyRipple(t, Color.TRANSPARENT);
++        t.setBackground(selected ? Ui.tintedGlass(Ui.CYAN, 14, this) : Ui.glass(58, 14, 18, this));
++        return t;
++    }
++
++    private View starStudioSlider(String title, String subtitle, float min, float max, float value,
++                                  FloatAction action, boolean multiplier) {
++        LinearLayout c = Ui.column(this);
++        c.setPadding(Ui.dp(this, 13), Ui.dp(this, 11), Ui.dp(this, 13), Ui.dp(this, 9));
++        c.setBackground(Ui.glass(62, 17, 18, this));
++        LinearLayout top = Ui.row(this);
++        TextView t = Ui.text(this, title, 12.4f, Ui.TEXT, true);
++        TextView v = Ui.text(this, formatStarSlider(value, min, max, multiplier), 11.2f, Ui.CYAN, true);
++        v.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
++        top.addView(t, new LinearLayout.LayoutParams(0, Ui.dp(this, 28), 1f));
++        top.addView(v, Ui.lp(Ui.dp(this, 64), Ui.dp(this, 28)));
++        c.addView(top, Ui.lp(-1, Ui.dp(this, 28)));
++        TextView sub = Ui.text(this, subtitle, 9.8f, Ui.DIM, false);
++        c.addView(sub, Ui.lp(-1, Ui.dp(this, 24)));
++        SeekBar bar = new SeekBar(this);
++        bar.setMax(1000);
++        int progress = Math.round((value - min) / Math.max(.0001f, max - min) * 1000f);
++        bar.setProgress(Math.max(0, Math.min(1000, progress)));
++        if (Build.VERSION.SDK_INT >= 21) {
++            bar.setProgressTintList(ColorStateList.valueOf(Ui.CYAN));
++            bar.setThumbTintList(ColorStateList.valueOf(Ui.mix(Ui.CYAN, Color.WHITE, .30f)));
++        }
++        bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
++            @Override public void onStartTrackingTouch(SeekBar seekBar) { }
++            @Override public void onStopTrackingTouch(SeekBar seekBar) { }
++            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
++                if (!fromUser) return;
++                float next = min + (max - min) * progress / 1000f;
++                v.setText(formatStarSlider(next, min, max, multiplier));
++                action.run(next);
++            }
++        });
++        c.addView(bar, Ui.lp(-1, Ui.dp(this, 36)));
++        return c;
++    }
++
++    private String formatStarSlider(float value, float min, float max, boolean multiplier) {
++        if (multiplier) return String.format(Locale.US, "%.2f×", value);
++        return Math.round(value / Math.max(.001f, max) * 100f) + "%";
++    }
++
++    private View starColorChoice(String label, int color, boolean selected, View.OnClickListener action) {
++        LinearLayout row = Ui.row(this);
++        row.setPadding(Ui.dp(this, 11), 0, Ui.dp(this, 10), 0);
++        row.setBackground(selected ? Ui.tintedGlass(color, 15, this) : Ui.glass(56, 15, 16, this));
++        row.setClickable(true); Ui.applyRipple(row, Color.TRANSPARENT); row.setOnClickListener(action);
++        View dot = new View(this);
++        dot.setBackground(Ui.stroke(Ui.mix(color, Color.WHITE, .15f), 10, Color.argb(70,255,255,255), this));
++        row.addView(dot, Ui.lp(Ui.dp(this, 20), Ui.dp(this, 20)));
++        TextView t = Ui.text(this, (selected ? "✓  " : "") + label, 10.9f, selected ? Ui.TEXT : Ui.TEXT_2, true);
++        t.setPadding(Ui.dp(this, 9), 0, 0, 0);
++        row.addView(t, new LinearLayout.LayoutParams(0, Ui.dp(this, 46), 1f));
++        return row;
++    }
++
++    private View starAmbientChoice(String label, int color, boolean selected, View.OnClickListener action) {
++        LinearLayout row = Ui.row(this);
++        row.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 10), 0);
++        int tint = color == Color.BLACK ? Ui.TEXT_2 : color;
++        row.setBackground(selected ? Ui.tintedGlass(tint, 16, this) : Ui.glass(56, 16, 16, this));
++        row.setClickable(true); Ui.applyRipple(row, Color.TRANSPARENT); row.setOnClickListener(action);
++        View swatch = new View(this);
++        swatch.setBackground(Ui.stroke(color == Color.BLACK ? Color.rgb(3,3,5) : Ui.mix(color, Color.BLACK, .35f),
++                11, color == Color.BLACK ? Color.argb(60,255,255,255) : Color.argb(80, Color.red(color), Color.green(color), Color.blue(color)), this));
++        row.addView(swatch, Ui.lp(Ui.dp(this, 27), Ui.dp(this, 27)));
++        TextView t = Ui.text(this, (selected ? "✓  " : "") + label, 10.6f, selected ? Ui.TEXT : Ui.TEXT_2, true);
++        t.setPadding(Ui.dp(this, 9), 0, 0, 0);
++        row.addView(t, new LinearLayout.LayoutParams(0, Ui.dp(this, 50), 1f));
++        return row;
++    }
++
++    private View starInfoCard(String title, String message, int accent) {
++        LinearLayout c = Ui.column(this);
++        c.setPadding(Ui.dp(this, 13), Ui.dp(this, 10), Ui.dp(this, 13), Ui.dp(this, 10));
++        c.setBackground(Ui.tintedGlass(accent, 16, this));
++        TextView t = Ui.text(this, title, 11.2f, Ui.mix(accent, Color.WHITE, .34f), true);
++        TextView m = Ui.text(this, message, 9.8f, Ui.TEXT_2, false);
++        m.setLineSpacing(0, 1.16f);
++        c.addView(t, Ui.lp(-1, Ui.dp(this, 25)));
++        c.addView(m, Ui.lp(-1, -2));
++        return c;
++    }
++
+     private void showLyricStylePicker() {
+         LinearLayout card = modalCard("歌词高亮", "每一项都直接预览真实高亮效果。颜色只影响歌词显示，不影响歌曲、音源或播放链。");
+         ScrollView optionsScroll = new ScrollView(this);

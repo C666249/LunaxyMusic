@@ -1,0 +1,19 @@
+Lunaxy Music V75 — Static Check
+
+PASS app/src/main runtime V74=119 / V75=119 / changed=1 / added=0 / deleted=0
+PASS Java delimiter=79/79
+PASS XML parse=17/17
+PASS PNG structure=22/22
+PASS only_runtime_main_changed
+PASS version_750
+PASS apk_v75
+PASS meta_frame_full_width
+PASS lyrics_start
+PASS favorite_center
+PASS add_end
+PASS old_equal_slots_removed
+PASS song_info_sources_preserved
+PASS sleep_service_identical
+PASS locked_25_25
+PASS main_guard_11_11
+PASS playback_guard_18_18

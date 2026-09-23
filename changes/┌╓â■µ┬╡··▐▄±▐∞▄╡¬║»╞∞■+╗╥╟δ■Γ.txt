@@ -1,0 +1,24 @@
+V16 回退 / 微调说明
+===================
+
+1. 最直接回退：保留你手上的 XingyuMusic-V15-Full-Fixed.zip，需要时重新解压即可。
+
+2. 本包 changes/V15-to-V16_UI.patch 是 V15-Fixed -> V16 的源码差异，方便后续定位“这一版到底动了什么”。
+   如果在一个以 V15-Fixed 为基线的 Git 工作区里，可用：
+     git apply changes/V15-to-V16_UI.patch
+   若要从 V16 反向退回 UI：
+     git apply -R changes/V15-to-V16_UI.patch
+
+3. 如果只想细调波纹，不要动播放：
+   只改 ui/VinylRecordView.java。
+
+4. 如果只想细调按钮/卡片/图标：
+   优先改 ui/Ui.java 与 ui/IconView.java。
+
+5. 如果只想细调歌词：
+   改 ui/LyricLineView.java 及 MainActivity 中 buildNowPlaying / updateLyricHighlight / scrollLyricToActive。
+
+6. 不要为了 UI 修改以下目录：
+   data/**
+   playback/**
+   assets/source/huibq-latest.js

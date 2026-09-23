@@ -1,0 +1,129 @@
+Lunaxy Music V35 · PLAYBACK CORE GUARD
+Baseline A: V34 (must remain byte-identical for protected playback/network objects)
+
+PASS  app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+  V34 8e1b7d154d0d51613666327b2f5d2a63aa331396d351b7ccb434f3163f0e8860
+  V35 8e1b7d154d0d51613666327b2f5d2a63aa331396d351b7ccb434f3163f0e8860
+
+PASS  app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java
+  V34 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
+  V35 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
+
+PASS  app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
+  V34 30e4ae77a4682b263bfdd7acb0799b840796ffb9f28520296987d9c6179f09e0
+  V35 30e4ae77a4682b263bfdd7acb0799b840796ffb9f28520296987d9c6179f09e0
+
+PASS  app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
+  V34 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
+  V35 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
+
+PASS  app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
+  V34 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
+  V35 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
+
+PASS  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
+  V34 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
+  V35 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
+
+PASS  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
+  V34 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
+  V35 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
+
+PASS  app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
+  V34 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
+  V35 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
+
+PASS  app/src/main/java/com/xingyu/music/data/ResolverProvider.java
+  V34 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
+  V35 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
+
+PASS  app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
+  V34 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
+  V35 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
+
+PASS  app/src/main/java/com/xingyu/music/data/QQMusicApi.java
+  V34 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
+  V35 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
+
+PASS  app/src/main/java/com/xingyu/music/data/NeteaseApi.java
+  V34 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
+  V35 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
+
+PASS  app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
+  V34 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
+  V35 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
+
+PASS  app/src/main/java/com/xingyu/music/data/PlaybackTrace.java
+  V34 24ce07eaeb3e28264dde1f0deea0c4a3aad8e7556ebb181b79cec6d88ca5366b
+  V35 24ce07eaeb3e28264dde1f0deea0c4a3aad8e7556ebb181b79cec6d88ca5366b
+
+PASS  app/src/main/java/com/xingyu/music/data/LibraryStore.java
+  V34 4b1b5438a1aabb476b097c7cf4f617884cb98360514cdd7239b0084bfc5bb60f
+  V35 4b1b5438a1aabb476b097c7cf4f617884cb98360514cdd7239b0084bfc5bb60f
+
+PASS  app/src/main/java/com/xingyu/music/model/Song.java
+  V34 82ff5941f869883f00ef3b49a27fc9a0b98db9d59d7257b9d4bcb94a04b02c13
+  V35 82ff5941f869883f00ef3b49a27fc9a0b98db9d59d7257b9d4bcb94a04b02c13
+
+PASS  app/src/main/java/com/xingyu/music/model/SourceVariant.java
+  V34 333af304393ce3eb126f6b168dbcfafb0fed7c0e30a056860db99a9d52cb18fb
+  V35 333af304393ce3eb126f6b168dbcfafb0fed7c0e30a056860db99a9d52cb18fb
+
+PASS  app/src/main/assets/source/huibq-latest.js
+  V34 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
+  V35 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
+
+PASS  app/src/main/AndroidManifest.xml
+  V34 96d959b329e0b897db94052dbdc988d2dbb44a3271354f2e6573c83bd97d9007
+  V35 96d959b329e0b897db94052dbdc988d2dbb44a3271354f2e6573c83bd97d9007
+
+PASS  app/src/main/res/drawable/ic_launcher_foreground.xml
+  V34 e9e0369458497e8ab823022aca243ec12262ff39e815273c9582927616592bc9
+  V35 e9e0369458497e8ab823022aca243ec12262ff39e815273c9582927616592bc9
+
+PASS  app/src/main/res/drawable/ic_launcher_background.xml
+  V34 1be2433e87669925dbca4c79e34cccf4cc76529e46f947a164703567dc40aa67
+  V35 1be2433e87669925dbca4c79e34cccf4cc76529e46f947a164703567dc40aa67
+
+PASS  app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+  V34 96e457b9c18d021a276b3fad3d84248f90d2d6460f48299536fc8d3d371ca054
+  V35 96e457b9c18d021a276b3fad3d84248f90d2d6460f48299536fc8d3d371ca054
+
+PASS  app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+  V34 96e457b9c18d021a276b3fad3d84248f90d2d6460f48299536fc8d3d371ca054
+  V35 96e457b9c18d021a276b3fad3d84248f90d2d6460f48299536fc8d3d371ca054
+
+PASS  app/src/main/res/drawable-nodpi/icon_stardust.png
+  V34 229eced19957739cee21401a22a48e6904e61517bce9d9b182d097fdd11dfb35
+  V35 229eced19957739cee21401a22a48e6904e61517bce9d9b182d097fdd11dfb35
+
+PASS  app/src/main/res/drawable-nodpi/icon_xm.png
+  V34 229eced19957739cee21401a22a48e6904e61517bce9d9b182d097fdd11dfb35
+  V35 229eced19957739cee21401a22a48e6904e61517bce9d9b182d097fdd11dfb35
+
+Exact protected-core result V34→V35: 25/25 PASS
+
+Baseline B: V31 stable network chain cross-check
+
+SAME  app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+SAME  app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java
+DIFF  app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
+  NOTE: V32+ adds only local/offline direct-URI branch and guards health/cache writes for offline provider; tx/wy network route body remains the V31 code.
+SAME  app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
+SAME  app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
+SAME  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
+SAME  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
+SAME  app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
+SAME  app/src/main/java/com/xingyu/music/data/ResolverProvider.java
+SAME  app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
+SAME  app/src/main/java/com/xingyu/music/data/QQMusicApi.java
+SAME  app/src/main/java/com/xingyu/music/data/NeteaseApi.java
+SAME  app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
+SAME  app/src/main/java/com/xingyu/music/data/PlaybackTrace.java
+SAME  app/src/main/java/com/xingyu/music/data/LibraryStore.java
+DIFF  app/src/main/java/com/xingyu/music/model/Song.java
+  NOTE: only providerLabel("local") = "离线" was added for offline library display.
+SAME  app/src/main/java/com/xingyu/music/model/SourceVariant.java
+SAME  app/src/main/assets/source/huibq-latest.js
+
+Conclusion: V35 changes no protected network playback object relative to V34. Relative to V31, the only guarded Java differences are the offline/local extension in SourceCoordinator and Song; QQ/网易 network resolver, health learning, Media3 READY persistence, retry/cooldown and Huibq/QDY selection code are unchanged.

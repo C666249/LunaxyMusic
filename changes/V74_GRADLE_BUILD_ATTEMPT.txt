@@ -1,0 +1,5 @@
+Lunaxy Music V74 — Gradle Build Attempt
+
+COMMAND: ./gradlew :app:assembleDebug --stacktrace
+RESULT: BLOCKED_BY_ENVIRONMENT
+DETAIL: 当前沙箱无法解析 services.gradle.org，Gradle 9.5.0 下载阶段出现 curl error 6；因此不能宣称 assembleDebug 已通过。代码已继续执行静态检查、Locked Core guard、method-body guard、资源解析与 ZIP 完整性检查。

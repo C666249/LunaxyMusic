@@ -1,0 +1,10 @@
+Sunflower V4 Download Isolation Guard
+
+HARD RULES:
+- Download code may READ exact variants, TrackRouteStore preference, PlaybackUrlStore Media3-READY URLs.
+- Download code MUST NOT invoke SourceCoordinator / AudioProviderHub / LxSourceRuntime / ResolverProvider / provider musicUrl.
+- Download code MUST NOT mutate PlaybackUrlStore / TrackRouteStore / SourceHealthStore / Media3 READY affinity.
+- V4 direct TX media download is disabled even if a TX URL cache exists.
+- Online playback owns network priority. Download waits/pauses through PlaybackNetworkGate.
+- Download concurrency = 1 and inter-track quiet gap = 1500 ms.
+- OfflineStore and DownloadRouteStore are side-car preference/files only.

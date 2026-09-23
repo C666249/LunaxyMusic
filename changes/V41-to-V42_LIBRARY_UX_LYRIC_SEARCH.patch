@@ -1,0 +1,876 @@
+--- /tmp/LunaxyMusic-V41-check/LunaxyMusic-V41/BUILD_APK.bat	2026-08-11 06:53:24.000000000 +0000
++++ BUILD_APK.bat	2026-08-11 07:13:31.574472952 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   LunaxyMusic V41 - Debug APK Build
++echo   LunaxyMusic V42 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V41-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V42-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\LunaxyMusic-V41-debug.apk
++echo [OK] APK: %CD%\dist\LunaxyMusic-V42-debug.apk
+ pause
+
+--- /tmp/LunaxyMusic-V41-check/LunaxyMusic-V41/app/build.gradle.kts	2026-08-11 06:53:24.000000000 +0000
++++ app/build.gradle.kts	2026-08-11 07:13:31.574328798 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 44
+-        versionName = "41.0.0"
++        versionCode = 45
++        versionName = "42.0.0"
+     }
+ 
+     buildTypes {
+
+--- /tmp/LunaxyMusic-V41-check/LunaxyMusic-V41/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 06:53:24.000000000 +0000
++++ app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 07:18:52.373146631 +0000
+@@ -55,6 +55,7 @@
+ import com.xingyu.music.data.LyricMatcher;
+ import com.xingyu.music.data.LyricParser;
+ import com.xingyu.music.data.NeteaseApi;
++import com.xingyu.music.data.NeteaseLyricSearchApi;
+ import com.xingyu.music.data.QQMusicApi;
+ import com.xingyu.music.data.QQLyricApi;
+ import com.xingyu.music.data.RecommendationEngine;
+@@ -93,16 +94,17 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V38.0 – Playback-Safe + observation-only diagnostics.
++ * Lunaxy Music V42.0 – Playback core locked; library UX + lyric search.
+  *
+- * The optional music download/offline subsystem has been removed completely. The QQ/NetEase
+- * network playback path is restored byte-for-byte to the proven V29 stable chain; current UI,
+- * playlist, lyrics and recommendation behavior stay on the V36 line.
++ * The optional music download/offline subsystem remains removed. Playback resolution, Media3 READY
++ * validation, URL cache and the V41 fixed source scheduling/health policy are treated as a locked zone;
++ * V42 changes only library/search UI behavior outside that zone.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(4);
+     private final Handler main = new Handler(Looper.getMainLooper());
+     private final NeteaseApi netease = new NeteaseApi();
++    private final NeteaseLyricSearchApi neteaseLyricSearch = new NeteaseLyricSearchApi();
+     private final QQMusicApi qq = new QQMusicApi();
+     private final QQLyricApi qqLyrics = new QQLyricApi();
+ 
+@@ -199,6 +201,20 @@
+     private int lastTxCount;
+     private String lastWyError = "";
+     private String lastTxError = "";
++    private List<Song> lastWySearchSongs = new ArrayList<>();
++    private List<Song> lastTxSearchSongs = new ArrayList<>();
++    private List<LyricSearchResult> lyricSearchResults = new ArrayList<>();
++    private String searchSourceFilter = ""; // ""=all, wy, tx
++    private int searchRequestToken;
++
++    private static final class LyricSearchResult {
++        final Song song;
++        final String snippet;
++        LyricSearchResult(Song song, String snippet) {
++            this.song = song;
++            this.snippet = snippet == null ? "" : snippet.trim();
++        }
++    }
+ 
+     // Search suggestion dropdown state. The token prevents stale async responses from repainting a newer query.
+     private int suggestionRequestToken;
+@@ -1457,7 +1473,7 @@
+         field.setBackground(Ui.glass(190, 26, 28, this));
+ 
+         EditText input = new EditText(this);
+-        input.setHint("晴天、周杰伦…");
++        input.setHint("歌名、歌手或一句歌词…");
+         input.setHintTextColor(Color.rgb(126, 126, 145));
+         input.setTextColor(Ui.TEXT);
+         input.setTextSize(15.5f);
+@@ -1486,7 +1502,7 @@
+         sgp.rightMargin = Ui.dp(this, 70); // same visual width as the text field above
+         body.addView(suggestionHost, sgp);
+ 
+-        TextView sourceLine = Ui.text(this, "原唱优先  ·  网易云 + QQ 音乐", 12.3f, Ui.TEXT_2, false);
++        TextView sourceLine = Ui.text(this, "原唱优先  ·  歌名/歌手即时搜索  ·  长句自动匹配歌词", 12.3f, Ui.TEXT_2, false);
+         LinearLayout.LayoutParams slp = Ui.lp(-1, Ui.dp(this, 30));
+         slp.topMargin = Ui.dp(this, 10);
+         body.addView(sourceLine, slp);
+@@ -1530,7 +1546,7 @@
+                 resultsHolder.addView(songList(history.subList(0, Math.min(5, history.size())), history), marginTop(8));
+             }
+         }
+-        return pageScaffold("发现音乐", "搜索后直接播放，也可以收藏到本机", body);
++        return pageScaffold("发现音乐", "歌名、歌手或一句歌词都可以搜索", body);
+     }
+ 
+     private void scheduleSearchSuggestions(String raw, EditText input, LinearLayout host, LinearLayout resultsHolder) {
+@@ -1707,7 +1723,7 @@
+         title.setGravity(Gravity.CENTER);
+         empty.addView(title, Ui.lp(-1, Ui.dp(this, 36)));
+ 
+-        TextView sub = Ui.text(this, "输入歌曲或歌手，搜索结果可以直接播放和收藏", 12.2f, Ui.TEXT_2, false);
++        TextView sub = Ui.text(this, "输入歌名、歌手或记得的一句歌词；普通搜索不会等待歌词匹配", 12.2f, Ui.TEXT_2, false);
+         sub.setGravity(Gravity.CENTER);
+         sub.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+         sub.setMaxLines(2);
+@@ -1726,8 +1742,11 @@
+ 
+     private void performSearch(String q, LinearLayout holder) {
+         final String keyword = q == null ? "" : q.trim();
+-        if (keyword.isEmpty()) { toast("输入歌曲或歌手名称"); return; }
++        if (keyword.isEmpty()) { toast("输入歌曲、歌手或一句歌词"); return; }
++        final int requestToken = ++searchRequestToken;
+         lastQuery = keyword;
++        searchSourceFilter = "";
++        lyricSearchResults = new ArrayList<>();
+         searchHistory = store.addSearchHistory(keyword);
+         showBusy(true);
+ 
+@@ -1764,14 +1783,40 @@
+             final SearchOutcome wyResult = wy;
+             final SearchOutcome txResult = tx;
+             final List<Song> merged = mergeSearch(keyword, wy.songs, tx.songs);
++
++            // Render ordinary title/artist results first. Lyric matching (including the local cache scan)
++            // is intentionally kept out of this critical path so adding lyric search cannot make normal
++            // searches feel slower.
+             main.post(() -> {
++                if (requestToken != searchRequestToken) return;
+                 showBusy(false);
++                lastWySearchSongs = new ArrayList<>(wyResult.songs);
++                lastTxSearchSongs = new ArrayList<>(txResult.songs);
+                 searchResults = merged;
++                lyricSearchResults = new ArrayList<>();
+                 lastWyCount = wyResult.total;
+                 lastTxCount = txResult.total;
+                 lastWyError = wyResult.error;
+                 lastTxError = txResult.error;
+-                holder.removeAllViews();
++                renderSearchResults(holder);
++            });
++
++            // Commercial-style split search: only phrases that look like lyrics (or searches with very
++            // few metadata hits) trigger the second phase. This phase never blocks the normal result list
++            // and it does not touch playback/source routing.
++            if (!shouldSearchLyrics(keyword, merged.size())) return;
++            Future<List<NeteaseLyricSearchApi.Hit>> lyricFuture = io.submit(() -> {
++                try { return neteaseLyricSearch.search(keyword, 16); }
++                catch (Exception ignored) { return new ArrayList<>(); }
++            });
++            final List<LyricSearchResult> localLyrics = findLocalLyricMatches(keyword, 12, wyResult.songs, txResult.songs);
++            List<NeteaseLyricSearchApi.Hit> remote;
++            try { remote = lyricFuture.get(12, TimeUnit.SECONDS); }
++            catch (Exception ignored) { lyricFuture.cancel(true); remote = new ArrayList<>(); }
++            final List<LyricSearchResult> combined = mergeLyricHits(keyword, localLyrics, remote, 16);
++            main.post(() -> {
++                if (requestToken != searchRequestToken || isFinishing()) return;
++                lyricSearchResults = combined;
+                 renderSearchResults(holder);
+             });
+         });
+@@ -1781,22 +1826,134 @@
+         return SearchRanker.mergeAndRank(keyword, wy, tx, 50);
+     }
+ 
++    private boolean shouldSearchLyrics(String keyword, int normalResultCount) {
++        String normalized = normalizeSuggestion(keyword);
++        int len = normalized.length();
++        if (len >= 10) return true;
++        if (len >= 5 && containsSentenceCue(keyword)) return true;
++        return len >= 4 && normalResultCount <= 3;
++    }
++
++    private boolean containsSentenceCue(String text) {
++        if (text == null) return false;
++        String q = text.trim();
++        if (q.contains(" ") || q.contains("，") || q.contains(",") || q.contains("。")) return true;
++        String[] cues = {"我", "你", "他", "她", "我们", "如果", "因为", "怎么", "为何", "曾经", "还是", "已经", "没有", "不能", "想起", "记得", "爱你"};
++        int hits = 0;
++        for (String cue : cues) if (q.contains(cue) && ++hits >= 2) return true;
++        return false;
++    }
++
++    private List<LyricSearchResult> findLocalLyricMatches(String keyword, int max, List<Song> currentWy, List<Song> currentTx) {
++        ArrayList<LyricSearchResult> out = new ArrayList<>();
++        if (lyricCache == null || max <= 0) return out;
++        String needle = normalizeSuggestion(keyword);
++        if (needle.length() < 3) return out;
++        LinkedHashMap<String, Song> candidates = new LinkedHashMap<>();
++        for (Song song : favorites) if (song != null) candidates.put(song.key(), song);
++        for (ImportedPlaylist p : playlists) if (p != null && p.songs != null)
++            for (Song song : p.songs) if (song != null) candidates.put(song.key(), song);
++        for (Song song : history) if (song != null) candidates.put(song.key(), song);
++        if (currentWy != null) for (Song song : currentWy) if (song != null) candidates.put(song.key(), song);
++        if (currentTx != null) for (Song song : currentTx) if (song != null) candidates.put(song.key(), song);
++        for (Song song : candidates.values()) {
++            if (out.size() >= max) break;
++            String lrc = lyricCache.get(song);
++            String snippet = matchingLyricLine(lrc, needle);
++            if (!snippet.isEmpty()) out.add(new LyricSearchResult(song, snippet));
++        }
++        return out;
++    }
++
++    private String matchingLyricLine(String lrc, String normalizedNeedle) {
++        if (lrc == null || lrc.trim().isEmpty() || normalizedNeedle == null || normalizedNeedle.isEmpty()) return "";
++        String[] lines = lrc.split("\\r?\\n");
++        for (String raw : lines) {
++            String line = raw == null ? "" : raw.replaceAll("\\[[^\\]]*\\]", " ")
++                    .replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim();
++            if (line.length() < 2 || !normalizeSuggestion(line).contains(normalizedNeedle)) continue;
++            return line.length() <= 54 ? line : line.substring(0, 54) + "…";
++        }
++        return "";
++    }
++
++    private List<LyricSearchResult> mergeLyricHits(String keyword, List<LyricSearchResult> local,
++                                                    List<NeteaseLyricSearchApi.Hit> remote, int max) {
++        LinkedHashMap<String, LyricSearchResult> out = new LinkedHashMap<>();
++        if (local != null) for (LyricSearchResult hit : local) {
++            if (hit != null && hit.song != null) out.put(hit.song.key(), hit);
++        }
++        if (remote != null) for (NeteaseLyricSearchApi.Hit hit : remote) {
++            if (hit == null || hit.song == null || out.size() >= max) continue;
++            boolean metadataOnly = metadataContainsQuery(hit.song, keyword) && (hit.snippet == null || hit.snippet.trim().isEmpty());
++            if (metadataOnly) continue; // don't duplicate ordinary title/artist matches as "lyrics"
++            Song song = enrichWithKnownVariant(hit.song);
++            String snippet = hit.snippet == null || hit.snippet.trim().isEmpty() ? "包含你搜索的歌词片段" : hit.snippet;
++            out.putIfAbsent(song.key(), new LyricSearchResult(song, snippet));
++        }
++        ArrayList<LyricSearchResult> list = new ArrayList<>(out.values());
++        return list.size() <= max ? list : new ArrayList<>(list.subList(0, max));
++    }
++
++    private Song enrichWithKnownVariant(Song incoming) {
++        if (incoming == null) return null;
++        String identity = normalizeSuggestion(incoming.title) + "|" + normalizeSuggestion(incoming.artist);
++        LinkedHashMap<String, Song> known = new LinkedHashMap<>();
++        for (Song song : favorites) if (song != null) known.put(song.key(), song);
++        for (ImportedPlaylist p : playlists) if (p != null && p.songs != null)
++            for (Song song : p.songs) if (song != null) known.put(song.key(), song);
++        for (Song song : history) if (song != null) known.put(song.key(), song);
++        for (Song song : known.values()) {
++            String other = normalizeSuggestion(song.title) + "|" + normalizeSuggestion(song.artist);
++            if (identity.equals(other)) return song.withVariant(incoming);
++        }
++        return incoming;
++    }
++
++    private boolean metadataContainsQuery(Song song, String keyword) {
++        String needle = normalizeSuggestion(keyword);
++        if (song == null || needle.isEmpty()) return false;
++        return normalizeSuggestion(song.title).contains(needle) || normalizeSuggestion(song.artist).contains(needle);
++    }
++
++    private List<Song> visibleSearchSongs() {
++        if ("wy".equals(searchSourceFilter)) return new ArrayList<>(lastWySearchSongs);
++        if ("tx".equals(searchSourceFilter)) return new ArrayList<>(lastTxSearchSongs);
++        return new ArrayList<>(searchResults);
++    }
++
++    private List<LyricSearchResult> visibleLyricSearchResults() {
++        ArrayList<LyricSearchResult> out = new ArrayList<>();
++        for (LyricSearchResult hit : lyricSearchResults) {
++            if (hit == null || hit.song == null) continue;
++            if ("wy".equals(searchSourceFilter) && hit.song.variant("wy") == null) continue;
++            if ("tx".equals(searchSourceFilter) && hit.song.variant("tx") == null) continue;
++            out.add(hit);
++        }
++        return out;
++    }
++
+     private void renderSearchResults(LinearLayout holder) {
+         holder.removeAllViews();
+         LinearLayout health = Ui.row(this);
+-        health.addView(sourceChip("网易", lastWyCount, lastWyError, Ui.PURPLE));
++        health.addView(sourceChip("网易", "wy", lastWyCount, lastWyError, Ui.PURPLE, holder),
++                new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
+         Space gap = new Space(this); health.addView(gap, Ui.lp(Ui.dp(this, 8), 1));
+-        health.addView(sourceChip("QQ", lastTxCount, lastTxError, Ui.CYAN));
++        health.addView(sourceChip("QQ", "tx", lastTxCount, lastTxError, Ui.CYAN, holder),
++                new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
+         holder.addView(health, Ui.lp(-1, Ui.dp(this, 34)));
+ 
+-        if (searchResults.isEmpty()) {
++        List<Song> visibleSongs = visibleSearchSongs();
++        List<LyricSearchResult> visibleLyrics = visibleLyricSearchResults();
++        if (visibleSongs.isEmpty() && visibleLyrics.isEmpty()) {
+             LinearLayout empty = Ui.column(this);
+             empty.setGravity(Gravity.CENTER_HORIZONTAL);
+             empty.setPadding(Ui.dp(this, 10), Ui.dp(this, 42), Ui.dp(this, 10), Ui.dp(this, 30));
+-            TextView title = Ui.text(this, "暂时没搜到", 18, Ui.TEXT, true);
++            String sourceLabel = "wy".equals(searchSourceFilter) ? "网易云" : ("tx".equals(searchSourceFilter) ? "QQ" : "");
++            TextView title = Ui.text(this, sourceLabel.isEmpty() ? "暂时没搜到" : sourceLabel + "暂时没搜到", 18, Ui.TEXT, true);
+             title.setGravity(Gravity.CENTER);
+             empty.addView(title, Ui.lp(-1, Ui.dp(this, 34)));
+-            TextView sub = Ui.text(this, "换个关键词，或者检查当前网络。", 12.5f, Ui.TEXT_2, false);
++            TextView sub = Ui.text(this, "换个关键词，或输入你记得的一句歌词。", 12.5f, Ui.TEXT_2, false);
+             sub.setGravity(Gravity.CENTER);
+             empty.addView(sub, Ui.lp(-1, Ui.dp(this, 34)));
+             if (!lastWyError.isEmpty() || !lastTxError.isEmpty()) {
+@@ -1810,17 +1967,68 @@
+             return;
+         }
+ 
+-        TextView count = Ui.text(this, "找到 " + searchResults.size() + " 首", 12, Ui.TEXT_2, true);
+-        holder.addView(count, marginTop(14));
+-        holder.addView(songList(searchResults, searchResults), marginTop(6));
++        if (!visibleSongs.isEmpty()) {
++            String suffix = "wy".equals(searchSourceFilter) ? " · 网易" : ("tx".equals(searchSourceFilter) ? " · QQ" : "");
++            TextView count = Ui.text(this, "歌曲 / 歌手匹配  " + visibleSongs.size() + " 首" + suffix, 12, Ui.TEXT_2, true);
++            holder.addView(count, marginTop(14));
++            holder.addView(songList(visibleSongs, visibleSongs), marginTop(6));
++        }
++
++        if (!visibleLyrics.isEmpty()) {
++            LinearLayout lyricHead = Ui.row(this);
++            TextView title = Ui.text(this, "歌词匹配", 13.2f, Ui.TEXT, true);
++            lyricHead.addView(title, new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
++            TextView tip = Ui.text(this, "根据你记得的句子找到", 10.5f, Ui.DIM, false);
++            tip.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
++            lyricHead.addView(tip, Ui.lp(-2, Ui.dp(this, 34)));
++            holder.addView(lyricHead, marginTop(20));
++            holder.addView(lyricSearchResultList(visibleLyrics), marginTop(4));
++        }
++    }
++
++    private View lyricSearchResultList(List<LyricSearchResult> hits) {
++        LinearLayout box = Ui.column(this);
++        for (int i = 0; i < hits.size(); i++) {
++            LyricSearchResult hit = hits.get(i);
++            LinearLayout wrap = Ui.column(this);
++            LinearLayout meta = Ui.row(this);
++            meta.setGravity(Gravity.CENTER_VERTICAL);
++            TextView badge = Ui.pill(this, "歌词", Ui.GREEN);
++            meta.addView(badge, Ui.lp(Ui.dp(this, 48), Ui.dp(this, 26)));
++            TextView snippet = Ui.text(this, hit.snippet, 10.7f, Ui.TEXT_2, false);
++            snippet.setSingleLine(true); snippet.setEllipsize(TextUtils.TruncateAt.END);
++            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(0, Ui.dp(this, 26), 1f); sp.leftMargin = Ui.dp(this, 8);
++            meta.addView(snippet, sp);
++            wrap.addView(meta, Ui.lp(-1, Ui.dp(this, 26)));
++            View row = songRow(hit.song, lyricSongs(hits), i);
++            row.setOnClickListener(v -> playPickedSong(hit.song));
++            LinearLayout.LayoutParams rp = Ui.lp(-1, -2); rp.topMargin = Ui.dp(this, 2); wrap.addView(row, rp);
++            box.addView(wrap, marginTop(i == 0 ? 0 : 9));
++        }
++        return box;
++    }
++
++    private List<Song> lyricSongs(List<LyricSearchResult> hits) {
++        ArrayList<Song> out = new ArrayList<>();
++        if (hits != null) for (LyricSearchResult hit : hits) if (hit != null && hit.song != null) out.add(hit.song);
++        return out;
+     }
+ 
+-    private TextView sourceChip(String name, int count, String error, int color) {
++    private TextView sourceChip(String name, String source, int count, String error, int color, LinearLayout holder) {
+         boolean ok = count > 0;
+-        String label = ok ? name + "  " + count : (error.isEmpty() ? name + "  0" : name + "  暂不可用");
++        boolean selected = source.equals(searchSourceFilter);
++        String label = (selected ? "✓  " : "") + (ok ? name + "  " + count : (error.isEmpty() ? name + "  0" : name + "  暂不可用"));
+         int tint = ok ? color : (error.isEmpty() ? Ui.DIM : Ui.RED);
+         TextView chip = Ui.pill(this, label, tint);
+-        if (!error.isEmpty()) chip.setOnClickListener(v -> showSearchDebug());
++        chip.setClickable(true); chip.setFocusable(true);
++        chip.setAlpha(selected ? 1f : .82f);
++        if (selected) chip.setBackground(Ui.tintedGlass(tint, 22, this));
++        Ui.applyRipple(chip, Color.TRANSPARENT);
++        chip.setOnClickListener(v -> {
++            searchSourceFilter = source.equals(searchSourceFilter) ? "" : source;
++            renderSearchResults(holder);
++        });
++        if (!error.isEmpty()) chip.setOnLongClickListener(v -> { showSearchDebug(); return true; });
+         return chip;
+     }
+ 
+@@ -2098,7 +2306,7 @@
+             LinearLayout.LayoutParams tlp = Ui.lp(-1, Ui.dp(this, 42)); tlp.topMargin = Ui.dp(this, 10);
+             body.addView(tools, tlp);
+ 
+-            body.addView(sectionHeader("歌曲", favorites.size() + " 首"), marginTop(18));
++            body.addView(sortableSongsHeader("歌曲", favorites.size(), () -> showManualSongOrder("收藏歌曲", favorites, null)), marginTop(18));
+             body.addView(songList(favorites, favorites), marginTop(6));
+         }
+         return pageScaffold("收藏", favorites.isEmpty() ? "还没有收藏歌曲" : favorites.size() + " 首保存在本机", body);
+@@ -2237,7 +2445,7 @@
+ 
+         body.addView(hero, Ui.lp(-1, -2));
+ 
+-        body.addView(sectionHeader("歌曲", p.songs.size() + " 首"), marginTop(22));
++        body.addView(sortableSongsHeader("歌曲", p.songs.size(), () -> showManualSongOrder(p.name, p.songs, p.id)), marginTop(22));
+         if (p.songs.isEmpty()) {
+             body.addView(compactEmpty("这个歌单还没有歌曲，点上方 + 从收藏、搜索或其他歌单添加"), marginTop(6));
+         } else {
+@@ -2792,6 +3000,181 @@
+         }
+     }
+ 
++    private void showManualSongOrder(String collectionName, List<Song> source, String playlistId) {
++        if (source == null || source.size() < 2) { toast("至少需要两首歌才能排序"); return; }
++        LinearLayout card = modalCard("手动排序", collectionName + " · 长按右侧三横线拖动；顺序会保存到本机歌单");
++
++        LinearLayout tools = Ui.row(this);
++        tools.setGravity(Gravity.CENTER_VERTICAL);
++        TextView count = Ui.text(this, source.size() + " 首", 11.2f, Ui.TEXT_2, true);
++        tools.addView(count, new LinearLayout.LayoutParams(0, Ui.dp(this, 38), 1f));
++        TextView done = modalButton("完成", true);
++        done.setBackground(Ui.primaryFill(Ui.CYAN, 15, this));
++        tools.addView(done, Ui.lp(Ui.dp(this, 82), Ui.dp(this, 38)));
++        LinearLayout.LayoutParams tp = Ui.lp(-1, Ui.dp(this, 38)); tp.topMargin = Ui.dp(this, 8); card.addView(tools, tp);
++
++        ListView list = new ListView(this);
++        list.setDivider(null);
++        list.setDividerHeight(Ui.dp(this, 4));
++        list.setSelector(android.R.color.transparent);
++        list.setCacheColorHint(Color.TRANSPARENT);
++        list.setVerticalScrollBarEnabled(false);
++        ManualOrderAdapter adapter = new ManualOrderAdapter(source);
++        list.setAdapter(adapter);
++
++        list.setOnDragListener((v, event) -> {
++            int action = event.getAction();
++            if (action == DragEvent.ACTION_DRAG_LOCATION) {
++                float y = event.getY();
++                if (y < Ui.dp(this, 60)) list.smoothScrollBy(-Ui.dp(this, 34), 70);
++                else if (y > list.getHeight() - Ui.dp(this, 60)) list.smoothScrollBy(Ui.dp(this, 34), 70);
++                int pos = list.pointToPosition((int) event.getX(), (int) event.getY());
++                int slot;
++                if (pos == ListView.INVALID_POSITION) {
++                    slot = y < list.getHeight() / 2f ? 0 : adapter.getCount();
++                } else {
++                    int childIndex = pos - list.getFirstVisiblePosition();
++                    View child = childIndex >= 0 && childIndex < list.getChildCount() ? list.getChildAt(childIndex) : null;
++                    boolean after = child != null && y > child.getTop() + child.getHeight() / 2f;
++                    slot = pos + (after ? 1 : 0);
++                }
++                adapter.setDropSlot(slot);
++                return true;
++            }
++            if (action == DragEvent.ACTION_DROP) {
++                Object state = event.getLocalState();
++                if (!(state instanceof Integer)) { adapter.clearDrag(); return true; }
++                int from = (Integer) state;
++                int slot = adapter.dropSlot();
++                if (slot < 0) slot = from;
++                slot = Math.max(0, Math.min(slot, adapter.getCount()));
++                int to = from < slot ? slot - 1 : slot;
++                to = Math.max(0, Math.min(to, Math.max(0, adapter.getCount() - 1)));
++                adapter.move(from, to);
++                adapter.clearDrag();
++                List<Song> ordered = adapter.snapshot();
++                if (playlistId == null) {
++                    favorites = store.setFavoriteOrder(ordered);
++                } else {
++                    playlists = store.setPlaylistSongOrder(playlistId, ordered);
++                    openPlaylist = playlistById(playlistId);
++                }
++                suppressNextPageAnimation = true;
++                renderTab();
++                toast("顺序已保存");
++                final int target = to;
++                list.postDelayed(() -> list.smoothScrollToPosition(Math.max(0, Math.min(target, adapter.getCount() - 1))), 40);
++                return true;
++            }
++            if (action == DragEvent.ACTION_DRAG_ENDED) { adapter.clearDrag(); return true; }
++            return action == DragEvent.ACTION_DRAG_STARTED || action == DragEvent.ACTION_DRAG_ENTERED || action == DragEvent.ACTION_DRAG_EXITED;
++        });
++
++        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1f); lp.topMargin = Ui.dp(this, 8); card.addView(list, lp);
++        done.setOnClickListener(v -> dismissModalNow());
++        presentFractionModal(card, .82f);
++    }
++
++    private void startManualOrderDrag(View row, int position) {
++        if (row == null || position < 0) return;
++        ClipData data = ClipData.newPlainText("lunaxy-manual-order", String.valueOf(position));
++        try {
++            if (Build.VERSION.SDK_INT >= 24) row.startDragAndDrop(data, new View.DragShadowBuilder(row), Integer.valueOf(position), 0);
++            else row.startDrag(data, new View.DragShadowBuilder(row), Integer.valueOf(position), 0);
++            row.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
++        } catch (Exception ignored) { }
++    }
++
++    private final class ManualOrderAdapter extends BaseAdapter {
++        private final List<Song> items = new ArrayList<>();
++        private int dragFrom = -1;
++        private int dropSlot = -1;
++
++        ManualOrderAdapter(List<Song> source) { if (source != null) items.addAll(source); }
++        List<Song> snapshot() { return new ArrayList<>(items); }
++        void beginDrag(int from) { dragFrom = from; dropSlot = from; notifyDataSetChanged(); }
++        void setDropSlot(int slot) {
++            int next = Math.max(0, Math.min(slot, items.size()));
++            if (dropSlot == next) return;
++            dropSlot = next;
++            notifyDataSetChanged();
++        }
++        int dropSlot() { return dropSlot; }
++        void clearDrag() { dragFrom = -1; dropSlot = -1; notifyDataSetChanged(); }
++        void move(int from, int to) {
++            if (from < 0 || from >= items.size() || to < 0 || to >= items.size() || from == to) return;
++            Song moved = items.remove(from);
++            items.add(to, moved);
++            notifyDataSetChanged();
++        }
++
++        @Override public int getCount() { return items.size(); }
++        @Override public Object getItem(int position) { return items.get(position); }
++        @Override public long getItemId(int position) { return position; }
++
++        @Override public View getView(int position, View convertView, ViewGroup parent) {
++            Song song = items.get(position);
++            boolean targetBefore = dragFrom >= 0 && dropSlot == position && position != dragFrom;
++            boolean targetAfterLast = dragFrom >= 0 && position == items.size() - 1 && dropSlot == items.size();
++
++            LinearLayout wrapper = Ui.column(MainActivity.this);
++            if (targetBefore) wrapper.addView(manualOrderDropLine(), Ui.lp(-1, Ui.dp(MainActivity.this, 15)));
++
++            LinearLayout row = Ui.row(MainActivity.this);
++            row.setGravity(Gravity.CENTER_VERTICAL);
++            row.setPadding(Ui.dp(MainActivity.this, 8), Ui.dp(MainActivity.this, 6), Ui.dp(MainActivity.this, 6), Ui.dp(MainActivity.this, 6));
++            row.setBackground(Ui.stroke(Color.argb(132, 8, 8, 14), 15,
++                    Color.argb(position == dragFrom ? 62 : 24, 255, 255, 255), MainActivity.this));
++            if (position == dragFrom) row.setAlpha(.48f);
++
++            ImageView cover = new ImageView(MainActivity.this);
++            cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
++            cover.setClipToOutline(true);
++            cover.setBackground(Ui.round(Color.rgb(22, 22, 28), 11, MainActivity.this));
++            ImageLoader.load(song.coverUrl, cover, null);
++            row.addView(cover, Ui.lp(Ui.dp(MainActivity.this, 48), Ui.dp(MainActivity.this, 48)));
++
++            LinearLayout texts = Ui.column(MainActivity.this);
++            texts.setPadding(Ui.dp(MainActivity.this, 11), Ui.dp(MainActivity.this, 1), Ui.dp(MainActivity.this, 7), Ui.dp(MainActivity.this, 1));
++            TextView title = Ui.text(MainActivity.this, song.title, 13.2f, Ui.TEXT, true);
++            title.setSingleLine(true); title.setEllipsize(TextUtils.TruncateAt.END);
++            TextView artist = Ui.text(MainActivity.this, song.artist, 10.6f, Ui.TEXT_2, false);
++            artist.setSingleLine(true); artist.setEllipsize(TextUtils.TruncateAt.END);
++            texts.addView(title, new LinearLayout.LayoutParams(-1, 0, 1f));
++            texts.addView(artist, new LinearLayout.LayoutParams(-1, 0, 1f));
++            row.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(MainActivity.this, 48), 1f));
++
++            TextView source = Ui.pill(MainActivity.this, song.sourceLabel(),
++                    song.variant("tx") != null && song.variant("wy") == null ? Ui.CYAN : Ui.PURPLE);
++            row.addView(source, Ui.lp(Ui.dp(MainActivity.this, 64), Ui.dp(MainActivity.this, 30)));
++
++            FrameLayout drag = Ui.iconButton(MainActivity.this, IconView.Type.DRAG, 42,
++                    (targetBefore || targetAfterLast) ? Ui.CYAN : Ui.TEXT_2, Color.TRANSPARENT);
++            drag.setContentDescription("长按拖动排序");
++            drag.setLongClickable(true);
++            final int dragPosition = position;
++            drag.setOnLongClickListener(v -> {
++                beginDrag(dragPosition);
++                startManualOrderDrag(wrapper, dragPosition);
++                return true;
++            });
++            row.addView(drag, Ui.lp(Ui.dp(MainActivity.this, 42), Ui.dp(MainActivity.this, 42)));
++            wrapper.addView(row, Ui.lp(-1, Ui.dp(MainActivity.this, 62)));
++            if (targetAfterLast) wrapper.addView(manualOrderDropLine(), Ui.lp(-1, Ui.dp(MainActivity.this, 15)));
++            return wrapper;
++        }
++
++        private View manualOrderDropLine() {
++            FrameLayout gap = new FrameLayout(MainActivity.this);
++            View line = new View(MainActivity.this);
++            line.setBackground(Ui.premiumGradient(Ui.CYAN, Ui.GREEN, 2, MainActivity.this));
++            FrameLayout.LayoutParams p = Ui.frame(-1, Ui.dp(MainActivity.this, 2), Gravity.CENTER);
++            Ui.margins(p, 8, 0, 8, 0, MainActivity.this);
++            gap.addView(line, p);
++            return gap;
++        }
++    }
++
+     private void showSongBatchManager(String collectionName, List<Song> source, String playlistId) {
+         if (source == null || source.isEmpty()) { toast("这里还没有歌曲"); return; }
+         final List<Song> items = new ArrayList<>(source);
+@@ -3413,6 +3796,32 @@
+         return card;
+     }
+ 
++    private View sortableSongsHeader(String title, int count, Runnable onSort) {
++        LinearLayout row = Ui.row(this);
++        row.setGravity(Gravity.CENTER_VERTICAL);
++
++        LinearLayout left = Ui.column(this);
++        TextView t = Ui.text(this, title, 16.5f, Ui.TEXT, true);
++        left.addView(t, Ui.lp(-1, Ui.dp(this, 27)));
++        LinearLayout meta = Ui.row(this);
++        meta.setGravity(Gravity.CENTER_VERTICAL);
++        View accent = new View(this);
++        accent.setBackground(Ui.premiumGradient(Ui.GREEN, Ui.CYAN, 3, this));
++        meta.addView(accent, Ui.lp(Ui.dp(this, 30), Ui.dp(this, 4)));
++        TextView amount = Ui.text(this, count + " 首", 10.8f, Ui.DIM, false);
++        LinearLayout.LayoutParams ap = Ui.lp(-2, Ui.dp(this, 22)); ap.leftMargin = Ui.dp(this, 8);
++        meta.addView(amount, ap);
++        left.addView(meta, Ui.lp(-1, Ui.dp(this, 23)));
++        row.addView(left, new LinearLayout.LayoutParams(0, Ui.dp(this, 50), 1f));
++
++        FrameLayout sort = Ui.iconButton(this, IconView.Type.DRAG, 42, Ui.TEXT_2,
++                Color.argb(20, 255, 255, 255));
++        sort.setContentDescription("手动排序歌曲");
++        sort.setOnClickListener(v -> { if (onSort != null) onSort.run(); });
++        row.addView(sort, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
++        return row;
++    }
++
+     private View sectionHeader(String title, String hint) {
+         LinearLayout row = Ui.row(this);
+         TextView t = Ui.text(this, title, 16.5f, Ui.TEXT, true);
+
+--- /tmp/LunaxyMusic-V41-check/LunaxyMusic-V41/app/src/main/java/com/xingyu/music/data/LibraryStore.java	2026-08-10 10:45:43.000000000 +0000
++++ app/src/main/java/com/xingyu/music/data/LibraryStore.java	2026-08-11 07:07:59.297758620 +0000
+@@ -33,6 +33,14 @@
+     public boolean isFavorite(Song song){ for(Song s:favorites()) if(s.key().equals(song.key())) return true; return false; }
+     public List<Song> toggleFavorite(Song song){ List<Song> list=favorites(); int found=-1; for(int i=0;i<list.size();i++) if(list.get(i).key().equals(song.key())){found=i;break;} if(found>=0) list.remove(found); else list.add(0,song); saveSongs("favorites",list); return list; }
+ 
++    /** Persist an explicit manual order for Favorites. UI-only/library state; playback routing is untouched. */
++    public List<Song> setFavoriteOrder(List<Song> ordered){
++        List<Song> out=new ArrayList<>();
++        if(ordered!=null) for(Song s:ordered) if(s!=null) out.add(s);
++        saveSongs("favorites",out);
++        return out;
++    }
++
+     /** Remove multiple favorites by stable Song.key(). */
+     public List<Song> removeFavorites(List<String> keys){
+         Set<String> remove=new HashSet<>(); if(keys!=null) remove.addAll(keys);
+@@ -132,6 +140,21 @@
+         savePlaylists(out); return out;
+     }
+ 
++    /** Persist an explicit manual order for one saved playlist, regardless of import source. */
++    public List<ImportedPlaylist> setPlaylistSongOrder(String id,List<Song> ordered){
++        if(id==null) return playlists();
++        List<ImportedPlaylist> src=playlists(), out=new ArrayList<>();
++        for(ImportedPlaylist p:src){
++            if(p.id.equals(id)){
++                List<Song> songs=new ArrayList<>();
++                if(ordered!=null) for(Song s:ordered) if(s!=null) songs.add(s);
++                out.add(new ImportedPlaylist(p.id,p.name,p.source,songs,p.importedAt));
++            } else out.add(p);
++        }
++        savePlaylists(out);
++        return out;
++    }
++
+     /** Remove multiple songs from one locally stored playlist copy. */
+     public List<ImportedPlaylist> removeSongsFromPlaylist(String id,List<String> keys){
+         Set<String> remove=new HashSet<>(); if(keys!=null) remove.addAll(keys);
+
+--- /dev/null	2026-08-11 06:08:24.989849398 +0000
++++ app/src/main/java/com/xingyu/music/data/NeteaseLyricSearchApi.java	2026-08-11 07:08:33.786778344 +0000
+@@ -0,0 +1,204 @@
++package com.xingyu.music.data;
++
++import com.xingyu.music.model.Song;
++import com.xingyu.music.model.SourceVariant;
++
++import org.json.JSONArray;
++import org.json.JSONObject;
++
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Locale;
++import java.util.Map;
++
++/**
++ * Search-only NetEase lyric matcher.
++ *
++ * This class is intentionally separate from NeteaseApi so adding lyric discovery cannot alter
++ * the locked metadata/audio playback path. Normal title/artist search renders first; callers may
++ * run this adapter independently and append its hits later.
++ */
++public final class NeteaseLyricSearchApi {
++    private static final String UA = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/125 Safari/537.36";
++    private volatile int lastTotal;
++
++    public static final class Hit {
++        public final Song song;
++        public final String snippet;
++        public Hit(Song song, String snippet) {
++            this.song = song;
++            this.snippet = snippet == null ? "" : snippet.trim();
++        }
++    }
++
++    public int lastTotal() { return Math.max(0, lastTotal); }
++
++    public List<Hit> search(String keyword, int limit) throws Exception {
++        lastTotal = 0;
++        String q = keyword == null ? "" : keyword.trim();
++        if (q.isEmpty()) return new ArrayList<>();
++        Exception first = null;
++        try {
++            return searchWeapi(q, limit);
++        } catch (Exception e) {
++            first = e;
++        }
++        try {
++            return searchLegacy(q, limit);
++        } catch (Exception second) {
++            if (first != null) throw first;
++            throw second;
++        }
++    }
++
++    private List<Hit> searchWeapi(String keyword, int limit) throws Exception {
++        JSONObject payload = new JSONObject();
++        payload.put("s", keyword);
++        payload.put("type", "1006"); // NetEase lyric search
++        payload.put("limit", String.valueOf(Math.max(1, Math.min(limit, 30))));
++        payload.put("offset", "0");
++        payload.put("total", "true");
++        payload.put("csrf_token", "");
++        String[] enc = NeteaseCrypto.weapi(payload.toString());
++        Map<String,String> form = new LinkedHashMap<>();
++        form.put("params", enc[0]);
++        form.put("encSecKey", enc[1]);
++        Http.Response r = Http.postForm("https://music.163.com/weapi/cloudsearch/get/web", headers(), form);
++        if (r.code < 200 || r.code >= 300) throw new Exception("歌词搜索 HTTP " + r.code);
++        return parse(new JSONObject(r.body), keyword);
++    }
++
++    private List<Hit> searchLegacy(String keyword, int limit) throws Exception {
++        Map<String,String> form = new LinkedHashMap<>();
++        form.put("s", keyword);
++        form.put("type", "1006");
++        form.put("offset", "0");
++        form.put("total", "true");
++        form.put("limit", String.valueOf(Math.max(1, Math.min(limit, 30))));
++        Http.Response r = Http.postForm("https://music.163.com/api/search/get/", headers(), form);
++        if (r.code < 200 || r.code >= 300) throw new Exception("歌词搜索 HTTP " + r.code);
++        return parse(new JSONObject(r.body), keyword);
++    }
++
++    private List<Hit> parse(JSONObject root, String keyword) {
++        ArrayList<Hit> out = new ArrayList<>();
++        JSONObject result = root == null ? null : root.optJSONObject("result");
++        JSONArray songs = result == null ? null : result.optJSONArray("songs");
++        lastTotal = Math.max(result == null ? 0 : result.optInt("songCount", 0), songs == null ? 0 : songs.length());
++        if (songs == null) return out;
++        for (int i = 0; i < songs.length(); i++) {
++            JSONObject item = songs.optJSONObject(i);
++            Song song = parseSong(item);
++            if (song == null) continue;
++            out.add(new Hit(song, findSnippet(item, keyword)));
++        }
++        return out;
++    }
++
++    private Song parseSong(JSONObject o) {
++        if (o == null) return null;
++        long id = o.optLong("id");
++        if (id <= 0L) return null;
++        JSONArray artists = o.optJSONArray("ar");
++        if (artists == null) artists = o.optJSONArray("artists");
++        StringBuilder artist = new StringBuilder();
++        if (artists != null) {
++            for (int i = 0; i < artists.length(); i++) {
++                JSONObject a = artists.optJSONObject(i);
++                if (a == null) continue;
++                String name = a.optString("name", "").trim();
++                if (name.isEmpty()) continue;
++                if (artist.length() > 0) artist.append(" / ");
++                artist.append(name);
++            }
++        }
++        JSONObject album = o.optJSONObject("al");
++        if (album == null) album = o.optJSONObject("album");
++        long duration = o.has("dt") ? o.optLong("dt") : o.optLong("duration");
++        List<SourceVariant> variants = new ArrayList<>();
++        // Search-only results sometimes omit quality blocks. Keep both qualities eligible and let
++        // the already-locked playback verifier/resolver make the real decision later.
++        variants.add(new SourceVariant("wy", String.valueOf(id), true, true, o));
++        return new Song(
++                o.optString("name", "未知歌曲"),
++                artist.length() == 0 ? "未知歌手" : artist.toString(),
++                album == null ? "" : album.optString("name", ""),
++                album == null ? "" : album.optString("picUrl", ""),
++                duration,
++                variants);
++    }
++
++    private String findSnippet(JSONObject item, String keyword) {
++        if (item == null) return "";
++        String[] keys = {"lyrics", "lyric", "lyricText", "matchLyric", "matchLyrics", "content", "text"};
++        for (String key : keys) {
++            Object value = item.opt(key);
++            String found = flattenText(value);
++            if (!found.isEmpty()) {
++                String snip = aroundKeyword(found, keyword);
++                if (!snip.isEmpty()) return snip;
++            }
++        }
++        return "";
++    }
++
++    private String flattenText(Object value) {
++        if (value == null || value == JSONObject.NULL) return "";
++        if (value instanceof String) return cleanText((String) value);
++        if (value instanceof JSONArray) {
++            JSONArray a = (JSONArray) value;
++            StringBuilder b = new StringBuilder();
++            for (int i = 0; i < Math.min(6, a.length()); i++) {
++                String x = flattenText(a.opt(i));
++                if (!x.isEmpty()) { if (b.length() > 0) b.append(' '); b.append(x); }
++            }
++            return b.toString();
++        }
++        if (value instanceof JSONObject) {
++            JSONObject o = (JSONObject) value;
++            String[] keys = {"text", "content", "lyric", "lyrics", "value", "name"};
++            StringBuilder b = new StringBuilder();
++            for (String key : keys) {
++                String x = flattenText(o.opt(key));
++                if (!x.isEmpty()) { if (b.length() > 0) b.append(' '); b.append(x); }
++            }
++            return b.toString();
++        }
++        return "";
++    }
++
++    private String aroundKeyword(String text, String keyword) {
++        String clean = cleanText(text);
++        if (clean.isEmpty()) return "";
++        String lower = clean.toLowerCase(Locale.ROOT);
++        String needle = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
++        int at = needle.isEmpty() ? -1 : lower.indexOf(needle);
++        if (at < 0) return clean.length() <= 48 ? clean : clean.substring(0, 48) + "…";
++        int start = Math.max(0, at - 14);
++        int end = Math.min(clean.length(), at + needle.length() + 22);
++        String out = clean.substring(start, end).trim();
++        return (start > 0 ? "…" : "") + out + (end < clean.length() ? "…" : "");
++    }
++
++    private String cleanText(String raw) {
++        if (raw == null) return "";
++        return raw.replaceAll("<[^>]+>", "")
++                .replace("&nbsp;", " ")
++                .replace("&amp;", "&")
++                .replaceAll("\\[[0-9:.]+\\]", " ")
++                .replaceAll("\\s+", " ")
++                .trim();
++    }
++
++    private Map<String,String> headers() {
++        Map<String,String> h = new LinkedHashMap<>();
++        h.put("User-Agent", UA);
++        h.put("Referer", "https://music.163.com/");
++        h.put("Origin", "https://music.163.com");
++        h.put("Cookie", "os=pc; appver=2.10.13; channel=netease;");
++        h.put("Accept", "application/json,text/plain,*/*");
++        h.put("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.7");
++        return h;
++    }
++}

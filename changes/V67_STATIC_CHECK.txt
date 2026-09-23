@@ -1,0 +1,14 @@
+Lunaxy Music V67 — Static Check
+
+PASS Java delimiter 79/79
+PASS XML 17/17
+PASS PNG 2/2
+PASS SourceHealthStore observation getter synthetic javac
+PASS MainActivity javac syntax-error pattern count 0
+PASS app/src/main runtime diff: 99 -> 99, changed=2, added=0, deleted=0
+PASS MainActivity playback/search + Ghost Swipe method guard: 11/11 byte-equivalent to V66
+PASS SourceHealthStore existing decision/write/decay method guard: 17/17 byte-equivalent to V66
+PASS V66 Locked Core: 25/26 whole-file byte-identical; only SourceHealthStore changed for observation API
+PASS observation peek block contains no SharedPreferences edit/put/remove
+PASS AudioProviderHub / SourceCoordinator / PlaybackService / PlaybackUrlStore / TrackRouteStore / DownloadResolver / OfflineDownloadService unchanged
+PASS Dashboard low-activity classification is UI-only; no backend provider silencing added

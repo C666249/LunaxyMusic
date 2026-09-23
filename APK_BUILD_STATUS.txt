@@ -1,0 +1,9 @@
+Lunaxy Music V92.8.10 Stable 构建状态
+
+version: 92.8.10 / 962
+applicationId: com.xingyu.music
+source baseline: V92.8.9
+
+本轮变更：首页五套推荐卡样式、底部样式抽屉、最近播放封面主色环境光、轻微滚动景深、首页搜索框封面主色流动高亮。V92.8.9 歌名点击直搜保留。
+
+当前交付环境已实际尝试 Android Gradle 构建，但 Gradle 9.5.0 首次分发需要访问 services.gradle.org，环境 DNS 无法解析，因此没有宣称 APK 真编译通过。已执行 JVM 回归、V92.8.10 专项策略检查、XML 解析、Java 解析级诊断、源码差分、Stable/Beta 同源及 ZIP 完整性校验。

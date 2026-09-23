@@ -1,0 +1,16 @@
+V40 vs V14 GOLDEN TRANSPORT/RESOLUTION BASELINE
+
+PASS  app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
+PASS  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
+PASS  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
+PASS  app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
+PASS  app/src/main/java/com/xingyu/music/data/ResolverProvider.java
+PASS  app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
+PASS  app/src/main/java/com/xingyu/music/data/QQMusicApi.java
+PASS  app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
+PASS  app/src/main/java/com/xingyu/music/data/PlaybackTrace.java
+PASS  app/src/main/java/com/xingyu/music/model/Song.java
+PASS  app/src/main/java/com/xingyu/music/model/SourceVariant.java
+PASS  app/src/main/assets/source/huibq-latest.js
+
+NOTE: V40 intentionally replaces V14 long-term ranking in SourceHealthStore/MultiSourceManager with fixed routing + short breakers. The listed underlying URL/cache/runtime objects are checked separately.

@@ -1,0 +1,19 @@
+Sunflower V2 — V1/V47 Golden Baseline Guard
+
+以下成熟模块要求与 Sunflower V1（亦即 V47 锁定内容）字节级一致：
+PASS  app/src/main/java/com/xingyu/music/model/Song.java  e32ff681fce5313644e3b963554a65f4912bcfbf0935ce8fc4c8b6a5a434743d
+PASS  app/src/main/java/com/xingyu/music/model/SourceVariant.java  333af304393ce3eb126f6b168dbcfafb0fed7c0e30a056860db99a9d52cb18fb
+PASS  app/src/main/java/com/xingyu/music/data/SearchRanker.java  4b820a8affb5f29bf61061ce2358cf45c25c58cb61c80c759ade0448236e0fc3
+PASS  app/src/main/java/com/xingyu/music/data/LibraryStore.java  cee41d981e74db185075d303135dffdc25c308ae120d98338f0cd10fad9e670f
+PASS  app/src/main/java/com/xingyu/music/data/QQLyricApi.java  d91aa6351cc8b4cbdab2434a5d17d9e760bd19a9aec70660dcf74f3b0c89f605
+PASS  app/src/main/java/com/xingyu/music/data/NeteaseLyricSearchApi.java  3d5b8a91823971b33ef618047e4dc7a590425bef82bc235a141bbb46213c7e90
+PASS  app/src/main/java/com/xingyu/music/data/LyricMatcher.java  ef9453568f339c76e534b010c6c97655d2e190071b3d4c56c38db0a978d19d24
+PASS  app/src/main/java/com/xingyu/music/data/LyricParser.java  155a6ed74c83d066156432208620617928b580fe402f6fc92d005c8326c58b5e
+PASS  app/src/main/java/com/xingyu/music/data/LyricCacheStore.java  bf92657e61467e4aa75c956e4031df6ba87b909ae0cd27297badb206be5cce4d
+PASS  app/src/main/java/com/xingyu/music/data/RecommendationEngine.java  44e082eace6b3105c9865e8091adfb5fd5c7a07367240f9b877b5f7862054597
+PASS  app/src/main/java/com/xingyu/music/ui/LyricGestureScrollView.java  b7584e3e63571f2448956d02a88e07f56e7bbfca085cfdb914571e2dada7f56b
+PASS  app/src/main/java/com/xingyu/music/ui/LyricLineView.java  4e5ddf61fbda229f2b25a6743dbfb969db632befd97eb64edb7e9826d2d65e35
+PASS  app/src/main/java/com/xingyu/music/ui/StarfieldView.java  4fea3486177b4ea36bd52f38351ecd30e4ed351b2cd941435904adc057b4b5eb
+PASS  app/src/main/java/com/xingyu/music/ui/VinylRecordView.java  fea0825e1c5726e1c2fffd55fa1b91327894f7524f15c732314048bea66ac3f4
+
+总体结果: PASS — 14/14 锁定模块与 Sunflower V1 完全一致

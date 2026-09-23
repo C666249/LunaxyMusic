@@ -1,0 +1,38 @@
+Lunaxy Music V43 — PLAYBACK + SCHEDULING LOCK GUARD
+=====================================================
+
+Policy:
+V43 is a UI/search experience release. The playback engine and V41 fixed scheduling/health layer remain LOCKED.
+Unless the user explicitly authorizes a future change, these objects must remain byte-identical in every UI/search build.
+
+Locked behavior:
+- QQ: Huibq PRIMARY -> QDY fallback
+- NetEase: QDY PRIMARY -> Huibq fallback
+- historical READY/FAIL statistics never permanently reorder providers
+- V41 short-term health/circuit-breaker behavior remains intact
+- only Media3 STATE_READY is true playback success
+- READY URL cache + exact stale-URL invalidation remain intact
+- resolver/HTTP/probe/diagnostics remain intact
+
+Comparison baseline: LunaxyMusic-V42-Full.zip
+Result: 19/19 byte-identical (PASS)
+
+PASS  cdcc6afe54a7a70251a64689a1fa851eda251d220ec4438bd4c607018c86b37c  app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
+PASS  b160593e8ea71dcb2f7a7f829981eca3dd232128b0b6d1d898db1e8062bfb91e  app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
+PASS  4c47a3648e87b9f3c2f982e8486bdf5ea9ebf4fa81f9f3d4911e645819927e44  app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
+PASS  013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
+PASS  7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
+PASS  522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c  app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
+PASS  dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068  app/src/main/java/com/xingyu/music/data/ResolverProvider.java
+PASS  590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2  app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
+PASS  bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384  app/src/main/java/com/xingyu/music/data/QQMusicApi.java
+PASS  5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795  app/src/main/java/com/xingyu/music/data/NeteaseApi.java
+PASS  9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1  app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
+PASS  24ce07eaeb3e28264dde1f0deea0c4a3aad8e7556ebb181b79cec6d88ca5366b  app/src/main/java/com/xingyu/music/data/PlaybackTrace.java
+PASS  c67378353614a4aa39c189becf1c43283cd56995c3b179341da9d96000c4cad9  app/src/main/java/com/xingyu/music/data/ResolverHttpDiagnostics.java
+PASS  5534bb9abb377d1a5896d054e6f488c6393ffe14fd463d4e16eb966d0d477a39  app/src/main/java/com/xingyu/music/data/Http.java
+PASS  8e1b7d154d0d51613666327b2f5d2a63aa331396d351b7ccb434f3163f0e8860  app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+PASS  cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f  app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java
+PASS  e32ff681fce5313644e3b963554a65f4912bcfbf0935ce8fc4c8b6a5a434743d  app/src/main/java/com/xingyu/music/model/Song.java
+PASS  333af304393ce3eb126f6b168dbcfafb0fed7c0e30a056860db99a9d52cb18fb  app/src/main/java/com/xingyu/music/model/SourceVariant.java
+PASS  a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146  app/src/main/assets/source/huibq-latest.js

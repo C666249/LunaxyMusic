@@ -1,0 +1,43 @@
+Sunflower Music V3 — Golden Baseline Guard
+Baseline: SunflowerMusic-V2-Full.zip
+Purpose: verify mature data/lyrics/recommendation/player visual modules were not changed by the V3 matrix refactor.
+
+PASS  app/src/main/java/com/xingyu/music/model/SourceVariant.java
+      V2 333af304393ce3eb126f6b168dbcfafb0fed7c0e30a056860db99a9d52cb18fb
+      V3 333af304393ce3eb126f6b168dbcfafb0fed7c0e30a056860db99a9d52cb18fb
+PASS  app/src/main/java/com/xingyu/music/data/LibraryStore.java
+      V2 cee41d981e74db185075d303135dffdc25c308ae120d98338f0cd10fad9e670f
+      V3 cee41d981e74db185075d303135dffdc25c308ae120d98338f0cd10fad9e670f
+PASS  app/src/main/java/com/xingyu/music/data/QQLyricApi.java
+      V2 d91aa6351cc8b4cbdab2434a5d17d9e760bd19a9aec70660dcf74f3b0c89f605
+      V3 d91aa6351cc8b4cbdab2434a5d17d9e760bd19a9aec70660dcf74f3b0c89f605
+PASS  app/src/main/java/com/xingyu/music/data/NeteaseLyricSearchApi.java
+      V2 3d5b8a91823971b33ef618047e4dc7a590425bef82bc235a141bbb46213c7e90
+      V3 3d5b8a91823971b33ef618047e4dc7a590425bef82bc235a141bbb46213c7e90
+PASS  app/src/main/java/com/xingyu/music/data/LyricMatcher.java
+      V2 ef9453568f339c76e534b010c6c97655d2e190071b3d4c56c38db0a978d19d24
+      V3 ef9453568f339c76e534b010c6c97655d2e190071b3d4c56c38db0a978d19d24
+PASS  app/src/main/java/com/xingyu/music/data/LyricParser.java
+      V2 155a6ed74c83d066156432208620617928b580fe402f6fc92d005c8326c58b5e
+      V3 155a6ed74c83d066156432208620617928b580fe402f6fc92d005c8326c58b5e
+PASS  app/src/main/java/com/xingyu/music/data/LyricCacheStore.java
+      V2 bf92657e61467e4aa75c956e4031df6ba87b909ae0cd27297badb206be5cce4d
+      V3 bf92657e61467e4aa75c956e4031df6ba87b909ae0cd27297badb206be5cce4d
+PASS  app/src/main/java/com/xingyu/music/data/RecommendationEngine.java
+      V2 44e082eace6b3105c9865e8091adfb5fd5c7a07367240f9b877b5f7862054597
+      V3 44e082eace6b3105c9865e8091adfb5fd5c7a07367240f9b877b5f7862054597
+PASS  app/src/main/java/com/xingyu/music/ui/LyricGestureScrollView.java
+      V2 b7584e3e63571f2448956d02a88e07f56e7bbfca085cfdb914571e2dada7f56b
+      V3 b7584e3e63571f2448956d02a88e07f56e7bbfca085cfdb914571e2dada7f56b
+PASS  app/src/main/java/com/xingyu/music/ui/LyricLineView.java
+      V2 4e5ddf61fbda229f2b25a6743dbfb969db632befd97eb64edb7e9826d2d65e35
+      V3 4e5ddf61fbda229f2b25a6743dbfb969db632befd97eb64edb7e9826d2d65e35
+PASS  app/src/main/java/com/xingyu/music/ui/StarfieldView.java
+      V2 4fea3486177b4ea36bd52f38351ecd30e4ed351b2cd941435904adc057b4b5eb
+      V3 4fea3486177b4ea36bd52f38351ecd30e4ed351b2cd941435904adc057b4b5eb
+PASS  app/src/main/java/com/xingyu/music/ui/VinylRecordView.java
+      V2 fea0825e1c5726e1c2fffd55fa1b91327894f7524f15c732314048bea66ac3f4
+      V3 fea0825e1c5726e1c2fffd55fa1b91327894f7524f15c732314048bea66ac3f4
+
+RESULT: 12/12 byte-identical SHA-256 checks passed.
+Note: Song.java and SearchRanker.java were intentionally removed from the locked set in V3 because N-Variant identity and N-Catalog exact merge are explicit V3 requirements.

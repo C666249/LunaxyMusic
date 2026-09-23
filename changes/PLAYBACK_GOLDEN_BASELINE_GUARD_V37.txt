@@ -1,0 +1,31 @@
+Lunaxy Music V37 - PLAYBACK GOLDEN BASELINE GUARD
+
+目标：音乐下载/离线体系完全移除后，QQ/网易网络播放链直接回到 V29 稳定黄金基线。
+V37 的以下播放核心文件全部直接从 V29 复制，不是“逻辑相似”，而是字节级相同。
+
+PASS  app/src/main/java/com/xingyu/music/data/SourceCoordinator.java  sha256=cdcc6afe54a7a70251a64689a1fa851eda251d220ec4438bd4c607018c86b37c
+PASS  app/src/main/java/com/xingyu/music/data/MultiSourceManager.java  sha256=9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
+PASS  app/src/main/java/com/xingyu/music/data/SourceHealthStore.java  sha256=7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
+PASS  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java  sha256=013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
+PASS  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java  sha256=7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
+PASS  app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java  sha256=522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
+PASS  app/src/main/java/com/xingyu/music/data/ResolverProvider.java  sha256=dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
+PASS  app/src/main/java/com/xingyu/music/data/SourceScriptStore.java  sha256=590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
+PASS  app/src/main/java/com/xingyu/music/data/QQMusicApi.java  sha256=bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
+PASS  app/src/main/java/com/xingyu/music/data/NeteaseApi.java  sha256=5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
+PASS  app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java  sha256=9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
+PASS  app/src/main/java/com/xingyu/music/data/PlaybackTrace.java  sha256=24ce07eaeb3e28264dde1f0deea0c4a3aad8e7556ebb181b79cec6d88ca5366b
+PASS  app/src/main/java/com/xingyu/music/playback/PlaybackService.java  sha256=8e1b7d154d0d51613666327b2f5d2a63aa331396d351b7ccb434f3163f0e8860
+PASS  app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java  sha256=cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
+PASS  app/src/main/java/com/xingyu/music/model/Song.java  sha256=e32ff681fce5313644e3b963554a65f4912bcfbf0935ce8fc4c8b6a5a434743d
+PASS  app/src/main/java/com/xingyu/music/model/SourceVariant.java  sha256=333af304393ce3eb126f6b168dbcfafb0fed7c0e30a056860db99a9d52cb18fb
+PASS  app/src/main/assets/source/huibq-latest.js  sha256=a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
+
+V29 byte-for-byte guard: 17/17 PASS
+
+说明：V25 与 V29 的 V14 网络解析主链高度一致；V37 选择 V29 作为直接黄金基线，因为它已使用 Lunaxy 品牌且仍是用户验证过的稳定版本。
+
+V25 cross-check:
+- 17 个黄金对象中 16/17 与 V25 SHA-256 完全一致。
+- 唯一不同为 PlaybackService.java；V25→V29 的该差异仅把通知栏无歌曲时默认标题从“星雨音乐”改为“Lunaxy Music”，Media3/解析/失败处理/READY 逻辑未改变。
+- 因而 V37 的网络播放逻辑同时回到 V25/V29 这条稳定 V14 主链。

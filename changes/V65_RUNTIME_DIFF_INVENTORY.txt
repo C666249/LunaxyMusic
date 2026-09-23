@@ -1,0 +1,19 @@
+Lunaxy Music V65 runtime diff vs V64
+
+java/com/xingyu/music/MainActivity.java
+  V64 50ddc5cec4ed6f77bccff33e0764b583bfbbf8d7e78a536bbeb358c68b54ece0
+  V65 b0e66999226ea1206ff6c014c76bbda21e4fe9208c751191364c8562dfba74b2
+java/com/xingyu/music/download/DownloadDiscoveryResolver.java
+  V64 4fd59ee9316f1f311ddad24c5ec00eea9d0f89a5b47581e411f7715aeab39fbe
+  V65 f869f78103cbd51113aad3af82efeb16150c3831f45699a8e5c5d70fbca1e3e1
+java/com/xingyu/music/download/DownloadPlanStore.java
+  V64 78a80d3cd453fa8488206148776885d37eab044768a5103259b43ded1f24a112
+  V65 05922f57b8f12e5fcca341b51d0aded1c901d56529172ba575fea0a40d17bbc2
+java/com/xingyu/music/download/DownloadResolver.java
+  V64 707110d4b7f3213b7aa8410d5f3235d150d657a3cd4fcedde8138d96f48fcf96
+  V65 37a7658b34bd1c4c8b53df3a25abc939826e062998eaac3f275979e2e9adf69f
+java/com/xingyu/music/download/OfflineDownloadService.java
+  V64 559e63794b750c12f1054fe694bc75a1f017cdb51db0028f2f671795f70ba570
+  V65 be7122a2a36204c843835226e44d27d9b507edecc3bd585213c5cd1e0c74a54d
+
+TOTAL_CHANGED=5

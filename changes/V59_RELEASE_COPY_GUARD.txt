@@ -1,0 +1,1 @@
+PASS: temporary version-comparison and developer-jargon copy removed from normal MainActivity UI surfaces.

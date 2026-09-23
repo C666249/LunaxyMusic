@@ -1,0 +1,10 @@
+Stable V79 -> Stable V80 runtime diff inventory
+
+Modified app/src/main runtime files (2):
+- app/src/main/java/com/xingyu/music/data/NeteaseLyricSearchApi.java
+- app/src/main/java/com/xingyu/music/data/QQMusicLyricSearchApi.java
+
+Added runtime files: 0
+Deleted runtime files: 0
+MainActivity.java: byte-identical to Stable V79
+Local lyric discovery scan: absent

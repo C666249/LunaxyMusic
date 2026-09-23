@@ -1,0 +1,6 @@
+V51 assembleDebug attempt
+=========================
+Command: ./gradlew assembleDebug --no-daemon
+Result: environment-limited failure/timeout before Gradle startup.
+Cause: container DNS could not resolve services.gradle.org while wrapper attempted to download Gradle 9.5.0.
+Therefore no claim is made that Android SDK assembleDebug or real-device sensor testing was completed here.

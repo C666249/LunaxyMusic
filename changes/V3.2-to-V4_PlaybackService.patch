@@ -1,0 +1,180 @@
+--- /mnt/data/SunflowerDownloadV1/baseline/SunflowerMusic-V3.2/app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-11 18:39:04.000000000 +0000
++++ /mnt/data/SunflowerDownloadV1/SunflowerMusic-V3.2/app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-11 20:29:45.409055757 +0000
+@@ -16,6 +16,7 @@
+ import android.media.session.PlaybackState;
+ import android.os.Binder;
+ import android.os.IBinder;
++import android.net.Uri;
+ 
+ import androidx.media3.common.C;
+ import androidx.media3.common.MediaItem;
+@@ -31,7 +32,9 @@
+ import com.xingyu.music.MainActivity;
+ import com.xingyu.music.R;
+ import com.xingyu.music.data.PlaybackTrace;
++import com.xingyu.music.data.PlaybackNetworkGate;
+ import com.xingyu.music.data.SourceCoordinator;
++import com.xingyu.music.download.OfflineStore;
+ import com.xingyu.music.model.PlaybackSnapshot;
+ import com.xingyu.music.model.Song;
+ 
+@@ -77,6 +80,7 @@
+     private ExoPlayer player;
+     private MediaSession mediaSession;
+     private SourceCoordinator sourceCoordinator;
++    private OfflineStore offlineStore;
+     private int index = -1;
+     private String lastError;
+     private boolean preparing;
+@@ -85,13 +89,23 @@
+     private boolean routeProven;
+     private long candidateStartedAt;
+     private SourceCoordinator.Resolution currentResolution;
++    private boolean currentOffline;
++    private boolean offlineBypassForCurrent;
+     private Bitmap currentArtwork;
+     private long requestGeneration;
+     private int playMode = MODE_SEQUENTIAL;
++    private long lastDownloadGateHeartbeatAt;
+     private final Random shuffleRandom = new Random();
+ 
+     private final Runnable ticker = new Runnable() {
+-        @Override public void run() { notifyState(); main.postDelayed(this, 500); }
++        @Override public void run() {
++            long now = System.currentTimeMillis();
++            if (player != null && player.isPlaying() && !currentOffline && now - lastDownloadGateHeartbeatAt > 10_000L) {
++                PlaybackNetworkGate.heartbeat(PlaybackService.this, "在线播放中");
++                lastDownloadGateHeartbeatAt = now;
++            }
++            notifyState(); main.postDelayed(this, 500);
++        }
+     };
+ 
+     private final BroadcastReceiver noisyReceiver = new BroadcastReceiver() {
+@@ -104,6 +118,7 @@
+         super.onCreate();
+         createChannel();
+         sourceCoordinator = new SourceCoordinator(this);
++        offlineStore = new OfflineStore(this);
+         playMode = getSharedPreferences("xingyu_playback_state", MODE_PRIVATE)
+                 .getInt("play_mode", MODE_SEQUENTIAL);
+         if (playMode < MODE_SEQUENTIAL || playMode > MODE_REPEAT_ONE) playMode = MODE_SEQUENTIAL;
+@@ -133,8 +148,14 @@
+         player.addListener(new Player.Listener() {
+             @Override public void onPlaybackStateChanged(int playbackState) {
+                 preparing = playbackState == Player.STATE_BUFFERING;
++                if (playbackState == Player.STATE_BUFFERING) PlaybackNetworkGate.heartbeat(PlaybackService.this, "Media3 BUFFERING");
++                else if (playbackState == Player.STATE_READY) {
++                    if (player != null && player.getPlayWhenReady() && !currentOffline) PlaybackNetworkGate.setBusy(PlaybackService.this, true, "在线播放中");
++                    else PlaybackNetworkGate.setBusy(PlaybackService.this, false, "");
++                } else if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) PlaybackNetworkGate.setBusy(PlaybackService.this, false, "");
+                 if (playbackState == Player.STATE_READY) {
+                     lastError = null;
++                    if (currentOffline) trace.add("playback-ok", "OFFLINE · app-private file · Media3 READY");
+                     if (!routeProven && currentResolution != null) {
+                         Song target = currentSong();
+                         long actualDuration = player == null ? C.TIME_UNSET : player.getDuration();
+@@ -169,6 +190,8 @@
+             }
+ 
+             @Override public void onIsPlayingChanged(boolean isPlaying) {
++                if (isPlaying && !currentOffline) PlaybackNetworkGate.setBusy(PlaybackService.this, true, "在线播放中");
++                else if (!preparing) PlaybackNetworkGate.setBusy(PlaybackService.this, false, "");
+                 updateMediaSession();
+                 updateNotification(isPlaying);
+                 notifyState();
+@@ -435,6 +458,9 @@
+         routeProven = false;
+         candidateStartedAt = 0L;
+         currentResolution = null;
++        currentOffline = false;
++        offlineBypassForCurrent = false;
++        PlaybackNetworkGate.setBusy(this, false, "");
+         lastError = null;
+         Song s = currentSong();
+         trace.reset(s == null ? "" : s.title, s == null ? "" : s.artist);
+@@ -454,6 +480,15 @@
+     private void resolveCurrent() {
+         Song song = currentSong();
+         if (song == null || sourceCoordinator == null) return;
++        if (!offlineBypassForCurrent && offlineStore != null) {
++            OfflineStore.Record local = offlineStore.get(song);
++            if (local != null && local.exists()) {
++                prepareOffline(local);
++                return;
++            }
++        }
++        currentOffline = false;
++        PlaybackNetworkGate.setBusy(this, true, "解析在线播放线路");
+         final long generation = ++requestGeneration;
+         final Set<String> excluded = new LinkedHashSet<>(failedRoutes);
+         preparing = true;
+@@ -481,6 +516,31 @@
+         });
+     }
+ 
++    private void prepareOffline(OfflineStore.Record local) {
++        if (local == null || !local.exists()) return;
++        currentResolution = null;
++        currentOffline = true;
++        routeProven = true;
++        candidateStartedAt = System.currentTimeMillis();
++        preparing = true;
++        PlaybackNetworkGate.setBusy(this, true, "准备离线文件");
++        trace.add("offline", "hit · " + local.quality + " · " + local.providerLabel + " × " + Song.providerLabel(local.platform));
++        try {
++            player.setMediaItem(MediaItem.fromUri(Uri.fromFile(local.file())));
++            player.prepare();
++            player.play();
++            updateMediaSession();
++            updateNotification(false);
++            notifyState();
++        } catch (Exception e) {
++            currentOffline = false;
++            offlineBypassForCurrent = true;
++            if (offlineStore != null && currentSong() != null) offlineStore.remove(currentSong());
++            trace.add("offline-corrupt", safeMessage(e) + " · 删除离线副本并回退在线矩阵");
++            resolveCurrent();
++        }
++    }
++
+     private void prepareResolved(SourceCoordinator.Resolution resolution) {
+         if (resolution == null || resolution.url == null || resolution.url.isEmpty()) {
+             preparing = false;
+@@ -521,6 +581,18 @@
+             return;
+         }
+ 
++        if (currentOffline) {
++            String reason = safeMessage(error);
++            trace.add("offline-fail", reason + " · 删除离线副本并回退在线矩阵");
++            if (offlineStore != null) offlineStore.remove(song);
++            currentOffline = false;
++            offlineBypassForCurrent = true;
++            currentResolution = null;
++            if (player != null) player.stop();
++            resolveCurrent();
++            return;
++        }
++
+         HttpFailureDetail detail = inspectHttpFailure(error);
+         String reason = detail.describe(error);
+         if (detail.statusCode > 0) {
+@@ -753,6 +825,9 @@
+         lastError = null;
+         currentArtwork = null;
+         currentResolution = null;
++        currentOffline = false;
++        offlineBypassForCurrent = false;
++        PlaybackNetworkGate.setBusy(this, false, "");
+         if (mediaSession != null) mediaSession.setPlaybackState(new PlaybackState.Builder()
+                 .setState(PlaybackState.STATE_STOPPED, 0, 0).build());
+         stopForeground(STOP_FOREGROUND_REMOVE);
+@@ -773,6 +848,7 @@
+     }
+ 
+     @Override public void onDestroy() {
++        PlaybackNetworkGate.setBusy(this, false, "");
+         requestGeneration++;
+         main.removeCallbacks(ticker);
+         resolverExecutor.shutdownNow();

@@ -1,0 +1,21 @@
+Sunflower Music V3.2 Diff Inventory
+Baseline: SunflowerMusic-V3.1-Full.zip
+
+Intentional modified source/build files:
+- app/src/main/java/com/xingyu/music/MainActivity.java
+  * Progressive Search orchestration only: non-blocking first paint, off-main canonical merge,
+    105ms coalescing, 12-row compact summary, deferred ordinary lyric search, off-main variant
+    persistence, off-main pagination merge, executor lifecycle cleanup.
+- app/build.gradle.kts
+  * versionCode 310 -> 320
+  * versionName 3.1.0-test -> 3.2.0-test
+
+Intentional added delivery/audit files:
+- SUNFLOWER_V3.2_渐进式流式搜索优化.md
+- SUNFLOWER_V3.2_自测结果.txt
+- changes/V3.1-to-V3.2_PROGRESSIVE_SEARCH.patch
+- changes/V3.2_PLAYBACK_MATRIX_GOLDEN_GUARD.txt
+- changes/V3.2_DIFF_INVENTORY.txt
+- SHA256SUMS.txt regenerated for V3.2
+
+No Provider/route/playback/catalog/model/library source file was changed.

@@ -1,0 +1,10 @@
+Lunaxy Music V72 — Gradle build attempt
+
+Command:
+./gradlew :app:assembleDebug --stacktrace
+
+Result:
+NOT COMPLETED.
+The sandbox could not resolve services.gradle.org while the wrapper tried to download Gradle 9.5.0 (curl error 6: Could not resolve host). The wrapper retried several times and the tool command later timed out.
+
+Therefore this package is NOT claimed as a completed Android assembleDebug build. Static/source integrity checks are recorded separately.

@@ -1,0 +1,20 @@
+XingyuMusic V16 播放核心 Diff 检查
+================================
+基线：V15-Fixed（本工作目录 git baseline 593e5fc）
+
+检查范围：
+  app/src/main/java/com/xingyu/music/data/**
+  app/src/main/java/com/xingyu/music/playback/**
+  app/src/main/assets/**
+  app/src/main/AndroidManifest.xml
+
+结果：0 个改动。V16 UI/歌词迭代未触碰播放核心。
+
+关键文件当前 SHA256：
+9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04  app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
+cdcc6afe54a7a70251a64689a1fa851eda251d220ec4438bd4c607018c86b37c  app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
+7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594  app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
+013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
+b5d1d73324093a358c0ab5a4b0a2f766b7271dcf9ba8c160e3d3143c4912fd3d  app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f  app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java
+a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146  app/src/main/assets/source/huibq-latest.js

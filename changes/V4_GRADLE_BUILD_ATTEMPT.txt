@@ -1,0 +1,9 @@
+Command attempted:
+  ./gradlew :app:assembleDebug --offline --no-daemon
+
+Result in current container:
+  Could not resolve host: services.gradle.org
+  Gradle wrapper attempted to obtain Gradle 9.5.0, but container DNS/network cannot reach the distribution server.
+  ANDROID_HOME / ANDROID_SDK_ROOT are also not available in this environment.
+
+Therefore this delivery does NOT claim a real Android assembleDebug / APK signing / device install test.

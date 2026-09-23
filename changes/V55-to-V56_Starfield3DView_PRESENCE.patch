@@ -1,0 +1,267 @@
+--- a/app/src/main/java/com/xingyu/music/ui/Starfield3DView.java
++++ b/app/src/main/java/com/xingyu/music/ui/Starfield3DView.java
+@@ -49,10 +49,17 @@
+     public static final int PROFILE_CLASSIC_FORWARD = 1;
+ 
+     // A complete 360-degree volume.  Only the current camera frustum is rendered.
++    // V55 tuned population is kept as the 1.00x reference. V56 adds a reserve pool so
++    // density can rise without reallocating particles while the player is on-screen.
+     private static final int FAR_COUNT = 1700;
+     private static final int MID_COUNT = 760;
+     private static final int NEAR_COUNT = 220;
+     private static final int STAR_COUNT = FAR_COUNT + MID_COUNT + NEAR_COUNT;
++    private static final int EXTRA_FAR_COUNT = 595;
++    private static final int EXTRA_MID_COUNT = 266;
++    private static final int EXTRA_NEAR_COUNT = 77;
++    private static final int STAR_POOL_COUNT = STAR_COUNT + EXTRA_FAR_COUNT + EXTRA_MID_COUNT + EXTRA_NEAR_COUNT;
++    private static final float MAX_DENSITY_MULTIPLIER = 1.35f;
+ 
+     private static final float BASE_VERTICAL_FOV_DEG = 74f;
+     private static final float NEAR_PLANE = .28f;
+@@ -61,6 +68,8 @@
+     // Foreground camera-volume stream.  It is deliberately independent from the 360
+     // world stars and is replenished immediately in the current view while rotating.
+     private static final int FLOW_COUNT = 260;
++    private static final int EXTRA_FLOW_COUNT = 91;
++    private static final int FLOW_POOL_COUNT = FLOW_COUNT + EXTRA_FLOW_COUNT;
+     private static final float FLOW_NEAR_DEPTH = .68f;
+     private static final float FLOW_FAR_DEPTH = 49f;
+     private static final long FLOW_SEED = 0x4C554E4158594632L; // "LUNAXYF2"
+@@ -88,6 +97,8 @@
+         int motionType;
+         boolean flare;
+         boolean fadeBeforeRecycle;
++        boolean baseDensityPool;
++        float densityRank;
+         boolean previousVisible;
+         float previousX, previousY;
+     }
+@@ -113,6 +124,8 @@
+         boolean coolWhite;
+         boolean flare;
+         boolean fadeBeforeRecycle;
++        boolean baseDensityPool;
++        float densityRank;
+         boolean previousVisible;
+         float previousX, previousY;
+     }
+@@ -122,10 +135,13 @@
+     private final Matrix glowMatrix = new Matrix();
+     private final Shader[] glowShaders = new Shader[5];
+     private final int[] glowPalette = new int[5];
+-    private final Star[] stars = new Star[STAR_COUNT];
+-    private final FlowStar[] flowStars = new FlowStar[FLOW_COUNT];
++    private final Star[] stars = new Star[STAR_POOL_COUNT];
++    private final FlowStar[] flowStars = new FlowStar[FLOW_POOL_COUNT];
+     private final Random random = new Random(UNIVERSE_SEED);
+     private final Random flowRandom = new Random(FLOW_SEED);
++    // Separate seeds make density selection deterministic without perturbing the V55 star layout.
++    private final Random densityRandom = new Random(0x4C554E4158594433L);
++    private final Random flowDensityRandom = new Random(0x4C554E4158594446L);
+     private final SensorManager sensorManager;
+     private final Sensor rotationSensor;
+     private final Sensor linearAccelerationSensor;
+@@ -159,6 +175,12 @@
+     private float visualBeat;
+     private float speedMultiplier = 1f;
+     private float sensitivity = 1f;
++    // V56 official visual baseline: slightly larger, brighter and denser than V55.
++    // Combined, these restore the immediately-readable star presence of V49 while preserving
++    // V55's finer PSF, breathing lifecycle and 360-degree motion architecture.
++    private float starSizeMultiplier = 1.18f;
++    private float starBrightnessMultiplier = 1.20f;
++    private float starDensityMultiplier = 1.16f;
+     private int motionProfile = PROFILE_LIVING;
+ 
+     public Starfield3DView(Context context) {
+@@ -197,7 +219,7 @@
+         return rotationSensor != null;
+     }
+ 
+-    /** Visual-only user controls. Defaults preserve the V54/V55 tuned behaviour. */
++    /** Visual-only user controls. Motion defaults preserve V55; V56 raises visual presence separately. */
+     public void setSpeedMultiplier(float value) {
+         speedMultiplier = clamp(value, .45f, 1.90f);
+     }
+@@ -217,15 +239,50 @@
+ 
+     public int motionProfile() { return motionProfile; }
+ 
++    public void setStarSizeMultiplier(float value) {
++        float next = clamp(value, .70f, 1.55f);
++        if (Math.abs(next - starSizeMultiplier) < .0005f) return;
++        starSizeMultiplier = next;
++        invalidate();
++    }
++
++    public float starSizeMultiplier() { return starSizeMultiplier; }
++
++    public void setStarBrightnessMultiplier(float value) {
++        float next = clamp(value, .65f, 1.55f);
++        if (Math.abs(next - starBrightnessMultiplier) < .0005f) return;
++        starBrightnessMultiplier = next;
++        invalidate();
++    }
++
++    public float starBrightnessMultiplier() { return starBrightnessMultiplier; }
++
++    public void setStarDensityMultiplier(float value) {
++        float next = clamp(value, .60f, MAX_DENSITY_MULTIPLIER);
++        if (Math.abs(next - starDensityMultiplier) < .0005f) return;
++        starDensityMultiplier = next;
++        clearTrails();
++        invalidate();
++    }
++
++    public float starDensityMultiplier() { return starDensityMultiplier; }
++
+     private void createUniverse() {
+         int index = 0;
+-        for (int i = 0; i < FAR_COUNT; i++) stars[index++] = createStar(LAYER_FAR);
+-        for (int i = 0; i < MID_COUNT; i++) stars[index++] = createStar(LAYER_MID);
+-        for (int i = 0; i < NEAR_COUNT; i++) stars[index++] = createStar(LAYER_NEAR);
++        // Build the original V55 population first so its deterministic star layout remains intact
++        // at 1.00x. Reserve particles are appended and only revealed above 1.00x density.
++        for (int i = 0; i < FAR_COUNT; i++) stars[index++] = createStar(LAYER_FAR, true);
++        for (int i = 0; i < MID_COUNT; i++) stars[index++] = createStar(LAYER_MID, true);
++        for (int i = 0; i < NEAR_COUNT; i++) stars[index++] = createStar(LAYER_NEAR, true);
++        for (int i = 0; i < EXTRA_FAR_COUNT; i++) stars[index++] = createStar(LAYER_FAR, false);
++        for (int i = 0; i < EXTRA_MID_COUNT; i++) stars[index++] = createStar(LAYER_MID, false);
++        for (int i = 0; i < EXTRA_NEAR_COUNT; i++) stars[index++] = createStar(LAYER_NEAR, false);
+     }
+ 
+-    private Star createStar(int layer) {
++    private Star createStar(int layer, boolean baseDensityPool) {
+         Star s = new Star();
++        s.baseDensityPool = baseDensityPool;
++        s.densityRank = densityRandom.nextFloat();
+         s.layer = layer;
+         if (layer == LAYER_FAR) {
+             s.farDistance = lerp(72f, 104f, random.nextFloat());
+@@ -324,8 +381,10 @@
+     }
+ 
+     private void createFlightField() {
+-        for (int i = 0; i < FLOW_COUNT; i++) {
++        for (int i = 0; i < FLOW_POOL_COUNT; i++) {
+             FlowStar s = new FlowStar();
++            s.baseDensityPool = i < FLOW_COUNT;
++            s.densityRank = flowDensityRandom.nextFloat();
+             flowStars[i] = s;
+             resetFlowStar(s, true);
+         }
+@@ -511,6 +570,11 @@
+         sceneAxisZ /= sceneAxisN;
+ 
+         for (Star s : stars) {
++            if (s == null) continue;
++            if (!isDensityActive(s.baseDensityPool, s.densityRank)) {
++                s.previousVisible = false;
++                continue;
++            }
+             updateStarMotion(s, time, dt, surge, swirl, sceneAxisX, sceneAxisY, sceneAxisZ);
+             drawWorldStar(canvas, s, width, height, density, focal, centerX, centerY,
+                     observerX, observerY, observerZ, time, bloom);
+@@ -648,14 +712,18 @@
+         float localLight = lerp(1f - s.lightBreathDepth * .58f, 1f + s.lightBreathDepth * .24f, lifePulse);
+         float radius = s.worldRadius * focal * invDepth;
+         radius *= breath * (1f + life * .14f + visualEnergy * .022f + visualBeat * .038f);
+-        radius = clamp(radius, .17f * density, 1.92f * density);
++        radius *= starSizeMultiplier;
++        radius = clamp(radius, .17f * density * starSizeMultiplier,
++                1.92f * density * starSizeMultiplier);
+ 
+         float layerAlpha = s.layer == LAYER_FAR ? .82f : s.layer == LAYER_MID ? .94f : 1f;
+         float approach = smoothstep(.02f, .98f, life);
+         float lifeAlpha = stellarLifeEnvelope(life, s.fadeBeforeRecycle, s.fadeStart);
+-        int alpha = (int) ((60f + 195f * approach) * s.brightness * layerAlpha * twinkle * shimmer * localLight * lifeAlpha);
++        int alpha = (int) ((60f + 195f * approach) * s.brightness * layerAlpha * twinkle * shimmer
++                * localLight * lifeAlpha * starBrightnessMultiplier);
+         alpha = Math.min(255, alpha);
+-        if (!s.fadeBeforeRecycle || life < s.fadeStart) alpha = Math.max(30, alpha);
++        if (!s.fadeBeforeRecycle || life < s.fadeStart)
++            alpha = Math.max(Math.round(30f * starBrightnessMultiplier), alpha);
+         else alpha = Math.max(0, alpha);
+ 
+         int neutralR = s.layer == LAYER_FAR ? 226 : 248;
+@@ -698,6 +766,11 @@
+                                  float time, float dt, float surge, float swirl, float bloom) {
+         float audioDrive = 1f + visualEnergy * .11f + visualBeat * .09f;
+         for (FlowStar s : flowStars) {
++            if (s == null) continue;
++            if (!isDensityActive(s.baseDensityPool, s.densityRank)) {
++                s.previousVisible = false;
++                continue;
++            }
+             if (running) {
+                 // Flow particles also never pause while the device rotates.  Some bend into
+                 // graceful arcs; others surge or pulse, but every one continues advancing.
+@@ -768,13 +841,17 @@
+             float localLight = lerp(1f - s.lightBreathDepth * .58f, 1f + s.lightBreathDepth * .25f, lifePulse);
+             float radius = s.size * (.26f + progress * 1.55f) * density;
+             radius *= pulse * (1f + visualEnergy * .027f + visualBeat * .047f);
+-            radius = clamp(radius, .20f * density, 2.12f * density);
++            radius *= starSizeMultiplier;
++            radius = clamp(radius, .20f * density * starSizeMultiplier,
++                    2.12f * density * starSizeMultiplier);
+ 
+             float approach = smoothstep(.02f, .99f, progress);
+             float lifeAlpha = stellarLifeEnvelope(progress, s.fadeBeforeRecycle, s.fadeStart);
+-            int alpha = (int) ((64f + 191f * approach) * s.brightness * twinkle * shimmer * localLight * lifeAlpha);
++            int alpha = (int) ((64f + 191f * approach) * s.brightness * twinkle * shimmer
++                    * localLight * lifeAlpha * starBrightnessMultiplier);
+             alpha = Math.min(255, alpha);
+-            if (!s.fadeBeforeRecycle || progress < s.fadeStart) alpha = Math.max(34, alpha);
++            if (!s.fadeBeforeRecycle || progress < s.fadeStart)
++                alpha = Math.max(Math.round(34f * starBrightnessMultiplier), alpha);
+             else alpha = Math.max(0, alpha);
+             int neutralR = s.coolWhite ? 224 : 250;
+             int neutralG = s.coolWhite ? 236 : 250;
+@@ -824,16 +901,19 @@
+         float near = smoothstep(.10f, .985f, life);
+ 
+         // The core remains tiny; the perceived size comes from a smooth PSF, not a bubble.
+-        float coreRadius = Math.max(.14f * density, radius * (foreground ? .58f : .54f));
+-        coreRadius = Math.min(coreRadius, (foreground ? 1.18f : 1.02f) * density);
++        float coreRadius = Math.max(.14f * density * starSizeMultiplier,
++                radius * (foreground ? .58f : .54f));
++        coreRadius = Math.min(coreRadius, (foreground ? 1.18f : 1.02f)
++                * density * starSizeMultiplier);
+ 
+         // A faint halo may extend several core radii, just like V49, but its alpha decays to
+         // exactly zero at the edge.  Hence large near stars glow without exposing a circle.
+         float glowBreath = .5f + .5f * (float) Math.sin(time * .29f + phase * .61f);
+         float glowScale = foreground ? lerp(3.6f, 5.8f, near) : lerp(3.0f, 5.05f, near);
+         glowScale *= lerp(.94f, 1.08f, glowBreath) * (1f + sceneBloom * .030f);
+-        float glowRadius = Math.max(.84f * density, coreRadius * glowScale);
+-        glowRadius = Math.min(glowRadius, (foreground ? 9.0f : 7.6f) * density);
++        float glowRadius = Math.max(.84f * density * starSizeMultiplier, coreRadius * glowScale);
++        glowRadius = Math.min(glowRadius, (foreground ? 9.0f : 7.6f)
++                * density * starSizeMultiplier);
+ 
+         float tint = colorTintDistance(r, g, b);
+         Shader shader = glowShaders[paletteIndex(tint)];
+@@ -862,7 +942,7 @@
+         int hotR = mix(r, 255, .78f);
+         int hotG = mix(g, 255, .78f);
+         int hotB = mix(b, 255, .78f);
+-        float nucleusRadius = Math.max(.11f * density, coreRadius * .26f);
++        float nucleusRadius = Math.max(.11f * density * starSizeMultiplier, coreRadius * .26f);
+         int hotAlpha = clamp255((int) (alpha * (.92f + near * .08f)));
+         canvas.drawCircle(sx, sy, nucleusRadius, colorPaint(hotAlpha, hotR, hotG, hotB));
+ 
+@@ -893,6 +973,14 @@
+         }
+     }
+ 
++    private boolean isDensityActive(boolean baseDensityPool, float rank) {
++        float density = starDensityMultiplier;
++        if (density < 1f) return baseDensityPool && rank <= density;
++        if (baseDensityPool) return true;
++        float extraFraction = (density - 1f) / Math.max(.001f, MAX_DENSITY_MULTIPLIER - 1f);
++        return rank <= extraFraction;
++    }
++
+     /** Rebuild a tiny gradient palette only when the cover accent changes, never per frame. */
+     private void rebuildGlowPalette() {
+         final float[] tintStops = new float[]{.05f, .16f, .28f, .41f, .55f};

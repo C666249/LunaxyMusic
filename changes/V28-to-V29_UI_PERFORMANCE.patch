@@ -1,0 +1,601 @@
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 31
+-        versionName = "28.0.0"
++        versionCode = 32
++        versionName = "29.0.0"
+     }
+ 
+     buildTypes {
+--- a/app/src/main/java/com/xingyu/music/MainActivity.java
++++ b/app/src/main/java/com/xingyu/music/MainActivity.java
+@@ -66,6 +66,7 @@
+ import com.xingyu.music.model.Song;
+ import com.xingyu.music.playback.PlaybackService;
+ import com.xingyu.music.ui.AudioLevelProvider;
++import com.xingyu.music.ui.ColorPickerView;
+ import com.xingyu.music.ui.IconView;
+ import com.xingyu.music.ui.ImageLoader;
+ import com.xingyu.music.ui.LyricLineView;
+@@ -91,9 +92,9 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V28.0 – playlist picker select-all + now-playing add-to-playlist + stricter chorus quotes.
++ * Lunaxy Music V29.0 – lyric color picker polish + virtualized add-song picker performance.
+  *
+- * V28 keeps the proven audio-resolution/playback core frozen. Tapping a normal row in a saved playlist
++ * V29 keeps the proven audio-resolution/playback core frozen. Tapping a normal row in a saved playlist
+  * still replaces the current queue with the entire playlist and starts at that row. Tapping a result
+  * inside that playlist's search modal is a temporary pick: insert/play only that song and keep the
+  * existing queue, matching global-search behavior.
+@@ -2851,6 +2852,7 @@
+             commit.setEnabled(enabled); commit.setAlpha(enabled ? 1f : .45f);
+         };
+ 
++        View[] cachedPickerViews = new View[4];
+         Runnable[] renderPicker = new Runnable[1];
+         renderPicker[0] = () -> {
+             for (int i = 0; i < tabViews.length; i++) {
+@@ -2862,15 +2864,17 @@
+                         : Ui.round(Color.TRANSPARENT, 15, this));
+             }
+             content.removeAllViews();
+-            if (active[0] == 0) {
+-                content.addView(buildPickerSongList(favorites, target, selected, updateFooter), Ui.frame(-1, -1, Gravity.FILL));
+-            } else if (active[0] == 1) {
+-                content.addView(buildPickerSongList(history, target, selected, updateFooter), Ui.frame(-1, -1, Gravity.FILL));
+-            } else if (active[0] == 2) {
+-                content.addView(buildPickerSearch(target, selected, updateFooter), Ui.frame(-1, -1, Gravity.FILL));
+-            } else {
+-                content.addView(buildOtherPlaylistPicker(target, selected, updateFooter), Ui.frame(-1, -1, Gravity.FILL));
+-            }
++            int index = active[0];
++            if (cachedPickerViews[index] == null) {
++                if (index == 0) cachedPickerViews[index] = buildPickerSongList(favorites, target, selected, updateFooter);
++                else if (index == 1) cachedPickerViews[index] = buildPickerSongList(history, target, selected, updateFooter);
++                else if (index == 2) cachedPickerViews[index] = buildPickerSearch(target, selected, updateFooter);
++                else cachedPickerViews[index] = buildOtherPlaylistPicker(target, selected, updateFooter);
++            }
++            View page = cachedPickerViews[index];
++            if (page.getParent() instanceof ViewGroup) ((ViewGroup) page.getParent()).removeView(page);
++            content.addView(page, Ui.frame(-1, -1, Gravity.FILL));
++            refreshPickerAdapters(page);
+         };
+         for (TextView tv : tabViews) {
+             tv.setOnClickListener(v -> {
+@@ -2898,20 +2902,163 @@
+         return null;
+     }
+ 
++    private static final class PickerSongHolder {
++        LinearLayout row;
++        ImageView cover;
++        TextView title;
++        TextView artist;
++        CheckBox check;
++    }
++
++    private final class PickerSongAdapter extends BaseAdapter {
++        private final List<Song> items;
++        private final LinkedHashMap<String, Song> selected;
++        private final SimpleAction updateFooter;
++        private final LinkedHashSet<String> targetKeys = new LinkedHashSet<>();
++
++        PickerSongAdapter(List<Song> source, ImportedPlaylist target,
++                          LinkedHashMap<String, Song> selected, SimpleAction updateFooter) {
++            this.items = source == null ? new ArrayList<>() : new ArrayList<>(source);
++            this.selected = selected;
++            this.updateFooter = updateFooter;
++            if (target != null && target.songs != null) {
++                for (Song song : target.songs) if (song != null) targetKeys.add(song.key());
++            }
++        }
++
++        @Override public int getCount() { return items.size(); }
++        @Override public Object getItem(int position) { return items.get(position); }
++        @Override public long getItemId(int position) { return position; }
++
++        @Override public View getView(int position, View convertView, ViewGroup parent) {
++            PickerSongHolder holder;
++            LinearLayout wrapper;
++            if (convertView == null) {
++                wrapper = Ui.column(MainActivity.this);
++                holder = new PickerSongHolder();
++                holder.row = Ui.row(MainActivity.this);
++                holder.row.setGravity(Gravity.CENTER_VERTICAL);
++                holder.row.setPadding(Ui.dp(MainActivity.this, 8), Ui.dp(MainActivity.this, 6), Ui.dp(MainActivity.this, 8), Ui.dp(MainActivity.this, 6));
++                holder.row.setBackground(Ui.glass(88, 15, 16, MainActivity.this));
++                Ui.applyRipple(holder.row, Color.TRANSPARENT);
++
++                holder.cover = new ImageView(MainActivity.this);
++                holder.cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
++                holder.cover.setClipToOutline(true);
++                holder.cover.setBackground(Ui.round(Color.rgb(24,24,31), 11, MainActivity.this));
++                holder.row.addView(holder.cover, Ui.lp(Ui.dp(MainActivity.this, 44), Ui.dp(MainActivity.this, 44)));
++
++                LinearLayout texts = Ui.column(MainActivity.this);
++                texts.setPadding(Ui.dp(MainActivity.this, 10), 0, Ui.dp(MainActivity.this, 6), 0);
++                holder.title = Ui.text(MainActivity.this, "", 12.7f, Ui.TEXT, true);
++                holder.title.setSingleLine(true); holder.title.setEllipsize(TextUtils.TruncateAt.END);
++                holder.artist = Ui.text(MainActivity.this, "", 10.2f, Ui.DIM, false);
++                holder.artist.setSingleLine(true); holder.artist.setEllipsize(TextUtils.TruncateAt.END);
++                texts.addView(holder.title, new LinearLayout.LayoutParams(-1, 0, 1f));
++                texts.addView(holder.artist, new LinearLayout.LayoutParams(-1, 0, 1f));
++                holder.row.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(MainActivity.this, 44), 1f));
++
++                holder.check = new CheckBox(MainActivity.this);
++                holder.check.setButtonTintList(new ColorStateList(
++                        new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
++                        new int[]{Ui.GREEN, Ui.DIM}));
++                holder.row.addView(holder.check, Ui.lp(Ui.dp(MainActivity.this, 42), Ui.dp(MainActivity.this, 42)));
++                wrapper.addView(holder.row, Ui.lp(-1, Ui.dp(MainActivity.this, 56)));
++                Space gap = new Space(MainActivity.this);
++                wrapper.addView(gap, Ui.lp(-1, Ui.dp(MainActivity.this, 6)));
++                wrapper.setTag(holder);
++            } else {
++                wrapper = (LinearLayout) convertView;
++                holder = (PickerSongHolder) wrapper.getTag();
++            }
++
++            Song song = items.get(position);
++            boolean exists = song == null || targetKeys.contains(song.key());
++            if (song == null) {
++                holder.title.setText("无效歌曲"); holder.artist.setText("");
++                holder.cover.setTag(""); holder.cover.setImageDrawable(null);
++                holder.check.setChecked(false); holder.check.setEnabled(false);
++                holder.row.setClickable(false); holder.row.setAlpha(.42f);
++                return wrapper;
++            }
++
++            holder.title.setText(song.title);
++            holder.title.setTextColor(exists ? Ui.DIM : Ui.TEXT);
++            holder.artist.setText(exists ? "已在歌单 · " + song.artist : song.artist);
++            holder.cover.setImageDrawable(null);
++            holder.cover.setTag(song.coverUrl == null ? "" : song.coverUrl);
++            if (song.coverUrl != null && !song.coverUrl.trim().isEmpty()) ImageLoader.load(song.coverUrl, holder.cover, null);
++            holder.check.setOnClickListener(null);
++            holder.check.setChecked(selected.containsKey(song.key()));
++            holder.check.setEnabled(!exists);
++            holder.row.setClickable(!exists); holder.row.setFocusable(!exists); holder.row.setAlpha(exists ? .52f : 1f);
++
++            PickerSongHolder bound = holder;
++            SimpleAction toggle = () -> {
++                if (exists) return;
++                if (selected.containsKey(song.key())) selected.remove(song.key()); else selected.put(song.key(), song);
++                bound.check.setChecked(selected.containsKey(song.key()));
++                updateFooter.run();
++            };
++            holder.row.setOnClickListener(v -> toggle.run());
++            holder.check.setOnClickListener(v -> {
++                if (exists) return;
++                if (bound.check.isChecked()) selected.put(song.key(), song); else selected.remove(song.key());
++                updateFooter.run();
++            });
++            return wrapper;
++        }
++    }
++
+     private View buildPickerSongList(List<Song> source, ImportedPlaylist target,
+                                      LinkedHashMap<String, Song> selected, SimpleAction updateFooter) {
+-        LinearLayout rows = Ui.column(this);
+-        if (source == null || source.isEmpty()) {
+-            rows.addView(compactEmpty("这里还没有可添加的歌曲"));
+-        } else {
+-            int limit = Math.min(160, source.size());
+-            for (int i = 0; i < limit; i++) rows.addView(pickerSongRow(source.get(i), target, selected, updateFooter), marginTop(i == 0 ? 0 : 6));
+-            if (source.size() > limit) {
+-                TextView hint = Ui.text(this, "为保持流畅，本次显示前 " + limit + " 首", 10.2f, Ui.DIM, false);
+-                hint.setGravity(Gravity.CENTER); rows.addView(hint, marginTop(8));
+-            }
+-        }
+-        ScrollView scroll = new ScrollView(this); scroll.setVerticalScrollBarEnabled(false); scroll.addView(rows); return scroll;
++        return buildPickerSongList(source, target, selected, updateFooter, null);
++    }
++
++    private View buildPickerSongList(List<Song> source, ImportedPlaylist target,
++                                     LinkedHashMap<String, Song> selected, SimpleAction updateFooter,
++                                     PickerSongAdapter[] adapterOut) {
++        if (source == null || source.isEmpty()) return compactEmpty("这里还没有可添加的歌曲");
++        ListView list = new ListView(this);
++        list.setDivider(null);
++        list.setDividerHeight(0);
++        list.setVerticalScrollBarEnabled(false);
++        list.setScrollingCacheEnabled(true);
++        list.setFadingEdgeLength(0);
++        list.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
++        PickerSongAdapter adapter = new PickerSongAdapter(source, target, selected, updateFooter);
++        list.setAdapter(adapter);
++        if (adapterOut != null && adapterOut.length > 0) adapterOut[0] = adapter;
++        return list;
++    }
++
++    private void refreshPickerAdapters(View root) {
++        if (root == null) return;
++        if (root instanceof ListView) {
++            android.widget.ListAdapter adapter = ((ListView) root).getAdapter();
++            if (adapter instanceof PickerSongAdapter) ((PickerSongAdapter) adapter).notifyDataSetChanged();
++        }
++        if (root instanceof ViewGroup) {
++            ViewGroup group = (ViewGroup) root;
++            for (int i = 0; i < group.getChildCount(); i++) refreshPickerAdapters(group.getChildAt(i));
++        }
++    }
++
++    private LinkedHashSet<String> songKeySet(List<Song> songs) {
++        LinkedHashSet<String> keys = new LinkedHashSet<>();
++        if (songs != null) for (Song song : songs) if (song != null) keys.add(song.key());
++        return keys;
++    }
++
++    private boolean allSelectableSelected(List<Song> source, LinkedHashSet<String> targetKeys,
++                                          LinkedHashMap<String, Song> selected) {
++        int selectable = 0;
++        if (source != null) for (Song song : source) {
++            if (song == null || targetKeys.contains(song.key())) continue;
++            selectable++;
++            if (!selected.containsKey(song.key())) return false;
++        }
++        return selectable > 0;
+     }
+ 
+     private View buildOtherPlaylistPicker(ImportedPlaylist target,
+@@ -2932,38 +3079,45 @@
+             texts.addView(title,new LinearLayout.LayoutParams(-1,0,1f));
+             texts.addView(Ui.text(this,playlist.songs.size()+" 首 · 选择要加入的歌曲",10.3f,Ui.DIM,false),new LinearLayout.LayoutParams(-1,0,1f));
+             header.addView(texts,new LinearLayout.LayoutParams(0,Ui.dp(this,40),1f));
+-            boolean allSelectableSelected = true;
++            LinkedHashSet<String> targetKeys = songKeySet(target.songs);
+             int selectableCount = 0;
+             for (Song candidate : playlist.songs) {
+-                if (candidate == null || indexByKey(target.songs, candidate.key()) >= 0) continue;
+-                selectableCount++;
+-                if (!selected.containsKey(candidate.key())) allSelectableSelected = false;
+-            }
+-            final boolean allSelectedNow = selectableCount > 0 && allSelectableSelected;
+-            TextView selectAll = Ui.text(this, allSelectedNow ? "取消全选" : "全选", 10.8f, allSelectedNow ? Ui.GREEN : Ui.CYAN, true);
++                if (candidate != null && !targetKeys.contains(candidate.key())) selectableCount++;
++            }
++            TextView selectAll = Ui.text(this, "全选", 10.8f, Ui.CYAN, true);
+             selectAll.setGravity(Gravity.CENTER);
+             selectAll.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 10), 0);
+-            selectAll.setBackground(Ui.tintedGlass(allSelectedNow ? Ui.GREEN : Ui.CYAN, 14, this));
+             selectAll.setClickable(selectableCount > 0); selectAll.setFocusable(selectableCount > 0);
+             selectAll.setAlpha(selectableCount > 0 ? 1f : .42f);
+             Ui.applyRipple(selectAll, Color.argb(34,255,255,255));
++            header.addView(selectAll, Ui.lp(-2,Ui.dp(this,36)));
++            pane.addView(header,Ui.lp(-1,Ui.dp(this,40)));
++
++            PickerSongAdapter[] adapterRef = new PickerSongAdapter[1];
++            SimpleAction refreshSelectionUi = () -> {
++                updateFooter.run();
++                boolean all = allSelectableSelected(playlist.songs, targetKeys, selected);
++                selectAll.setText(all ? "取消全选" : "全选");
++                selectAll.setTextColor(all ? Ui.GREEN : Ui.CYAN);
++                selectAll.setBackground(Ui.tintedGlass(all ? Ui.GREEN : Ui.CYAN, 14, this));
++            };
+             selectAll.setOnClickListener(v -> {
+-                if (allSelectedNow) {
++                boolean clear = allSelectableSelected(playlist.songs, targetKeys, selected);
++                if (clear) {
+                     for (Song candidate : playlist.songs) {
+-                        if (candidate != null && indexByKey(target.songs, candidate.key()) < 0) selected.remove(candidate.key());
++                        if (candidate != null && !targetKeys.contains(candidate.key())) selected.remove(candidate.key());
+                     }
+                 } else {
+                     for (Song candidate : playlist.songs) {
+-                        if (candidate != null && indexByKey(target.songs, candidate.key()) < 0) selected.put(candidate.key(), candidate);
++                        if (candidate != null && !targetKeys.contains(candidate.key())) selected.put(candidate.key(), candidate);
+                     }
+                 }
+-                updateFooter.run();
+-                showSongs[0].run(playlist); // rebuild rows so every checkbox reflects the new state
++                refreshSelectionUi.run();
++                if (adapterRef[0] != null) adapterRef[0].notifyDataSetChanged();
+             });
+-            header.addView(selectAll, Ui.lp(-2,Ui.dp(this,36)));
+-            pane.addView(header,Ui.lp(-1,Ui.dp(this,40)));
+             LinearLayout.LayoutParams slp=new LinearLayout.LayoutParams(-1,0,1f); slp.topMargin=Ui.dp(this,8);
+-            pane.addView(buildPickerSongList(playlist.songs,target,selected,updateFooter),slp);
++            pane.addView(buildPickerSongList(playlist.songs,target,selected,refreshSelectionUi,adapterRef),slp);
++            refreshSelectionUi.run();
+             back.setOnClickListener(v->showPlaylistList[0].run());
+             host.removeAllViews(); host.addView(pane,Ui.frame(-1,-1,Gravity.FILL));
+         };
+@@ -3959,7 +4113,14 @@
+     }
+ 
+     private void showLyricStylePicker() {
+-        LinearLayout card = modalCard("歌词高亮", "默认冰蓝渐变。颜色只影响歌词显示，不影响歌曲、音源或播放链。");
++        LinearLayout card = modalCard("歌词高亮", "每一项都直接预览真实高亮效果。颜色只影响歌词显示，不影响歌曲、音源或播放链。");
++        ScrollView optionsScroll = new ScrollView(this);
++        optionsScroll.setVerticalScrollBarEnabled(false);
++        LinearLayout options = Ui.column(this);
++        optionsScroll.addView(options);
++        LinearLayout.LayoutParams osp = new LinearLayout.LayoutParams(-1, 0, 1f);
++        osp.topMargin = Ui.dp(this, 6);
++        card.addView(optionsScroll, osp);
+         int[][] presets = new int[][]{
+                 {Ui.LYRIC_ICE_START, Ui.LYRIC_ICE_END},
+                 {Color.rgb(222, 211, 255), Color.rgb(143, 126, 255)},
+@@ -3975,6 +4136,7 @@
+             preview.setText(names[i] + "  ·  正在唱的这一句");
+             preview.setGradientColors(presets[i][0], presets[i][1]);
+             preview.setActiveLine(true);
++            preview.setKaraokeProgress(1f); // style chooser must show the whole gradient, not the gray base pass
+             preview.setGravity(Gravity.CENTER_VERTICAL);
+             preview.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
+             preview.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0);
+@@ -3985,9 +4147,9 @@
+                 dismissModalNow();
+                 saveLyricGradient(presets[index][0], presets[index][1], false);
+             });
+-            LinearLayout.LayoutParams rp = Ui.lp(-1, Ui.dp(this, 48));
++            LinearLayout.LayoutParams rp = Ui.lp(-1, Ui.dp(this, 50));
+             rp.topMargin = Ui.dp(this, 8);
+-            card.addView(preview, rp);
++            options.addView(preview, rp);
+         }
+ 
+         TextView cover = outlineAction("跟随歌曲封面颜色");
+@@ -3998,30 +4160,89 @@
+             applyCoverLyricGradient(nowAccent);
+             toast("歌词高亮已跟随封面");
+         });
+-        LinearLayout.LayoutParams cp = Ui.lp(-1, Ui.dp(this, 46)); cp.topMargin = Ui.dp(this, 10); card.addView(cover, cp);
+-
+-        TextView custom = outlineAction("自定义两端颜色");
++        LinearLayout.LayoutParams cp = Ui.lp(-1, Ui.dp(this, 46)); cp.topMargin = Ui.dp(this, 10); options.addView(cover, cp);
++
++        TextView custom = outlineAction("自定义渐变颜色");
+         custom.setOnClickListener(v -> {
+             dismissModalNow();
+-            showGlassInput("自定义歌词高亮", "例如 #C9F2FF,#69ABFF", false, "应用", value -> {
+-                int[] colors = parseGradientPair(value);
+-                if (colors == null) { toast("格式不对，请输入两个 HEX 颜色"); return; }
+-                saveLyricGradient(colors[0], colors[1], false);
+-            });
+-        });
+-        LinearLayout.LayoutParams xp = Ui.lp(-1, Ui.dp(this, 46)); xp.topMargin = Ui.dp(this, 8); card.addView(custom, xp);
+-        presentFractionModal(card, .72f);
+-    }
+-
+-    private int[] parseGradientPair(String raw) {
+-        if (raw == null) return null;
+-        String[] parts = raw.trim().split("[,，\\s]+", -1);
+-        if (parts.length < 2) return null;
+-        try {
+-            int first = Color.parseColor(parts[0].startsWith("#") ? parts[0] : "#" + parts[0]);
+-            int second = Color.parseColor(parts[1].startsWith("#") ? parts[1] : "#" + parts[1]);
+-            return new int[]{first, second};
+-        } catch (Exception ignored) { return null; }
++            main.postDelayed(this::showLyricCustomColorPicker, 90L);
++        });
++        LinearLayout.LayoutParams xp = Ui.lp(-1, Ui.dp(this, 46)); xp.topMargin = Ui.dp(this, 8); options.addView(custom, xp);
++        presentFractionModal(card, .80f);
++    }
++
++    private void showLyricCustomColorPicker() {
++        LinearLayout card = modalCard("自定义歌词高亮", "拖动选色器选颜色，再一键设为渐变起点或终点，最后应用即可。");
++        final int[] draft = {lyricGradientStart, lyricGradientEnd};
++        final int[] picked = {lyricGradientStart};
++
++        ScrollView pickerScroll = new ScrollView(this);
++        pickerScroll.setVerticalScrollBarEnabled(false);
++        LinearLayout pickerBody = Ui.column(this);
++        pickerScroll.addView(pickerBody);
++        LinearLayout.LayoutParams psp = new LinearLayout.LayoutParams(-1, 0, 1f);
++        psp.topMargin = Ui.dp(this, 6);
++        card.addView(pickerScroll, psp);
++
++        LyricLineView preview = new LyricLineView(this);
++        preview.setText("正在唱的这一句");
++        preview.setActiveLine(true);
++        preview.setKaraokeProgress(1f);
++        preview.setGradientColors(draft[0], draft[1]);
++        preview.setGravity(Gravity.CENTER);
++        preview.setBackground(Ui.glass(92, 16, 18, this));
++        LinearLayout.LayoutParams pp = Ui.lp(-1, Ui.dp(this, 54));
++        pp.topMargin = Ui.dp(this, 8);
++        pickerBody.addView(preview, pp);
++
++        ColorPickerView picker = new ColorPickerView(this);
++        picker.setColor(picked[0]);
++        LinearLayout.LayoutParams pickP = Ui.lp(-1, Ui.dp(this, 228));
++        pickP.topMargin = Ui.dp(this, 12);
++        pickerBody.addView(picker, pickP);
++
++        LinearLayout chosenRow = Ui.row(this);
++        chosenRow.setGravity(Gravity.CENTER_VERTICAL);
++        TextView chosenLabel = Ui.text(this, "当前颜色", 11f, Ui.TEXT_2, true);
++        chosenRow.addView(chosenLabel, new LinearLayout.LayoutParams(0, Ui.dp(this, 38), 1f));
++        View chosenSwatch = new View(this);
++        chosenSwatch.setBackground(Ui.round(picked[0], 12, this));
++        chosenRow.addView(chosenSwatch, Ui.lp(Ui.dp(this, 54), Ui.dp(this, 30)));
++        LinearLayout.LayoutParams crp = Ui.lp(-1, Ui.dp(this, 38)); crp.topMargin = Ui.dp(this, 8); pickerBody.addView(chosenRow, crp);
++
++        LinearLayout endpoints = Ui.row(this);
++        TextView setStart = modalButton("设为起点", false);
++        TextView setEnd = modalButton("设为终点", false);
++        endpoints.addView(setStart, new LinearLayout.LayoutParams(0, Ui.dp(this, 46), 1f));
++        LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(0, Ui.dp(this, 46), 1f); ep.leftMargin = Ui.dp(this, 8); endpoints.addView(setEnd, ep);
++        LinearLayout.LayoutParams erp = Ui.lp(-1, Ui.dp(this, 46)); erp.topMargin = Ui.dp(this, 8); pickerBody.addView(endpoints, erp);
++
++        SimpleAction refreshDraft = () -> {
++            preview.setGradientColors(draft[0], draft[1]);
++            preview.setKaraokeProgress(1f);
++            setStart.setText("设为起点 ✓");
++            setEnd.setText("设为终点 ✓");
++            GradientDrawable startBg = Ui.gradient(new int[]{Ui.mix(draft[0], Color.BLACK, .54f), Ui.mix(draft[0], Color.BLACK, .72f)}, 17, this);
++            GradientDrawable endBg = Ui.gradient(new int[]{Ui.mix(draft[1], Color.BLACK, .54f), Ui.mix(draft[1], Color.BLACK, .72f)}, 17, this);
++            setStart.setBackground(startBg);
++            setEnd.setBackground(endBg);
++        };
++        picker.setListener(color -> {
++            picked[0] = color;
++            chosenSwatch.setBackground(Ui.round(color, 12, this));
++        });
++        setStart.setOnClickListener(v -> { draft[0] = picked[0]; refreshDraft.run(); });
++        setEnd.setOnClickListener(v -> { draft[1] = picked[0]; refreshDraft.run(); });
++        refreshDraft.run();
++
++        TextView apply = modalButton("应用渐变", true);
++        apply.setBackground(Ui.primaryFill(Ui.CYAN, 18, this));
++        apply.setOnClickListener(v -> {
++            dismissModalNow();
++            saveLyricGradient(draft[0], draft[1], false);
++        });
++        LinearLayout.LayoutParams ap = Ui.lp(-1, Ui.dp(this, 48)); ap.topMargin = Ui.dp(this, 12); card.addView(apply, ap);
++        presentFractionModal(card, .84f);
+     }
+ 
+     private void saveLyricGradient(int start, int end, boolean coverMode) {
+--- a/app/src/main/java/com/xingyu/music/ui/ColorPickerView.java
++++ b/app/src/main/java/com/xingyu/music/ui/ColorPickerView.java
+@@ -0,0 +1,142 @@
++package com.xingyu.music.ui;
++
++import android.content.Context;
++import android.graphics.Canvas;
++import android.graphics.Color;
++import android.graphics.LinearGradient;
++import android.graphics.Paint;
++import android.graphics.RectF;
++import android.graphics.Shader;
++import android.view.MotionEvent;
++import android.view.View;
++
++/**
++ * Lightweight HSV color picker used by the lyric-gradient customizer.
++ * The top area edits saturation/value; the bottom strip edits hue.
++ * No dependency is required and no text/HEX input is needed.
++ */
++public final class ColorPickerView extends View {
++    public interface Listener { void onColorChanged(int color); }
++
++    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private final Paint markerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private final RectF svRect = new RectF();
++    private final RectF hueRect = new RectF();
++    private final float[] hsv = new float[]{205f, .55f, .95f};
++    private Listener listener;
++    private int activeZone;
++
++    public ColorPickerView(Context context) {
++        super(context);
++        setLayerType(View.LAYER_TYPE_SOFTWARE, null);
++        markerPaint.setStyle(Paint.Style.STROKE);
++        markerPaint.setStrokeWidth(Ui.dp(context, 2));
++        markerPaint.setColor(Color.WHITE);
++        setColor(Color.rgb(105, 171, 255));
++    }
++
++    public void setListener(Listener listener) { this.listener = listener; }
++
++    public void setColor(int color) {
++        Color.colorToHSV(color, hsv);
++        invalidate();
++        if (listener != null) listener.onColorChanged(getColor());
++    }
++
++    public int getColor() { return Color.HSVToColor(hsv); }
++
++    @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
++        int pad = Ui.dp(getContext(), 2);
++        int hueH = Ui.dp(getContext(), 28);
++        int gap = Ui.dp(getContext(), 14);
++        svRect.set(pad, pad, Math.max(pad + 1, w - pad), Math.max(pad + 1, h - hueH - gap - pad));
++        hueRect.set(pad, svRect.bottom + gap, Math.max(pad + 1, w - pad), Math.max(svRect.bottom + gap + 1, h - pad));
++    }
++
++    @Override protected void onDraw(Canvas canvas) {
++        super.onDraw(canvas);
++        float radius = Ui.dp(getContext(), 14);
++
++        int hueColor = Color.HSVToColor(new float[]{hsv[0], 1f, 1f});
++        paint.setShader(new LinearGradient(svRect.left, 0f, svRect.right, 0f,
++                Color.WHITE, hueColor, Shader.TileMode.CLAMP));
++        canvas.drawRoundRect(svRect, radius, radius, paint);
++        paint.setShader(new LinearGradient(0f, svRect.top, 0f, svRect.bottom,
++                Color.TRANSPARENT, Color.BLACK, Shader.TileMode.CLAMP));
++        canvas.drawRoundRect(svRect, radius, radius, paint);
++        paint.setShader(null);
++
++        int[] hueColors = new int[]{
++                Color.RED, Color.YELLOW, Color.GREEN, Color.CYAN,
++                Color.BLUE, Color.MAGENTA, Color.RED
++        };
++        paint.setShader(new LinearGradient(hueRect.left, 0f, hueRect.right, 0f,
++                hueColors, null, Shader.TileMode.CLAMP));
++        canvas.drawRoundRect(hueRect, hueRect.height() / 2f, hueRect.height() / 2f, paint);
++        paint.setShader(null);
++
++        float sx = svRect.left + hsv[1] * svRect.width();
++        float sy = svRect.top + (1f - hsv[2]) * svRect.height();
++        drawMarker(canvas, sx, sy, Ui.dp(getContext(), 8));
++
++        float hx = hueRect.left + (hsv[0] / 360f) * hueRect.width();
++        drawMarker(canvas, hx, hueRect.centerY(), Ui.dp(getContext(), 7));
++    }
++
++    private void drawMarker(Canvas canvas, float x, float y, float radius) {
++        markerPaint.setColor(Color.argb(120, 0, 0, 0));
++        markerPaint.setStrokeWidth(Ui.dp(getContext(), 4));
++        canvas.drawCircle(x, y, radius + Ui.dp(getContext(), 1), markerPaint);
++        markerPaint.setColor(Color.WHITE);
++        markerPaint.setStrokeWidth(Ui.dp(getContext(), 2));
++        canvas.drawCircle(x, y, radius, markerPaint);
++    }
++
++    @Override public boolean onTouchEvent(MotionEvent event) {
++        float x = event.getX();
++        float y = event.getY();
++        switch (event.getActionMasked()) {
++            case MotionEvent.ACTION_DOWN:
++                if (hueRect.contains(x, y)) activeZone = 2;
++                else if (svRect.contains(x, y)) activeZone = 1;
++                else return false;
++                if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
++                updateFromTouch(x, y);
++                return true;
++            case MotionEvent.ACTION_MOVE:
++                if (activeZone == 0) return false;
++                updateFromTouch(x, y);
++                return true;
++            case MotionEvent.ACTION_UP:
++            case MotionEvent.ACTION_CANCEL:
++                if (activeZone != 0) {
++                    updateFromTouch(x, y);
++                    activeZone = 0;
++                    if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
++                    performClick();
++                    return true;
++                }
++                break;
++        }
++        return super.onTouchEvent(event);
++    }
++
++    private void updateFromTouch(float x, float y) {
++        if (activeZone == 2) {
++            float p = clamp01((x - hueRect.left) / Math.max(1f, hueRect.width()));
++            hsv[0] = p * 360f;
++        } else if (activeZone == 1) {
++            hsv[1] = clamp01((x - svRect.left) / Math.max(1f, svRect.width()));
++            hsv[2] = 1f - clamp01((y - svRect.top) / Math.max(1f, svRect.height()));
++        }
++        invalidate();
++        if (listener != null) listener.onColorChanged(getColor());
++    }
++
++    private static float clamp01(float v) { return Math.max(0f, Math.min(1f, v)); }
++
++    @Override public boolean performClick() {
++        super.performClick();
++        return true;
++    }
++}

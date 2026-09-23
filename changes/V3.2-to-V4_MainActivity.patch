@@ -1,0 +1,339 @@
+--- /mnt/data/SunflowerDownloadV1/baseline/SunflowerMusic-V3.2/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 19:44:18.000000000 +0000
++++ /mnt/data/SunflowerDownloadV1/SunflowerMusic-V3.2/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 20:41:10.029274678 +0000
+@@ -4,7 +4,10 @@
+ import android.app.Activity;
+ import android.content.ClipData;
+ import android.content.ClipboardManager;
++import android.content.BroadcastReceiver;
++import android.content.IntentFilter;
+ import android.content.ComponentName;
++import android.content.Context;
+ import android.content.Intent;
+ import android.content.pm.PackageManager;
+ import android.content.ServiceConnection;
+@@ -23,6 +26,8 @@
+ import android.os.IBinder;
+ import android.os.Looper;
+ import android.os.SystemClock;
++import android.net.Uri;
++import android.provider.Settings;
+ import android.text.Editable;
+ import android.text.TextUtils;
+ import android.text.TextWatcher;
+@@ -49,6 +54,9 @@
+ import android.widget.TextView;
+ 
+ import com.xingyu.music.data.LibraryStore;
++import com.xingyu.music.download.OfflineStore;
++import com.xingyu.music.download.OfflineDownloadService;
++import com.xingyu.music.download.RingtoneHelper;
+ import com.xingyu.music.data.ExactTrackMatcher;
+ import com.xingyu.music.data.ResolverHttpDiagnostics;
+ import com.xingyu.music.data.LyricCacheStore;
+@@ -124,6 +132,7 @@
+     private final QQLyricApi qqLyrics = new QQLyricApi();
+ 
+     private LibraryStore store;
++    private OfflineStore offlineStore;
+     private TrackVariantStore trackVariantStore;
+     private TrackVariantEnricher backgroundVariantEnricher;
+     private LyricCacheStore lyricCache;
+@@ -162,6 +171,9 @@
+     private List<String> searchHistory = new ArrayList<>();
+     private List<ImportedPlaylist> playlists = new ArrayList<>();
+     private ImportedPlaylist openPlaylist;
++    private boolean offlinePlaylistOpen;
++    private String pendingRingtoneSongKey = "";
++    private int pendingRingtoneType = android.media.RingtoneManager.TYPE_RINGTONE;
+     private SmartCollection openSmartCollection;
+     private int homeScrollY;
+     private int homeRecommendationScrollX;
+@@ -325,6 +337,13 @@
+     private int nowAccent = Ui.PURPLE;
+     private String nowArtworkKey = "";
+ 
++    private final BroadcastReceiver downloadReceiver = new BroadcastReceiver() {
++        @Override public void onReceive(android.content.Context context, Intent intent) {
++            if (intent == null || !OfflineDownloadService.ACTION_CHANGED.equals(intent.getAction())) return;
++            if (tab == 2 && offlinePlaylistOpen) { suppressNextPageAnimation = true; renderTab(); }
++        }
++    };
++
+     private final ServiceConnection connection = new ServiceConnection() {
+         @Override public void onServiceConnected(ComponentName name, IBinder binder) {
+             playback = ((PlaybackService.LocalBinder) binder).getService();
+@@ -366,6 +385,7 @@
+         // Restore V10 routing from a clean gate state before PlaybackService is bound.
+         V14PlaybackStateMigration.runOnce(this);
+         store = new LibraryStore(this);
++        offlineStore = new OfflineStore(this);
+         trackVariantStore = new TrackVariantStore(this);
+         backgroundVariantEnricher = new TrackVariantEnricher(trackVariantStore);
+         lyricCache = new LyricCacheStore(this);
+@@ -378,10 +398,22 @@
+         buildShell();
+         installSystemBackHandler();
+         renderTab();
++        IntentFilter downloadFilter = new IntentFilter(OfflineDownloadService.ACTION_CHANGED);
++        if (Build.VERSION.SDK_INT >= 33) registerReceiver(downloadReceiver, downloadFilter, Context.RECEIVER_NOT_EXPORTED);
++        else registerReceiver(downloadReceiver, downloadFilter);
+         bindService(new Intent(this, PlaybackService.class), connection, BIND_AUTO_CREATE);
+         main.postDelayed(this::maybeStartOnboarding, 620L);
+     }
+ 
++    @Override protected void onResume() {
++        super.onResume();
++        if (!pendingRingtoneSongKey.isEmpty() && offlineStore != null && RingtoneHelper.canWriteSystemSettings(this)) {
++            OfflineStore.Record record = offlineStore.getBySongKey(pendingRingtoneSongKey);
++            int type = pendingRingtoneType; pendingRingtoneSongKey = "";
++            if (record != null) applySystemTone(record, type);
++        }
++    }
++
+     private void loadUiPreferences() {
+         SharedPreferences prefs = getSharedPreferences("xingyu_ui_settings", MODE_PRIVATE);
+         lyricGradientStart = prefs.getInt("lyric_gradient_start", Ui.LYRIC_ICE_START);
+@@ -487,6 +519,7 @@
+             item.setOnClickListener(v -> {
+                 tab = idx;
+                 openPlaylist = null;
++                offlinePlaylistOpen = false;
+                 openSmartCollection = null;
+                 searchAllResultsOpen = false;
+                 refreshNav();
+@@ -796,9 +829,10 @@
+         stopHomeLyricQuoteTicker();
+         pageHost.animate().cancel();
+         pageHost.removeAllViews();
+-        final boolean renderingHomeRoot = openSmartCollection == null && openPlaylist == null && tab == 0;
++        final boolean renderingHomeRoot = openSmartCollection == null && openPlaylist == null && !offlinePlaylistOpen && tab == 0;
+         View page;
+-        if (openSmartCollection != null) page = smartCollectionPage(openSmartCollection);
++        if (offlinePlaylistOpen) page = offlinePlaylistPage();
++        else if (openSmartCollection != null) page = smartCollectionPage(openSmartCollection);
+         else if (openPlaylist != null) page = playlistDetailPage(openPlaylist);
+         else if (searchAllResultsOpen && tab == 1) page = searchAllResultsPage();
+         else if (tab == 0) page = homePage();
+@@ -832,7 +866,7 @@
+     }
+ 
+     private void rememberHomePosition() {
+-        if (tab != 0 || openSmartCollection != null || openPlaylist != null || pageHost == null || pageHost.getChildCount() == 0) return;
++        if (tab != 0 || openSmartCollection != null || openPlaylist != null || offlinePlaylistOpen || pageHost == null || pageHost.getChildCount() == 0) return;
+         View page = pageHost.getChildAt(0);
+         if (page instanceof ScrollView) homeScrollY = ((ScrollView) page).getScrollY();
+         if (homeRecommendationCarousel != null) homeRecommendationScrollX = homeRecommendationCarousel.getScrollX();
+@@ -848,6 +882,7 @@
+ 
+     private void closePlaylistToLibrary() {
+         openPlaylist = null;
++        offlinePlaylistOpen = false;
+         tab = 2;
+         refreshNav();
+         renderTab();
+@@ -2846,9 +2881,110 @@
+                 mine), marginTop(24));
+         body.addView(playlistCategorySection("imported", "导入歌单", importedLists.size() + " 个",
+                 importedLists), marginTop(8));
+-        return pageScaffold("歌单", "本地创建与平台导入", body);
++        body.addView(offlineLibrarySection(), marginTop(8));
++        return pageScaffold("歌单", "本地创建 · 平台导入 · 离线音乐", body);
++    }
++
++    private View offlineLibrarySection() {
++        LinearLayout section = Ui.column(this);
++        LinearLayout header = Ui.row(this); header.setGravity(Gravity.CENTER_VERTICAL); header.setPadding(Ui.dp(this, 2), 0, Ui.dp(this, 4), 0);
++        header.addView(Ui.text(this, "离线", 17.5f, Ui.TEXT, true), Ui.lp(-2, Ui.dp(this, 40)));
++        List<OfflineStore.Record> records = offlineStore == null ? new ArrayList<>() : offlineStore.all();
++        TextView count = Ui.text(this, records.size() + " 首 · " + formatStorage(offlineStore == null ? 0L : offlineStore.totalBytes()), 10.8f, Ui.DIM, false);
++        LinearLayout.LayoutParams clp = Ui.lp(-2, Ui.dp(this, 40)); clp.leftMargin = Ui.dp(this, 10); header.addView(count, clp);
++        header.addView(new Space(this), new LinearLayout.LayoutParams(0, Ui.dp(this, 40), 1f));
++        TextView arrow = Ui.text(this, "›", 22f, Ui.CYAN, true); arrow.setGravity(Gravity.CENTER); header.addView(arrow, Ui.lp(Ui.dp(this, 38), Ui.dp(this, 38)));
++        header.setClickable(true); Ui.applyRipple(header, Color.TRANSPARENT); header.setOnClickListener(v -> { offlinePlaylistOpen = true; openPlaylist = null; suppressNextPageAnimation = true; renderTab(); });
++        section.addView(header, Ui.lp(-1, Ui.dp(this, 40)));
++
++        LinearLayout card = Ui.row(this); card.setGravity(Gravity.CENTER_VERTICAL); card.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0); card.setBackground(Ui.tintedGlass(Ui.CYAN, 19, this));
++        FrameLayout iconShell = Ui.iconButton(this, IconView.Type.MUSIC, 42, Ui.CYAN, Color.argb(20, 92, 205, 255)); card.addView(iconShell, Ui.lp(Ui.dp(this, 46), Ui.dp(this, 46)));
++        LinearLayout texts = Ui.column(this); texts.setPadding(Ui.dp(this, 12), Ui.dp(this, 7), 0, Ui.dp(this, 7));
++        texts.addView(Ui.text(this, "离线歌单", 14.5f, Ui.TEXT, true), new LinearLayout.LayoutParams(-1, 0, 1f));
++        texts.addView(Ui.text(this, records.isEmpty() ? "下载完成的歌曲会自动出现在这里" : "本地优先播放 · 不再请求在线音源", 10.4f, Ui.TEXT_2, false), new LinearLayout.LayoutParams(-1, 0, 1f));
++        card.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(this, 62), 1f));
++        card.setClickable(true); Ui.applyRipple(card, Color.TRANSPARENT); card.setOnClickListener(v -> { offlinePlaylistOpen = true; openPlaylist = null; suppressNextPageAnimation = true; renderTab(); });
++        LinearLayout.LayoutParams cp = Ui.lp(-1, Ui.dp(this, 62)); cp.topMargin = Ui.dp(this, 6); section.addView(card, cp);
++        return section;
++    }
++
++    private View offlinePlaylistPage() {
++        LinearLayout body = Ui.column(this);
++        LinearLayout back = Ui.row(this); back.setGravity(Gravity.CENTER_VERTICAL);
++        back.addView(new IconView(this, IconView.Type.BACK, Ui.CYAN), Ui.lp(Ui.dp(this, 24), Ui.dp(this, 24)));
++        TextView bt = Ui.text(this, "返回", 13, Ui.CYAN, true); back.addView(bt, new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
++        back.setClickable(true); back.setOnClickListener(v -> closePlaylistToLibrary()); body.addView(back, Ui.lp(-1, Ui.dp(this, 38)));
++
++        List<OfflineStore.Record> records = offlineStore == null ? new ArrayList<>() : offlineStore.all();
++        LinearLayout hero = Ui.column(this); hero.setPadding(Ui.dp(this, 16), Ui.dp(this, 14), Ui.dp(this, 16), Ui.dp(this, 14)); hero.setBackground(Ui.tintedGlass(Ui.CYAN, 22, this));
++        hero.addView(Ui.text(this, "离线歌单", 21f, Ui.TEXT, true), Ui.lp(-1, Ui.dp(this, 34)));
++        hero.addView(Ui.text(this, records.size() + " 首 · " + formatStorage(offlineStore == null ? 0L : offlineStore.totalBytes()) + " · App 私有存储", 11f, Ui.TEXT_2, false), Ui.lp(-1, Ui.dp(this, 28)));
++        hero.addView(Ui.text(this, "安全模式：仅复用非 TX 的 Media3 READY 缓存 · 在线播放时下载自动让路", 10.2f, Ui.DIM, false), Ui.lp(-1, Ui.dp(this, 28)));
++        TextView playAll = modalButton("全部播放", true); playAll.setEnabled(!records.isEmpty()); playAll.setAlpha(records.isEmpty() ? .45f : 1f);
++        playAll.setOnClickListener(v -> { if (records.isEmpty()) return; List<Song> songs = new ArrayList<>(); for (OfflineStore.Record r : records) songs.add(r.song); playQueue(songs, 0); });
++        LinearLayout.LayoutParams pap = Ui.lp(-1, Ui.dp(this, 46)); pap.topMargin = Ui.dp(this, 8); hero.addView(playAll, pap); body.addView(hero, Ui.lp(-1, -2));
++
++        if (records.isEmpty()) body.addView(compactEmpty("还没有离线歌曲 · 从歌曲“…”里选择下载"), marginTop(14));
++        else {
++            int i = 0; for (OfflineStore.Record r : records) body.addView(offlineSongRow(r, records), marginTop(i++ == 0 ? 14 : 8));
++        }
++        return pageScaffold("离线", "下载与播放完全隔离的本地音乐", body);
++    }
++
++    private View offlineSongRow(OfflineStore.Record record, List<OfflineStore.Record> allRecords) {
++        Song song = record.song; LinearLayout row = Ui.row(this); row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 8), 0); row.setBackground(Ui.glass(135, 18, 20, this));
++        ImageView cover = new ImageView(this); cover.setScaleType(ImageView.ScaleType.CENTER_CROP); cover.setBackground(Ui.round(Color.rgb(24,24,31), 11, this)); cover.setClipToOutline(true); ImageLoader.load(song.coverUrl, cover, null); row.addView(cover, Ui.lp(Ui.dp(this, 48), Ui.dp(this, 48)));
++        LinearLayout text = Ui.column(this); text.setPadding(Ui.dp(this, 11), Ui.dp(this, 8), Ui.dp(this, 6), Ui.dp(this, 7)); TextView title = Ui.text(this, song.title, 14.2f, Ui.TEXT, true); title.setSingleLine(true); title.setEllipsize(TextUtils.TruncateAt.END); text.addView(title, new LinearLayout.LayoutParams(-1, 0, 1f));
++        TextView sub = Ui.text(this, song.artist + " · " + record.quality + " · " + formatStorage(record.file().length()), 10.2f, Ui.TEXT_2, false); sub.setSingleLine(true); sub.setEllipsize(TextUtils.TruncateAt.END); text.addView(sub, new LinearLayout.LayoutParams(-1, 0, 1f)); row.addView(text, new LinearLayout.LayoutParams(0, Ui.dp(this, 64), 1f));
++        TextView ring = Ui.pill(this, "铃声", Ui.CYAN); ring.setGravity(Gravity.CENTER); ring.setOnClickListener(v -> showRingtoneOptions(record)); row.addView(ring, Ui.lp(Ui.dp(this, 58), Ui.dp(this, 34)));
++        FrameLayout more = Ui.iconButton(this, IconView.Type.MORE, 31, Ui.DIM, Color.TRANSPARENT); more.setOnClickListener(v -> showSongActions(song)); row.addView(more, Ui.lp(Ui.dp(this, 32), Ui.dp(this, 32)));
++        row.setClickable(true); Ui.applyRipple(row, Color.TRANSPARENT); row.setOnClickListener(v -> { List<Song> songs = new ArrayList<>(); int start = 0; for (int i=0;i<allRecords.size();i++){songs.add(allRecords.get(i).song); if (song.key().equals(allRecords.get(i).song.key())) start=i;} playQueue(songs,start); });
++        return row;
++    }
++
++    private void showRingtoneOptions(OfflineStore.Record record) {
++        if (record == null || !record.exists()) { toast("离线文件不存在"); return; }
++        showGlassOptions("设为系统声音", record.song.title + " · 使用完整歌曲", new String[]{"设为来电铃声", "设为通知音", "设为闹钟音"}, which -> {
++            int type = RingtoneHelper.typeFromChoice(which);
++            if (!RingtoneHelper.canWriteSystemSettings(this)) {
++                pendingRingtoneSongKey = record.song.key(); pendingRingtoneType = type;
++                try { startActivity(new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:" + getPackageName()))); toast("请允许 Sunflower 修改系统设置，返回后会继续设置" ); }
++                catch (Exception e) { pendingRingtoneSongKey = ""; toast("无法打开系统授权页面"); }
++                return;
++            }
++            applySystemTone(record, type);
++        });
++    }
++
++    private void applySystemTone(OfflineStore.Record record, int type) {
++        toast("正在写入系统" + RingtoneHelper.typeLabel(type) + "…");
++        io.submit(() -> {
++            try { RingtoneHelper.exportAndSet(this, record, type); main.post(() -> toast("已设为" + RingtoneHelper.typeLabel(type))); }
++            catch (Exception e) { main.post(() -> toast("设置失败：" + compactError(e))); }
++        });
++    }
++
++    private void enqueueDownload(Song song) {
++        if (song == null) return;
++        if (offlineStore != null && offlineStore.contains(song)) { toast("这首歌已经在离线歌单"); return; }
++        OfflineDownloadService.enqueue(this, song); toast("已加入离线下载队列 · 在线播放时会自动暂停下载");
++    }
++
++    private void removeDownload(Song song) {
++        if (song == null || offlineStore == null) return;
++        offlineStore.remove(song); toast("已删除离线文件");
++        if (offlinePlaylistOpen) { suppressNextPageAnimation = true; renderTab(); }
++    }
++
++    private static String formatStorage(long bytes) {
++        if (bytes >= 1024L * 1024L * 1024L) return String.format(Locale.ROOT, "%.2f GB", bytes / (1024d*1024d*1024d));
++        if (bytes >= 1024L * 1024L) return String.format(Locale.ROOT, "%.1f MB", bytes / (1024d*1024d));
++        if (bytes >= 1024L) return String.format(Locale.ROOT, "%.0f KB", bytes / 1024d);
++        return bytes + " B";
+     }
+ 
++    private static String compactError(Throwable e) { String s = e == null || e.getMessage() == null ? "unknown" : e.getMessage().replace('\n',' ').trim(); return s.length() > 90 ? s.substring(0,90) + "…" : s; }
++
+     private View playlistCategorySection(String key, String title, String subtitle,
+                                          List<ImportedPlaylist> entries) {
+         LinearLayout section = Ui.column(this);
+@@ -3557,29 +3693,42 @@
+         if (song == null) return;
+         boolean removableFromPlaylist = playlistId != null && !playlistId.isEmpty();
+         String favText = isFavorite(song) ? "取消收藏" : "收藏";
++        boolean downloaded = offlineStore != null && offlineStore.contains(song);
++        boolean downloadActive = OfflineDownloadService.active(this, song);
+         ArrayList<String> rows = new ArrayList<>();
+         rows.add(favText);
+         rows.add("下一首播放");
+         rows.add("加入播放列表");
+         rows.add("添加到歌单");
++        if (downloaded) rows.add("删除离线下载");
++        else if (downloadActive) rows.add("取消下载");
++        else rows.add("下载到离线");
+         if (removableFromPlaylist) rows.add("从该歌单删除");
+         String[] items = rows.toArray(new String[0]);
+         showGlassOptions(song.title, song.artist, items, which -> {
+-            if (which == 0) {
++            if (which < 0 || which >= items.length) return;
++            String action = items[which];
++            if (favText.equals(action)) {
+                 favorites = store.toggleFavorite(song);
+                 if (tab == 3) renderTab();
+                 toast(isFavorite(song) ? "已收藏" : "已取消收藏");
+-            } else if (which == 1) {
++            } else if ("下一首播放".equals(action)) {
+                 ensurePlaybackServiceStarted();
+                 if (playback != null) playback.enqueueNext(song);
+                 else pendingNextSongs.add(song);
+                 toast("已添加到下一首");
+-            } else if (which == 2) {
++            } else if ("加入播放列表".equals(action)) {
+                 if (playback != null) { playback.enqueueEnd(song); toast("已加入播放列表"); }
+                 else { playQueue(java.util.Collections.singletonList(song), 0); toast("播放器启动中"); }
+-            } else if (which == 3) {
++            } else if ("添加到歌单".equals(action)) {
+                 showAddToPlaylist(song);
+-            } else if (removableFromPlaylist && which == 4) {
++            } else if ("下载到离线".equals(action)) {
++                enqueueDownload(song);
++            } else if ("取消下载".equals(action)) {
++                OfflineDownloadService.cancel(this, song); toast("已取消下载");
++            } else if ("删除离线下载".equals(action)) {
++                showGlassMessage("删除离线文件", "只删除本地下载，不会删除收藏、歌单或在线歌曲。", "删除", () -> removeDownload(song), "取消", null);
++            } else if ("从该歌单删除".equals(action) && removableFromPlaylist) {
+                 ArrayList<String> keys = new ArrayList<>(); keys.add(song.key());
+                 playlists = store.removeSongsFromPlaylist(playlistId, keys);
+                 openPlaylist = playlistById(playlistId);
+@@ -4615,8 +4764,16 @@
+ 
+     private void showPlaylistOptions(ImportedPlaylist playlist) {
+         if (playlist == null) return;
+-        showGlassOptions(playlist.name, "歌单操作", new String[]{"重命名", "删除"}, which -> {
++        showGlassOptions(playlist.name, "歌单操作", new String[]{"下载全部", "重命名", "删除"}, which -> {
+             if (which == 0) {
++                ArrayList<Song> pendingDownloads = new ArrayList<>();
++                if (playlist.songs != null) for (Song song : playlist.songs) {
++                    if (song == null || (offlineStore != null && offlineStore.contains(song))) continue;
++                    pendingDownloads.add(song);
++                }
++                OfflineDownloadService.enqueueAll(this, pendingDownloads);
++                toast(pendingDownloads.isEmpty() ? "歌单已全部离线" : "已加入 " + pendingDownloads.size() + " 首 · 单线程排队；在线播放时自动暂停");
++            } else if (which == 1) {
+                 showGlassInput("重命名歌单", playlist.name, false, "保存", value -> {
+                     String clean = value == null ? "" : value.trim();
+                     if (clean.isEmpty()) { toast("歌单名称不能为空"); return; }
+@@ -4625,7 +4782,7 @@
+                     renderTab();
+                     toast("已重命名为《" + clean + "》");
+                 });
+-            } else if (which == 1) {
++            } else if (which == 2) {
+                 showGlassMessage("删除歌单", "确定从本机删除《" + playlist.name + "》吗？音乐平台上的原歌单不会受到影响。", "删除", () -> {
+                     playlists = store.removePlaylist(playlist.id);
+                     if (openPlaylist != null && playlist.id.equals(openPlaylist.id)) openPlaylist = null;
+@@ -5743,6 +5900,10 @@
+             closeSmartCollectionToHome();
+             return;
+         }
++        if (offlinePlaylistOpen) {
++            closePlaylistToLibrary();
++            return;
++        }
+         if (openPlaylist != null) {
+             closePlaylistToLibrary();
+             return;
+@@ -5780,6 +5941,7 @@
+         main.removeCallbacks(lyricKaraokeTicker);
+         suggestionRequestToken++;
+         if (bound && playback != null) playback.clearListener(this);
++        try { unregisterReceiver(downloadReceiver); } catch (Exception ignored) { }
+         if (bound) try { unbindService(connection); } catch (Exception ignored) { }
+         variantPrefetch.shutdownNow();
+         searchMergeExecutor.shutdownNow();

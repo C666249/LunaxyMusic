@@ -1,0 +1,25 @@
+Lunaxy Music V34 · QQ DOWNLOAD HARD WALL GUARD
+
+Product rule: ANY song containing source=tx is non-downloadable. This includes QQ · 网易 merged tracks.
+
+PASS  POLICY_ANY_TX_VARIANT — any tx variant is blocked
+PASS  RESOLVER_GUARD_BEFORE_CACHE — QQ is rejected before PlaybackUrlStore lookup
+PASS  MANAGER_GUARD_BEFORE_WORKER — QQ is rejected before background task scheduling
+PASS  TRYDOWNLOAD_SECOND_GUARD — second guard before resolver
+PASS  UI_GUARD_BEFORE_DOWNLOAD_STATE — tap stops before download store/cache state
+PASS  UI_GUARD_BEFORE_MANAGER — tap stops before manager
+PASS  QQ_MESSAGE_EXACT — explicit user-facing message
+PASS  NO_FRESH_RESOLVE_LxSourceRuntime — forbidden token absent: LxSourceRuntime(
+PASS  NO_FRESH_RESOLVE__musicUrl — forbidden token absent: .musicUrl(
+PASS  NO_FRESH_RESOLVE_SourceCoordinator — forbidden token absent: SourceCoordinator(
+PASS  NO_FRESH_RESOLVE_MultiSourceManager — forbidden token absent: MultiSourceManager(
+PASS  NO_FRESH_RESOLVE_AudioUrlProbe — forbidden token absent: AudioUrlProbe(
+
+Runtime consequence of a QQ download tap:
+1. MainActivity returns immediately with “QQ 来源已禁用下载，仅支持在线播放”.
+2. OfflineDownloadManager is not invoked from the normal UI path.
+3. Even if another future caller invokes the manager, it returns before worker.submit().
+4. Even if resolve() is called directly, it throws before cached(song), so PlaybackUrlStore/QQ READY URL is not read.
+5. Therefore QQ download cannot access QQ CDN, Huibq, QDY, SourceHealthStore, or playback URL invalidation paths.
+
+NetEase-only songs remain CACHE-ONLY download candidates.

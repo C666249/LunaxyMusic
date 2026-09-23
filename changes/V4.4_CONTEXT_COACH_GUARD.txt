@@ -1,0 +1,29 @@
+Sunflower Music V4.4 Context Coach Guard
+========================================
+
+Purpose
+- Add seven scene-triggered hidden-feature tutorials only.
+- Do NOT modify V4.3 playback/download/ringtone behavior.
+
+Required scenes
+1 lyric_seek
+2 multi_catalog
+3 playlist_queue_takeover
+4 import_playlist
+5 offline_system_sound
+6 offline_ringtone
+7 ringtone_clip
+
+Explicitly excluded
+- playback queue long-press drag tutorial
+
+Persistence
+- SharedPreferences: sunflower_context_coach_v1
+- Got it: permanent per scene
+- Later: suppress only for current process
+- Primary onboarding has priority and blocks Context Coach until finished
+
+Golden guard
+- 26 V4.3 locked core files must remain byte-identical.
+- ContextCoachOverlay must not import/call playback, provider, resolver, download, ringtone or network modules.
+- Runtime source changes relative V4.3 are limited to MainActivity.java + new ContextCoachOverlay.java.

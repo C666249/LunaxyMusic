@@ -1,0 +1,35 @@
+Lunaxy Music V66 — Runtime Diff Inventory vs V65
+
+app/src/main files: V65=99 V66=99
+changed=10 added=0 deleted=0
+
+MODIFIED	app/src/main/java/com/xingyu/music/MainActivity.java
+  V65 b0e66999226ea1206ff6c014c76bbda21e4fe9208c751191364c8562dfba74b2
+  V66 cedccbabfc14d7403c96ab72984ac307068332d72c59d2f0c2b620181974238e
+MODIFIED	app/src/main/java/com/xingyu/music/data/AudioProviderHub.java
+  V65 9432923aa6d9a22a364428204406b9e55fd35b8f55cc2031c7627afc96d81409
+  V66 c7651983fdca5924b406cc64b9301670455b53f845cb12f4583bb72ef8113faa
+MODIFIED	app/src/main/java/com/xingyu/music/data/KugouPlaylistImportApi.java
+  V65 06c06a8a0f7d3ada33604f62cb71e071ce52777ff46194cb4dcfe86949d77a95
+  V66 6375956af7c3a516134a10e1dd8545d001b36236b59fbc1655a36ac36ad0e195
+MODIFIED	app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
+  V65 b8acd4f79b93da8ad77eb6cf30c7b537a9e859102aca7864b779b3630224c71b
+  V66 5824250b2036e37c8fd1715d5c2f6032206d0d0c03062bb1cf90e90ecb339521
+MODIFIED	app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
+  V65 8c7e0859ab82a9b14185c92ac09606c5212d29cd6fc45a08d080cd38422e9330
+  V66 364b978a00ccae4fdde8b37276d6f0f43eaa75ba080e87c26f5757d75c526a80
+MODIFIED	app/src/main/java/com/xingyu/music/data/TrackRouteStore.java
+  V65 986e45ef7c19680c86bad0c16497733f19a3b502b2ed62a9720238eaf38ba85e
+  V66 da277007fafcad5b5bba280338d4b186d4626d51f1a450ad6667300301bc00fd
+MODIFIED	app/src/main/java/com/xingyu/music/download/DownloadDiscoveryResolver.java
+  V65 f869f78103cbd51113aad3af82efeb16150c3831f45699a8e5c5d70fbca1e3e1
+  V66 cd9e89bbba6e1c73fda6ae2417a57711b02389bbb7a5942190c827d6afe98f72
+MODIFIED	app/src/main/java/com/xingyu/music/download/DownloadRouteStore.java
+  V65 7b1e33dd8fa2f8026196987aa5a17c71be56bc878931d4eea5e17154640f9f36
+  V66 887c6543140ad2452d801a08b166a85eddf305bc9fe22db97e235b9019be3a23
+MODIFIED	app/src/main/java/com/xingyu/music/download/OfflineDownloadService.java
+  V65 be7122a2a36204c843835226e44d27d9b507edecc3bd585213c5cd1e0c74a54d
+  V66 26fdeef161186ca768c0e2077e33830385b35659a7f85389a70d84aac9d2c711
+MODIFIED	app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+  V65 46335d99315d0d072928c2cb62bd326b5f7fed0b2049cc08752b05a801e4e5b5
+  V66 52d6f862646d5589c29f8438612e3b672d447b2032eacdfb76b2bf343dd22e0c

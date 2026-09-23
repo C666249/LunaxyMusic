@@ -1,0 +1,16 @@
+Sunflower V4.2 Ringtone Local-Only Guard
+
+AudioClipper.java, RingtoneHelper.java and RingtoneLyricSelectorView.java must not reference:
+- SourceCoordinator
+- AudioProviderHub
+- SourceHealthStore
+- LxSourceRuntime
+- ResolverProvider
+- PlaybackUrlStore
+- TrackRouteStore
+- musicUrl()
+- http:// or https://
+
+Result at packaging time: PASS.
+
+The lyric clip editor reads only LyricCacheStore via MainActivity. If no cached lyric exists it displays local timestamp markers instead of fetching from the network.

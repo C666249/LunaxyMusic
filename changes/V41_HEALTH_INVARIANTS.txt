@@ -1,0 +1,12 @@
+V41 HEALTH INVARIANTS
+
+1. QQ provider order is deterministic: Huibq primary, QDY fallback.
+2. Netease provider order is deterministic: QDY primary, Huibq fallback.
+3. Historical READY/FAIL/latency never changes provider order.
+4. Huibq HTTP 5xx: provider-wide short breaker 60s; does not permanently demote Huibq.
+5. QDY QQ 401/403/409: qdy|tx platform-only breaker 30s. It cannot cool qdy|wy.
+6. QDY QQ 5xx/timeout: qdy|tx platform-only breaker 30s.
+7. 404/410 candidate invalidation is song/route-local; no cross-song provider breaker.
+8. 429/rate limit: long provider protection 20min; block ip: 60min.
+9. Media3 READY is still the only event that marks playback success and writes a READY URL.
+10. ResolverHttpDiagnostics remains observation-only: no second request, no cache/health mutation.

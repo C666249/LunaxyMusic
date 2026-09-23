@@ -1,0 +1,26 @@
+Lunaxy Music V50 Locked Core Guard
+
+唯一开发基线：LunaxyMusic-V49-Full.zip
+
+目标：V50 只升级播放详情页最底层星空视觉，不触碰 V49 已验收核心。
+
+递归比较 app/src/main：
+- MODIFIED app/src/main/java/com/xingyu/music/MainActivity.java
+  允许变化仅为：新增 Starfield3DView import；playerStars 类型；播放页实例化类型。
+- ADDED app/src/main/java/com/xingyu/music/ui/Starfield3DMath.java
+- ADDED app/src/main/java/com/xingyu/music/ui/Starfield3DView.java
+- 其他 V49 app/src/main runtime 文件：必须 SHA-256 字节级一致。
+
+特别锁定：
+- AudioProviderHub / SourceCoordinator / TrackRouteStore / SourceHealthStore / PlaybackUrlStore
+- LxSourceRuntime / LxAudioProvider / SearchRanker / ExactTrackMatcher
+- TrackVariantStore / TrackVariantEnricher
+- QQ / 网易 / 酷我 / 酷狗 Catalog API
+- PlaybackService / PlaybackNetworkGate
+- DownloadResolver / DownloadRouteStore / OfflineDownloadService / OfflineStore
+- AudioClipper / RingtoneHelper / RingtoneLyricSelectorView
+- LibraryStore / Song / SourceVariant
+- ContextCoachOverlay / OnboardingOverlay
+- 旧 StarfieldView
+
+新 Starfield3DView / Starfield3DMath 不允许引用任何 Provider/Resolver/Playback/Download/Ringtone 数据写入接口；只允许 Android sensor/view/graphics + AudioLevelProvider 视觉读取。

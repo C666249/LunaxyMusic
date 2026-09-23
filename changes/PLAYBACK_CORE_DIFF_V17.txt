@@ -1,0 +1,9 @@
+V16 -> V17 冻结播放核心校验
+============================
+
+UNCHANGED  app/src/main/java/com/xingyu/music/data
+UNCHANGED  app/src/main/java/com/xingyu/music/playback
+UNCHANGED  app/src/main/assets/source/huibq-latest.js
+UNCHANGED  app/src/main/AndroidManifest.xml
+
+结论：V17 未修改音源解析、播放 URL、Media3 服务、READY 学习、冷却与缓存核心。

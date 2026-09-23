@@ -1,0 +1,14 @@
+Lunaxy Music V73 — Static Check
+
+PASS Java delimiter balance: 79/79
+PASS XML parse: 17/17
+PASS PNG verify: 22/22
+PASS stale PlatformOrbView references: 0
+PASS stale platformDotsView/bindPlatformDots/holder.source references: 0
+PASS versionCode=730 / versionName=73.0.0
+PASS PlaybackService byte-identical to V72
+PASS Locked Core files: 25/25 byte-identical to V72
+PASS MainActivity playback/search/download-plan method guard: 11/11
+PASS PlaybackService playback-core method guard: 18/18
+
+NOTE: Android/AGP full compilation requires Gradle distribution; current sandbox cannot resolve services.gradle.org.

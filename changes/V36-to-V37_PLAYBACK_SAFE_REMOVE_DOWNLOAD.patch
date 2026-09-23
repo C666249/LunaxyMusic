@@ -1,0 +1,933 @@
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=README_验收说明.txt' v36base_for_diff/LunaxyMusic-V36/BUILD_APK.bat v37work/LunaxyMusic-V36/BUILD_APK.bat
+--- v36base_for_diff/LunaxyMusic-V36/BUILD_APK.bat	2026-08-10 17:18:34.000000000 +0000
++++ v37work/LunaxyMusic-V36/BUILD_APK.bat	2026-08-11 04:14:11.844732017 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   LunaxyMusic V36 - Debug APK Build
++echo   LunaxyMusic V37 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V36-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V37-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\LunaxyMusic-V36-debug.apk
++echo [OK] APK: %CD%\dist\LunaxyMusic-V37-debug.apk
+ pause
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=README_验收说明.txt' v36base_for_diff/LunaxyMusic-V36/app/build.gradle.kts v37work/LunaxyMusic-V36/app/build.gradle.kts
+--- v36base_for_diff/LunaxyMusic-V36/app/build.gradle.kts	2026-08-10 17:18:34.000000000 +0000
++++ v37work/LunaxyMusic-V36/app/build.gradle.kts	2026-08-11 04:14:11.844690886 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 39
+-        versionName = "36.0.0"
++        versionCode = 40
++        versionName = "37.0.0"
+     }
+ 
+     buildTypes {
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=README_验收说明.txt' v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/MainActivity.java v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/MainActivity.java
+--- v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 17:18:34.000000000 +0000
++++ v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 04:14:11.844236073 +0000
+@@ -48,22 +48,18 @@
+ import android.widget.Space;
+ import android.widget.TextView;
+ 
+-import com.xingyu.music.data.DownloadStore;
+ import com.xingyu.music.data.LibraryStore;
+ import com.xingyu.music.data.LyricCacheStore;
+ import com.xingyu.music.data.LyricMatchStore;
+ import com.xingyu.music.data.LyricMatcher;
+ import com.xingyu.music.data.LyricParser;
+ import com.xingyu.music.data.NeteaseApi;
+-import com.xingyu.music.data.DownloadPolicy;
+-import com.xingyu.music.data.OfflineDownloadManager;
+ import com.xingyu.music.data.QQMusicApi;
+ import com.xingyu.music.data.QQLyricApi;
+ import com.xingyu.music.data.RecommendationEngine;
+ import com.xingyu.music.data.SearchRanker;
+ import com.xingyu.music.data.V14PlaybackStateMigration;
+ import com.xingyu.music.data.WeatherMoodProvider;
+-import com.xingyu.music.model.DownloadedTrack;
+ import com.xingyu.music.model.ImportedPlaylist;
+ import com.xingyu.music.model.LyricLine;
+ import com.xingyu.music.model.PlaybackSnapshot;
+@@ -96,12 +92,11 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V35.0 – UI/list continuity polish; playback resolver chain remains frozen.
++ * Lunaxy Music V37.0 – Playback-Safe edition.
+  *
+- * V35 keeps the proven Huibq/QDY audio-resolution path frozen. QQ download remains hard-disabled; NetEase download is CACHE-ONLY and never fresh-resolves. The guarded local-file branch remains only for offline playback. Tapping a normal row in a saved playlist
+- * still replaces the current queue with the entire playlist and starts at that row. Tapping a result
+- * inside that playlist's search modal is a temporary pick: insert/play only that song and keep the
+- * existing queue, matching global-search behavior.
++ * The optional music download/offline subsystem has been removed completely. The QQ/NetEase
++ * network playback path is restored byte-for-byte to the proven V29 stable chain; current UI,
++ * playlist, lyrics and recommendation behavior stay on the V36 line.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(4);
+@@ -115,8 +110,6 @@
+     private LyricMatchStore lyricMatches;
+     private RecommendationEngine recommendations;
+     private WeatherMoodProvider weatherMood;
+-    private DownloadStore downloadStore;
+-    private OfflineDownloadManager offlineDownloads;
+     private PlaybackService playback;
+     private boolean bound;
+ 
+@@ -306,8 +299,6 @@
+         lyricMatches = new LyricMatchStore(this);
+         recommendations = new RecommendationEngine(this, netease, qq);
+         weatherMood = new WeatherMoodProvider(this);
+-        downloadStore = new DownloadStore(this);
+-        offlineDownloads = new OfflineDownloadManager(this, downloadStore);
+         reloadLibrary();
+         loadUiPreferences();
+         configureWindow();
+@@ -1871,23 +1862,17 @@
+             if (p == null) continue;
+             if ("local".equals(p.source)) mine.add(p); else importedLists.add(p);
+         }
+-        List<Song> offlineSongs = downloadStore == null ? new ArrayList<>() : downloadStore.localSongs();
+-        ImportedPlaylist offline = new ImportedPlaylist("offline:all", "离线歌曲", "offline", offlineSongs, 0L);
+-
+         body.addView(playlistCategorySection("mine", "我的歌单",
+                 mine.isEmpty() ? "还没有自己创建的歌单" : mine.size() + " 个",
+-                mine, null), marginTop(24));
++                mine), marginTop(24));
+         body.addView(playlistCategorySection("imported", "导入歌单",
+                 importedLists.isEmpty() ? "还没有从平台导入的歌单" : importedLists.size() + " 个",
+-                importedLists, null), marginTop(10));
+-        body.addView(playlistCategorySection("offline", "离线",
+-                offlineSongs.isEmpty() ? "还没有下载歌曲" : offlineSongs.size() + " 首已下载",
+-                new ArrayList<>(), offline), marginTop(10));
+-        return pageScaffold("歌单", "本地创建、平台导入与离线下载", body);
++                importedLists), marginTop(10));
++        return pageScaffold("歌单", "本地创建与平台导入", body);
+     }
+ 
+     private View playlistCategorySection(String key, String title, String subtitle,
+-                                         List<ImportedPlaylist> entries, ImportedPlaylist virtualOffline) {
++                                         List<ImportedPlaylist> entries) {
+         LinearLayout section = Ui.column(this);
+         LinearLayout header = Ui.row(this);
+         header.setGravity(Gravity.CENTER_VERTICAL);
+@@ -1903,10 +1888,7 @@
+         section.addView(header, Ui.lp(-1, Ui.dp(this, 48)));
+ 
+         LinearLayout content = Ui.column(this);
+-        if (virtualOffline != null) {
+-            if (virtualOffline.songs.isEmpty()) content.addView(compactEmpty("歌曲下载完成后会自动出现在这里"), marginTop(6));
+-            else content.addView(playlistCard(virtualOffline), marginTop(6));
+-        } else if (entries == null || entries.isEmpty()) {
++        if (entries == null || entries.isEmpty()) {
+             content.addView(compactEmpty("这里暂时还是空的"), marginTop(6));
+         } else {
+             int i = 0;
+@@ -2247,8 +2229,7 @@
+         TextView name = Ui.text(this, p.name, 20, Ui.TEXT, true);
+         name.setSingleLine(true); name.setEllipsize(TextUtils.TruncateAt.END);
+         heroText.addView(name, new LinearLayout.LayoutParams(-1, 0, 1f));
+-        String playlistKind = "offline".equals(p.source) ? "离线下载"
+-                : (p.source.equals("local") ? "本地歌单" : (p.source.equals("tx") ? "QQ 音乐" : "网易云"));
++        String playlistKind = p.source.equals("local") ? "本地歌单" : (p.source.equals("tx") ? "QQ 音乐" : "网易云");
+         heroText.addView(Ui.text(this, p.songs.size() + " 首 · " + playlistKind, 11.5f, Ui.TEXT_2, false), new LinearLayout.LayoutParams(-1, 0, 1f));
+         heroTop.addView(heroText, new LinearLayout.LayoutParams(0, Ui.dp(this, 78), 1f));
+         hero.addView(heroTop, Ui.lp(-1, Ui.dp(this, 78)));
+@@ -2261,7 +2242,7 @@
+         } else {
+             int visible = Math.min(Math.max(40, playlistVisibleCount), p.songs.size());
+             List<Song> pageSongs = new ArrayList<>(p.songs.subList(0, visible));
+-            body.addView(playlistSongList(pageSongs, p.songs, "offline".equals(p.source) ? null : p.id), marginTop(6));
++            body.addView(playlistSongList(pageSongs, p.songs, p.id), marginTop(6));
+             if (visible < p.songs.size()) {
+                 int left = p.songs.size() - visible;
+                 TextView more = outlineAction("继续加载 " + Math.min(40, left) + " 首");
+@@ -2281,26 +2262,22 @@
+         LinearLayout playlistActions = Ui.row(this);
+         playlistActions.setGravity(Gravity.CENTER_VERTICAL);
+ 
+-        // Frequent search stays at the far right. Offline is a virtual collection, so it does not
+-        // expose normal playlist mutate/batch buttons.
+-        if (!"offline".equals(p.source)) {
+-            FrameLayout manage = Ui.iconButton(this, IconView.Type.MORE, 42, Ui.GOLD,
+-                    Color.argb(22, Color.red(Ui.GOLD), Color.green(Ui.GOLD), Color.blue(Ui.GOLD)));
+-            manage.setContentDescription("批量管理歌曲");
+-            manage.setOnClickListener(v -> showSongBatchManager(p.name, p.songs, p.id));
+-            playlistActions.addView(manage, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
+-
+-            Space actionGap1 = new Space(this);
+-            playlistActions.addView(actionGap1, Ui.lp(Ui.dp(this, 7), 1));
+-            FrameLayout add = Ui.iconButton(this, IconView.Type.PLUS, 42, Ui.GREEN,
+-                    Color.argb(22, Color.red(Ui.GREEN), Color.green(Ui.GREEN), Color.blue(Ui.GREEN)));
+-            add.setContentDescription("向歌单添加歌曲");
+-            add.setOnClickListener(v -> showAddSongsToPlaylist(p));
+-            playlistActions.addView(add, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
++        FrameLayout manage = Ui.iconButton(this, IconView.Type.MORE, 42, Ui.GOLD,
++                Color.argb(22, Color.red(Ui.GOLD), Color.green(Ui.GOLD), Color.blue(Ui.GOLD)));
++        manage.setContentDescription("批量管理歌曲");
++        manage.setOnClickListener(v -> showSongBatchManager(p.name, p.songs, p.id));
++        playlistActions.addView(manage, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
++
++        Space actionGap1 = new Space(this);
++        playlistActions.addView(actionGap1, Ui.lp(Ui.dp(this, 7), 1));
++        FrameLayout add = Ui.iconButton(this, IconView.Type.PLUS, 42, Ui.GREEN,
++                Color.argb(22, Color.red(Ui.GREEN), Color.green(Ui.GREEN), Color.blue(Ui.GREEN)));
++        add.setContentDescription("向歌单添加歌曲");
++        add.setOnClickListener(v -> showAddSongsToPlaylist(p));
++        playlistActions.addView(add, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
+ 
+-            Space actionGap2 = new Space(this);
+-            playlistActions.addView(actionGap2, Ui.lp(Ui.dp(this, 7), 1));
+-        }
++        Space actionGap2 = new Space(this);
++        playlistActions.addView(actionGap2, Ui.lp(Ui.dp(this, 7), 1));
+         FrameLayout playlistSearch = Ui.iconButton(this, IconView.Type.SEARCH, 42, Ui.CYAN,
+                 Color.argb(22, Color.red(Ui.CYAN), Color.green(Ui.CYAN), Color.blue(Ui.CYAN)));
+         playlistSearch.setContentDescription("搜索当前歌单");
+@@ -2367,7 +2344,7 @@
+                 total++;
+                 if (shown >= 80) continue;
+                 final int queueIndex = i;
+-                View row = songRow(song, playlist.songs, queueIndex, "offline".equals(playlist.source) ? null : playlist.id);
++                View row = songRow(song, playlist.songs, queueIndex, playlist.id);
+                 row.setOnClickListener(v -> {
+                     // Playlist-search is a temporary pick: keep the current queue, insert this song
+                     // and play it immediately. Direct taps in the playlist detail remain whole-list
+@@ -2523,14 +2500,13 @@
+ 
+     private void showSongActions(Song song, String playlistId) {
+         if (song == null) return;
+-        boolean removableFromPlaylist = playlistId != null && !playlistId.isEmpty() && !playlistId.startsWith("offline:");
++        boolean removableFromPlaylist = playlistId != null && !playlistId.isEmpty();
+         String favText = isFavorite(song) ? "取消收藏" : "收藏";
+         ArrayList<String> rows = new ArrayList<>();
+         rows.add(favText);
+         rows.add("下一首播放");
+         rows.add("加入播放列表");
+         rows.add("添加到歌单");
+-        rows.add(downloadStore != null && downloadStore.contains(song) ? "已下载到本机" : "下载");
+         if (removableFromPlaylist) rows.add("从该歌单删除");
+         String[] items = rows.toArray(new String[0]);
+         showGlassOptions(song.title, song.artist, items, which -> {
+@@ -2548,9 +2524,7 @@
+                 else { playQueue(java.util.Collections.singletonList(song), 0); toast("播放器启动中"); }
+             } else if (which == 3) {
+                 showAddToPlaylist(song);
+-            } else if (which == 4) {
+-                startSongDownload(song);
+-            } else if (removableFromPlaylist && which == 5) {
++            } else if (removableFromPlaylist && which == 4) {
+                 ArrayList<String> keys = new ArrayList<>(); keys.add(song.key());
+                 playlists = store.removeSongsFromPlaylist(playlistId, keys);
+                 openPlaylist = playlistById(playlistId);
+@@ -2562,35 +2536,6 @@
+         });
+     }
+ 
+-    private void startSongDownload(Song song) {
+-        if (song == null || offlineDownloads == null || downloadStore == null) return;
+-        // V34 product-level hard stop: QQ download is intentionally unavailable.
+-        // Check this before downloadStore / cache / worker access so even an
+-        // accidental tap has zero QQ-side network effect.
+-        if (DownloadPolicy.blocksQqDownload(song)) {
+-            toast(DownloadPolicy.QQ_DOWNLOAD_DISABLED);
+-            return;
+-        }
+-        if ("local".equals(song.source)) { toast("这首歌已经是离线文件"); return; }
+-        if (!DownloadPolicy.allowsNeteaseDownload(song)) {
+-            toast(DownloadPolicy.NETEASE_ONLY);
+-            return;
+-        }
+-        if (downloadStore.contains(song)) { toast("这首歌已经在离线歌单里"); return; }
+-        if (offlineDownloads.isRunning(song)) { toast("这首歌正在下载"); return; }
+-        toast("正在准备下载 · " + song.title);
+-        offlineDownloads.download(song, new OfflineDownloadManager.Listener() {
+-            @Override public void onComplete(DownloadedTrack track) {
+-                main.post(() -> {
+-                    toast("已下载 · 可在歌单 > 离线中找到");
+-                    if (tab == 2 && openPlaylist == null) renderTab();
+-                });
+-            }
+-            @Override public void onError(String message) {
+-                main.post(() -> toast(message == null || message.isEmpty() ? "下载失败" : message));
+-            }
+-        });
+-    }
+ 
+     private void showPlaybackQueue() {
+         if (playback == null) { toast("播放器正在连接"); return; }
+@@ -3396,17 +3341,14 @@
+         title.setSingleLine(true);
+         title.setEllipsize(TextUtils.TruncateAt.END);
+         texts.addView(title, new LinearLayout.LayoutParams(-1, 0, 1f));
+-        String kind = "offline".equals(p.source) ? "已下载到本机"
+-                : (p.source.equals("local") ? "本地歌单" : (p.source.equals("tx") ? "QQ 音乐" : "网易云"));
++        String kind = p.source.equals("local") ? "本地歌单" : (p.source.equals("tx") ? "QQ 音乐" : "网易云");
+         texts.addView(Ui.text(this, p.songs.size() + " 首 · " + kind, 11.3f, Ui.DIM, false), new LinearLayout.LayoutParams(-1, 0, 1f));
+         row.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(this, 52), 1f));
+ 
+-        if (!"offline".equals(p.source)) {
+-            FrameLayout more = Ui.iconButton(this, IconView.Type.MORE, 34, Ui.DIM, Color.TRANSPARENT);
+-            more.setContentDescription("歌单更多操作");
+-            more.setOnClickListener(v -> showPlaylistOptions(p));
+-            row.addView(more, Ui.lp(Ui.dp(this, 34), Ui.dp(this, 34)));
+-        }
++        FrameLayout more = Ui.iconButton(this, IconView.Type.MORE, 34, Ui.DIM, Color.TRANSPARENT);
++        more.setContentDescription("歌单更多操作");
++        more.setOnClickListener(v -> showPlaylistOptions(p));
++        row.addView(more, Ui.lp(Ui.dp(this, 34), Ui.dp(this, 34)));
+ 
+         IconView arrow = new IconView(this, IconView.Type.BACK, Ui.DIM);
+         arrow.setRotation(180f);
+@@ -4537,10 +4479,6 @@
+             try { ((ViewGroup) onboardingOverlay.getParent()).removeView(onboardingOverlay); } catch (Exception ignored) { }
+             onboardingOverlay = null;
+         }
+-        if (offlineDownloads != null) {
+-            try { offlineDownloads.destroy(); } catch (Exception ignored) { }
+-            offlineDownloads = null;
+-        }
+         if (Build.VERSION.SDK_INT >= 33 && backInvokedCallback != null) {
+             try { getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backInvokedCallback); } catch (Exception ignored) { }
+             backInvokedCallback = null;
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=README_验收说明.txt' v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/DownloadPolicy.java v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/DownloadPolicy.java
+--- v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/DownloadPolicy.java	2026-08-10 16:53:09.000000000 +0000
++++ v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/DownloadPolicy.java	1970-01-01 00:00:00.000000000 +0000
+@@ -1,41 +0,0 @@
+-package com.xingyu.music.data;
+-
+-import com.xingyu.music.model.Song;
+-import com.xingyu.music.model.SourceVariant;
+-
+-/**
+- * V35 hard download policy.
+- *
+- * Safety invariant: if a canonical song contains ANY QQ/tx provider identity,
+- * download is forbidden before cache lookup, background scheduling, CDN access,
+- * Huibq/QDY resolution, or any other network work.
+- *
+- * This intentionally also blocks merged "QQ · 网易" tracks. Playback is not
+- * affected; the rule applies only to the optional offline download feature.
+- */
+-public final class DownloadPolicy {
+-    public static final String QQ_DOWNLOAD_DISABLED = "QQ 来源已禁用下载，仅支持在线播放";
+-    public static final String NETEASE_ONLY = "当前仅支持网易云来源歌曲下载";
+-
+-    private DownloadPolicy() { }
+-
+-    /** True when this canonical track contains any QQ (tx) identity. */
+-    public static boolean blocksQqDownload(Song song) {
+-        if (song == null) return false;
+-        if ("tx".equals(song.source) || "tx".equals(song.fallbackSource)) return true;
+-        for (SourceVariant variant : song.variants()) {
+-            if (variant != null && "tx".equals(variant.source)) return true;
+-        }
+-        return false;
+-    }
+-    /** True only when the canonical track has a NetEase (wy) identity and no QQ identity. */
+-    public static boolean allowsNeteaseDownload(Song song) {
+-        if (song == null || blocksQqDownload(song)) return false;
+-        if ("wy".equals(song.source) || "wy".equals(song.fallbackSource)) return true;
+-        for (SourceVariant variant : song.variants()) {
+-            if (variant != null && "wy".equals(variant.source)) return true;
+-        }
+-        return false;
+-    }
+-
+-}
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=README_验收说明.txt' v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java
+--- v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java	2026-08-10 16:53:09.000000000 +0000
++++ v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java	1970-01-01 00:00:00.000000000 +0000
+@@ -1,108 +0,0 @@
+-package com.xingyu.music.data;
+-
+-import android.content.Context;
+-
+-import com.xingyu.music.model.Song;
+-import com.xingyu.music.model.SourceVariant;
+-
+-import java.util.ArrayList;
+-import java.util.List;
+-
+-/**
+- * V35 download resolver: CACHE-ONLY, with QQ/tx hard-disabled.
+- *
+- * Downloading must never ask Huibq/QDY (or any other resolver) for a fresh URL.
+- * Any song containing a QQ/tx identity is rejected before cache access.
+- * It may only consume a URL that the normal playback chain has already proven
+- * with Media3 READY and persisted into PlaybackUrlStore.
+- *
+- * This means download cannot:
+- *  - consume Huibq/QDY request quota,
+- *  - trigger remote rate limiting / IP blocking,
+- *  - alter SourceHealthStore,
+- *  - cool down / reorder playback routes,
+- *  - invalidate the playback URL cache.
+- */
+-public final class DownloadSourceResolver {
+-    public static final String QQ_UNSUPPORTED = DownloadPolicy.QQ_DOWNLOAD_DISABLED;
+-    public static final String PLAY_FIRST = "请先在线播放一次，成功后再下载";
+-
+-    public static final class Candidate {
+-        public final String url;
+-        public final boolean cached;
+-        public final String quality;
+-        public final String provider;
+-        public final String source;
+-
+-        Candidate(String url, boolean cached, String quality, String provider, String source) {
+-            this.url = url;
+-            this.cached = cached;
+-            this.quality = quality;
+-            this.provider = provider;
+-            this.source = source;
+-        }
+-    }
+-
+-    private final PlaybackUrlStore cache;
+-
+-    public DownloadSourceResolver(Context context) {
+-        this.cache = new PlaybackUrlStore(context.getApplicationContext());
+-    }
+-
+-    /**
+-     * Return only a Media3-READY validated cached URL. No network resolver call
+-     * is allowed from this class under any circumstance.
+-     */
+-    public Candidate resolve(Song song) throws Exception {
+-        if (song == null) throw new Exception("歌曲为空");
+-
+-        // V35 HARD WALL: any canonical track containing a QQ/tx identity is
+-        // rejected BEFORE PlaybackUrlStore is even read. This means a QQ tap
+-        // cannot touch a cached QQ CDN URL, cannot schedule network I/O, and
+-        // cannot indirectly disturb the normal playback chain.
+-        if (DownloadPolicy.blocksQqDownload(song)) throw new Exception(QQ_UNSUPPORTED);
+-        // V35 whitelist: only NetEase (wy) identities may enter the optional download path.
+-        // Unknown/future providers are denied by default rather than accidentally sharing
+-        // their playback CDN with a downloader.
+-        if (!DownloadPolicy.allowsNeteaseDownload(song)) throw new Exception(DownloadPolicy.NETEASE_ONLY);
+-
+-        Candidate stored = cached(song);
+-        if (stored != null) return stored;
+-        throw new Exception(PLAY_FIRST);
+-    }
+-
+-    private Candidate cached(Song song) {
+-        // Prefer the primary provider first, then any alternate provider identity.
+-        List<SourceVariant> variants = song.variants();
+-        if (variants == null || variants.isEmpty()) return null;
+-
+-        // Keep the song's native ordering so the download consumes the exact route
+-        // the playback layer has most naturally proven for this canonical song.
+-        for (SourceVariant variant : variants) {
+-            // V35 hard whitelist: never read a non-NetEase playback URL for downloading.
+-            if (variant == null || !"wy".equals(variant.source)) continue;
+-            for (String quality : qualities(variant)) {
+-                PlaybackUrlStore.Entry e = cache.get(variant.source, variant.sourceId, quality);
+-                if (e != null && e.url != null && e.url.startsWith("http")) {
+-                    String label = e.providerLabel == null || e.providerLabel.isEmpty()
+-                            ? "已验证缓存" : e.providerLabel;
+-                    return new Candidate(e.url, true, quality, label, variant.source);
+-                }
+-            }
+-        }
+-        return null;
+-    }
+-
+-    private static List<String> qualities(SourceVariant variant) {
+-        List<String> q = new ArrayList<>();
+-        if (variant.quality320) q.add("320k");
+-        if (variant.quality128) q.add("128k");
+-        if (q.isEmpty()) q.add("128k");
+-        return q;
+-    }
+-
+-
+-    public void destroy() {
+-        // Intentionally empty. V35 owns no source runtime / WebView / resolver.
+-    }
+-}
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=README_验收说明.txt' v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/DownloadStore.java v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/DownloadStore.java
+--- v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/DownloadStore.java	2026-08-10 13:36:39.000000000 +0000
++++ v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/DownloadStore.java	1970-01-01 00:00:00.000000000 +0000
+@@ -1,72 +0,0 @@
+-package com.xingyu.music.data;
+-
+-import android.content.Context;
+-import android.content.SharedPreferences;
+-
+-import com.xingyu.music.model.DownloadedTrack;
+-import com.xingyu.music.model.Song;
+-
+-import org.json.JSONArray;
+-import org.json.JSONObject;
+-
+-import java.util.ArrayList;
+-import java.util.List;
+-
+-/** Persistent index of Lunaxy-owned offline audio files. */
+-public final class DownloadStore {
+-    private final SharedPreferences prefs;
+-
+-    public DownloadStore(Context context) {
+-        prefs = context.getSharedPreferences("lunaxy_offline_v1", Context.MODE_PRIVATE);
+-    }
+-
+-    public synchronized List<DownloadedTrack> all() {
+-        List<DownloadedTrack> out = new ArrayList<>();
+-        try {
+-            JSONArray a = new JSONArray(prefs.getString("tracks", "[]"));
+-            for (int i = 0; i < a.length(); i++) {
+-                DownloadedTrack item = DownloadedTrack.fromJson(a.optJSONObject(i));
+-                if (item != null) out.add(item);
+-            }
+-        } catch (Exception ignored) { }
+-        return out;
+-    }
+-
+-    public synchronized boolean contains(Song song) {
+-        if (song == null) return false;
+-        String key = song.key();
+-        for (DownloadedTrack item : all()) if (key.equals(item.key())) return true;
+-        return false;
+-    }
+-
+-    public synchronized DownloadedTrack find(Song song) {
+-        if (song == null) return null;
+-        String key = song.key();
+-        for (DownloadedTrack item : all()) if (key.equals(item.key())) return item;
+-        return null;
+-    }
+-
+-    public synchronized List<DownloadedTrack> put(DownloadedTrack track) {
+-        List<DownloadedTrack> out = new ArrayList<>();
+-        if (track != null) out.add(track);
+-        String key = track == null ? "" : track.key();
+-        for (DownloadedTrack old : all()) {
+-            if (!key.isEmpty() && key.equals(old.key())) continue;
+-            out.add(old);
+-        }
+-        save(out);
+-        return out;
+-    }
+-
+-    public synchronized List<Song> localSongs() {
+-        List<Song> out = new ArrayList<>();
+-        for (DownloadedTrack item : all()) out.add(item.asLocalSong());
+-        return out;
+-    }
+-
+-    private void save(List<DownloadedTrack> tracks) {
+-        JSONArray a = new JSONArray();
+-        if (tracks != null) for (DownloadedTrack item : tracks) if (item != null) a.put(item.toJson());
+-        prefs.edit().putString("tracks", a.toString()).apply();
+-    }
+-}
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=README_验收说明.txt' v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java
+--- v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java	2026-08-10 16:53:09.000000000 +0000
++++ v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java	1970-01-01 00:00:00.000000000 +0000
+@@ -1,251 +0,0 @@
+-package com.xingyu.music.data;
+-
+-import android.content.ContentResolver;
+-import android.content.ContentValues;
+-import android.content.Context;
+-import android.net.Uri;
+-import android.os.Build;
+-import android.os.Environment;
+-import android.provider.MediaStore;
+-
+-import com.xingyu.music.model.DownloadedTrack;
+-import com.xingyu.music.model.Song;
+-
+-import java.io.File;
+-import java.io.FileOutputStream;
+-import java.io.InputStream;
+-import java.io.OutputStream;
+-import java.net.HttpURLConnection;
+-import java.net.URL;
+-import java.util.Locale;
+-import java.util.Set;
+-import java.util.concurrent.ConcurrentHashMap;
+-import java.util.concurrent.ExecutorService;
+-import java.util.concurrent.Executors;
+-
+-/**
+- * V35 background downloader.
+- *
+- * Safety invariant: this class only downloads a URL already validated and cached
+- * by the normal Media3 playback chain. A failed download NEVER asks an audio
+- * resolver for a replacement URL; the user can simply play the song normally to
+- * let the proven playback chain refresh it in its own controlled way.
+- */
+-public final class OfflineDownloadManager {
+-    public interface Listener {
+-        void onComplete(DownloadedTrack track);
+-        void onError(String message);
+-    }
+-
+-    private final Context context;
+-    private final DownloadStore store;
+-    private final DownloadSourceResolver resolver;
+-    // One download at a time avoids accidental bursts against a CDN URL.
+-    private final ExecutorService worker = Executors.newSingleThreadExecutor();
+-    private final Set<String> running = ConcurrentHashMap.newKeySet();
+-
+-    public OfflineDownloadManager(Context context, DownloadStore store) {
+-        this.context = context.getApplicationContext();
+-        this.store = store;
+-        this.resolver = new DownloadSourceResolver(this.context);
+-    }
+-
+-    public boolean isRunning(Song song) { return song != null && running.contains(song.key()); }
+-
+-    public void download(Song song, Listener listener) {
+-        if (song == null) { fail(listener, "歌曲为空"); return; }
+-        // Defense-in-depth: reject QQ synchronously before queueing a worker.
+-        // No cache lookup, no URL access, no CDN request, no resolver call.
+-        if (DownloadPolicy.blocksQqDownload(song)) {
+-            fail(listener, DownloadPolicy.QQ_DOWNLOAD_DISABLED);
+-            return;
+-        }
+-        if (!DownloadPolicy.allowsNeteaseDownload(song)) {
+-            fail(listener, DownloadPolicy.NETEASE_ONLY);
+-            return;
+-        }
+-        String key = song.key();
+-        if (!running.add(key)) { fail(listener, "这首歌正在下载"); return; }
+-        worker.submit(() -> {
+-            try {
+-                DownloadedTrack track = tryDownload(song);
+-                store.put(track);
+-                complete(listener, track);
+-            } catch (Exception e) {
+-                fail(listener, friendlyFailure(song, e));
+-            } finally {
+-                running.remove(key);
+-            }
+-        });
+-    }
+-
+-    private DownloadedTrack tryDownload(Song song) throws Exception {
+-        // Second hard wall in case a future caller bypasses download().
+-        if (DownloadPolicy.blocksQqDownload(song)) {
+-            throw new Exception(DownloadPolicy.QQ_DOWNLOAD_DISABLED);
+-        }
+-        if (!DownloadPolicy.allowsNeteaseDownload(song)) {
+-            throw new Exception(DownloadPolicy.NETEASE_ONLY);
+-        }
+-        // CACHE ONLY. resolve() is deliberately incapable of calling Huibq/QDY.
+-        DownloadSourceResolver.Candidate candidate = resolver.resolve(song);
+-        String ext = extension(candidate.url);
+-        String fileName = sanitize(song.artist + " - " + song.title) + "." + ext;
+-        Uri destination = createDestination(fileName, mime(ext), song);
+-        boolean ok = false;
+-        try {
+-            copy(candidate.url, destination);
+-            publish(destination);
+-            ok = true;
+-            return new DownloadedTrack(song, destination.toString(), fileName, System.currentTimeMillis());
+-        } finally {
+-            if (!ok) deleteQuietly(destination);
+-        }
+-    }
+-
+-    private Uri createDestination(String fileName, String mime, Song song) throws Exception {
+-        if (Build.VERSION.SDK_INT >= 29) {
+-            ContentValues values = new ContentValues();
+-            values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+-            values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+-            values.put(MediaStore.Audio.Media.TITLE, song.title);
+-            values.put(MediaStore.Audio.Media.ARTIST, song.artist);
+-            values.put(MediaStore.Audio.Media.ALBUM, song.album);
+-            values.put(MediaStore.Audio.Media.IS_MUSIC, 1);
+-            values.put(MediaStore.Audio.Media.IS_RINGTONE, 1);
+-            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MUSIC + "/Lunaxy Music");
+-            values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+-            Uri uri = context.getContentResolver().insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values);
+-            if (uri == null) throw new Exception("无法创建本地音频文件");
+-            return uri;
+-        }
+-        File root = context.getExternalFilesDir(Environment.DIRECTORY_MUSIC);
+-        if (root == null) root = context.getFilesDir();
+-        File dir = new File(root, "Lunaxy Music");
+-        if (!dir.exists() && !dir.mkdirs()) throw new Exception("无法创建下载目录");
+-        File file = uniqueFile(dir, fileName);
+-        return Uri.fromFile(file);
+-    }
+-
+-    private void copy(String url, Uri destination) throws Exception {
+-        HttpURLConnection c = null;
+-        try {
+-            c = (HttpURLConnection) new URL(url).openConnection();
+-            c.setConnectTimeout(15000);
+-            c.setReadTimeout(30000);
+-            c.setInstanceFollowRedirects(true);
+-            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36");
+-            c.setRequestProperty("Accept", "audio/*,*/*;q=0.8");
+-            int code = c.getResponseCode();
+-            if (code < 200 || code >= 300) throw new Exception("缓存下载地址已失效：HTTP " + code);
+-            ContentResolver cr = context.getContentResolver();
+-            try (InputStream in = c.getInputStream(); OutputStream out = openOutput(cr, destination)) {
+-                if (out == null) throw new Exception("无法写入下载文件");
+-                byte[] buffer = new byte[64 * 1024];
+-                long written = 0L;
+-                int n;
+-                while ((n = in.read(buffer)) >= 0) {
+-                    if (n == 0) continue;
+-                    out.write(buffer, 0, n);
+-                    written += n;
+-                    if (written > 512L * 1024L * 1024L) throw new Exception("音频文件异常过大，已停止下载");
+-                }
+-                out.flush();
+-                if (written < 16 * 1024L) throw new Exception("下载到的音频文件过小，可能已失效");
+-            }
+-        } finally {
+-            if (c != null) c.disconnect();
+-        }
+-    }
+-
+-    private OutputStream openOutput(ContentResolver cr, Uri uri) throws Exception {
+-        if ("file".equalsIgnoreCase(uri.getScheme())) return new FileOutputStream(new File(uri.getPath()));
+-        return cr.openOutputStream(uri, "w");
+-    }
+-
+-    private void publish(Uri uri) {
+-        if (Build.VERSION.SDK_INT < 29 || uri == null || !"content".equalsIgnoreCase(uri.getScheme())) return;
+-        try {
+-            ContentValues values = new ContentValues();
+-            values.put(MediaStore.MediaColumns.IS_PENDING, 0);
+-            context.getContentResolver().update(uri, values, null, null);
+-        } catch (Exception ignored) { }
+-    }
+-
+-    private void deleteQuietly(Uri uri) {
+-        if (uri == null) return;
+-        try {
+-            if ("file".equalsIgnoreCase(uri.getScheme())) {
+-                File f = new File(uri.getPath());
+-                if (f.exists()) f.delete();
+-            } else context.getContentResolver().delete(uri, null, null);
+-        } catch (Exception ignored) { }
+-    }
+-
+-    private static File uniqueFile(File dir, String name) {
+-        File f = new File(dir, name);
+-        if (!f.exists()) return f;
+-        int dot = name.lastIndexOf('.');
+-        String stem = dot > 0 ? name.substring(0, dot) : name;
+-        String ext = dot > 0 ? name.substring(dot) : "";
+-        for (int i = 2; i < 1000; i++) {
+-            f = new File(dir, stem + " (" + i + ")" + ext);
+-            if (!f.exists()) return f;
+-        }
+-        return new File(dir, System.currentTimeMillis() + ext);
+-    }
+-
+-    private static String sanitize(String text) {
+-        String s = text == null ? "Lunaxy Track" : text.trim();
+-        s = s.replaceAll("[\\\\/:*?\"<>|\\r\\n]+", "_").replaceAll("\\s+", " ").trim();
+-        if (s.isEmpty()) s = "Lunaxy Track";
+-        return s.length() > 90 ? s.substring(0, 90).trim() : s;
+-    }
+-
+-    private static String extension(String url) {
+-        String lower = url == null ? "" : url.toLowerCase(Locale.ROOT);
+-        int q = lower.indexOf('?'); if (q >= 0) lower = lower.substring(0, q);
+-        for (String ext : new String[]{"flac", "m4a", "aac", "ogg", "wav", "mp3"}) if (lower.endsWith("." + ext)) return ext;
+-        return "mp3";
+-    }
+-
+-    private static String mime(String ext) {
+-        if ("flac".equals(ext)) return "audio/flac";
+-        if ("m4a".equals(ext)) return "audio/mp4";
+-        if ("aac".equals(ext)) return "audio/aac";
+-        if ("ogg".equals(ext)) return "audio/ogg";
+-        if ("wav".equals(ext)) return "audio/wav";
+-        return "audio/mpeg";
+-    }
+-
+-    private static String friendlyFailure(Song song, Exception e) {
+-        String msg = e == null || e.getMessage() == null ? "下载失败" : e.getMessage();
+-        if (DownloadSourceResolver.QQ_UNSUPPORTED.equals(msg)) return msg;
+-
+-        // V35: ANY QQ identity means download is disabled, including merged
+-        // QQ · 网易 canonical tracks. Keep the user-facing reason unambiguous.
+-        if (DownloadPolicy.blocksQqDownload(song)) return DownloadPolicy.QQ_DOWNLOAD_DISABLED;
+-
+-        if (msg.contains("已失效") || msg.contains("HTTP")) {
+-            return "下载地址已失效，请先在线播放一次刷新后再下载";
+-        }
+-        return clean(e);
+-    }
+-
+-    private static String clean(Exception e) {
+-        String s = e == null || e.getMessage() == null ? "下载失败" : e.getMessage();
+-        return s.length() > 130 ? s.substring(0, 130) + "…" : s;
+-    }
+-
+-    private static void complete(Listener listener, DownloadedTrack track) {
+-        if (listener != null) listener.onComplete(track);
+-    }
+-    private static void fail(Listener listener, String message) {
+-        if (listener != null) listener.onError(message == null ? "下载失败" : message);
+-    }
+-
+-    public void destroy() {
+-        resolver.destroy();
+-        worker.shutdownNow();
+-    }
+-}
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=README_验收说明.txt' v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/SourceCoordinator.java v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
+--- v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/SourceCoordinator.java	2026-08-10 13:41:56.000000000 +0000
++++ v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/data/SourceCoordinator.java	2026-08-09 19:46:12.000000000 +0000
+@@ -54,18 +54,6 @@
+         if (variants.isEmpty()) throw new Exception("歌曲没有可用平台 ID");
+         Set<String> excluded = excludedRoutes == null ? Collections.emptySet() : excludedRoutes;
+ 
+-        // V32 offline branch: a downloaded track is already a final local/content URI.
+-        // It bypasses Huibq/QDY, health learning and the persistent network URL cache entirely.
+-        for (SourceVariant variant : variants) {
+-            if (!"local".equals(variant.source)) continue;
+-            String route = "offline|local|file";
+-            if (excluded.contains(route)) throw new Exception("离线文件不可用或已被删除");
+-            if (variant.sourceId == null || variant.sourceId.trim().isEmpty()) throw new Exception("离线文件地址为空");
+-            trace.add("offline", "local media / direct URI");
+-            return new Resolution(variant.sourceId, "offline", variant, false,
+-                    "离线文件", "offline", route, 1L);
+-        }
+-
+         Exception last = null;
+         for (SourceVariant variant : variants) {
+             trace.add("platform", Song.providerLabel(variant.source) + " / " + variant.sourceId
+@@ -131,7 +119,7 @@
+     }
+ 
+     public void markPlaybackSuccess(Resolution r, long timeToReadyMs) {
+-        if (r == null || r.variant == null || "offline".equals(r.providerId)) return;
++        if (r == null || r.variant == null) return;
+         sourceManager.markPlaybackSuccess(r.providerId, r.variant.source, r.quality,
+                 r.resolverLatencyMs + Math.max(1, timeToReadyMs));
+         // Persist only URLs that Media3 has actually proven playable.
+@@ -140,13 +128,12 @@
+     }
+ 
+     public void markPlaybackFailure(Resolution r, String reason, long cooldownMs) {
+-        if (r == null || r.variant == null || "offline".equals(r.providerId)) return;
++        if (r == null || r.variant == null) return;
+         sourceManager.markPlaybackFailure(r.providerId, r.variant.source, r.quality, reason, cooldownMs);
+     }
+ 
+     public void invalidate(Resolution r) {
+-        if (r != null && r.variant != null && !"offline".equals(r.providerId))
+-            cache.invalidate(r.variant.source, r.variant.sourceId, r.quality);
++        if (r != null && r.variant != null) cache.invalidate(r.variant.source, r.variant.sourceId, r.quality);
+     }
+ 
+     public String runtimeInfo() { return "LX Runtime 2.0.0 · V14 稳定主链"; }
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=README_验收说明.txt' v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/model/DownloadedTrack.java v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/model/DownloadedTrack.java
+--- v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/model/DownloadedTrack.java	2026-08-10 13:36:39.000000000 +0000
++++ v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/model/DownloadedTrack.java	1970-01-01 00:00:00.000000000 +0000
+@@ -1,48 +0,0 @@
+-package com.xingyu.music.model;
+-
+-import org.json.JSONObject;
+-
+-/** Metadata for one song downloaded by Lunaxy for offline playback. */
+-public final class DownloadedTrack {
+-    public final Song original;
+-    public final String localUri;
+-    public final String fileName;
+-    public final long downloadedAt;
+-
+-    public DownloadedTrack(Song original, String localUri, String fileName, long downloadedAt) {
+-        this.original = original;
+-        this.localUri = localUri == null ? "" : localUri;
+-        this.fileName = fileName == null ? "" : fileName;
+-        this.downloadedAt = downloadedAt;
+-    }
+-
+-    public String key() { return original == null ? "" : original.key(); }
+-
+-    /** Build a queue-safe Song whose provider points directly at the downloaded MediaStore/file URI. */
+-    public Song asLocalSong() {
+-        if (original == null) return new Song("local", localUri, "未知歌曲", "未知歌手", "", "", 0L);
+-        return new Song("local", localUri, original.title, original.artist,
+-                original.album, original.coverUrl, original.durationMs, true, true);
+-    }
+-
+-    public JSONObject toJson() {
+-        JSONObject o = new JSONObject();
+-        try {
+-            o.put("song", original == null ? JSONObject.NULL : original.toJson());
+-            o.put("localUri", localUri);
+-            o.put("fileName", fileName);
+-            o.put("downloadedAt", downloadedAt);
+-        } catch (Exception ignored) { }
+-        return o;
+-    }
+-
+-    public static DownloadedTrack fromJson(JSONObject o) {
+-        if (o == null) return null;
+-        JSONObject songJson = o.optJSONObject("song");
+-        if (songJson == null) return null;
+-        Song song = Song.fromJson(songJson);
+-        String uri = o.optString("localUri", "");
+-        if (uri.isEmpty()) return null;
+-        return new DownloadedTrack(song, uri, o.optString("fileName", ""), o.optLong("downloadedAt", 0L));
+-    }
+-}
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=README_验收说明.txt' v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/model/Song.java v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/model/Song.java
+--- v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/model/Song.java	2026-08-10 13:36:50.000000000 +0000
++++ v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/model/Song.java	2026-08-09 18:50:44.000000000 +0000
+@@ -132,7 +132,6 @@
+     }
+ 
+     public static String providerLabel(String s) {
+-        if ("local".equals(s)) return "离线";
+         if ("tx".equals(s)) return "QQ";
+         if ("kw".equals(s)) return "酷我";
+         if ("kg".equals(s)) return "酷狗";
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=README_验收说明.txt' v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/ui/IconView.java v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/ui/IconView.java
+--- v36base_for_diff/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/ui/IconView.java	2026-08-10 14:13:56.000000000 +0000
++++ v37work/LunaxyMusic-V36/app/src/main/java/com/xingyu/music/ui/IconView.java	2026-08-11 04:14:11.844636726 +0000
+@@ -9,7 +9,7 @@
+ 
+ /** Small dependency-free line icon renderer so the UI does not rely on emoji glyphs. */
+ public final class IconView extends View {
+-    public enum Type { HOME, SEARCH, PLAYLIST, HEART, PLAY, PAUSE, NEXT, PREV, PLUS, DOWNLOAD, BACK, MUSIC, MORE, CLOSE, DELETE, DRAG, SHUFFLE, REPEAT, REPEAT_ONE, PALETTE, WEATHER }
++    public enum Type { HOME, SEARCH, PLAYLIST, HEART, PLAY, PAUSE, NEXT, PREV, PLUS, BACK, MUSIC, MORE, CLOSE, DELETE, DRAG, SHUFFLE, REPEAT, REPEAT_ONE, PALETTE, WEATHER }
+ 
+     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+     private final Path path = new Path();
+@@ -114,18 +114,6 @@
+                 c.drawLine(cx, cy - s * .22f, cx, cy + s * .22f, paint);
+                 break;
+             }
+-            case DOWNLOAD: {
+-                // Compact SF-Symbol-like download arrow into a shallow tray.
+-                c.drawLine(cx, cy - s * .25f, cx, cy + s * .10f, paint);
+-                c.drawLine(cx - s * .12f, cy - s * .01f, cx, cy + s * .11f, paint);
+-                c.drawLine(cx + s * .12f, cy - s * .01f, cx, cy + s * .11f, paint);
+-                path.moveTo(cx - s * .22f, cy + s * .08f);
+-                path.lineTo(cx - s * .22f, cy + s * .22f);
+-                path.lineTo(cx + s * .22f, cy + s * .22f);
+-                path.lineTo(cx + s * .22f, cy + s * .08f);
+-                c.drawPath(path, paint);
+-                break;
+-            }
+             case BACK: {
+                 c.drawLine(cx + s * .18f, cy - s * .23f, cx - s * .10f, cy, paint);
+                 c.drawLine(cx - s * .10f, cy, cx + s * .18f, cy + s * .23f, paint);

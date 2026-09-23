@@ -1,0 +1,9 @@
+Lunaxy Music V92.5 Stable 发布校验
+
+- 94 个 Java 运行时文件；与 Beta 字节级一致。
+- 17 个 XML（含 Manifest）解析通过。
+- Stable applicationId = com.xingyu.music；versionName = 92.5.0；versionCode = 930。
+- 播放链 / 推荐 / Search Engine V2 / 歌词缓存 / 封面缓存冻结核心与 V92.4 基线字节级未改。
+- V92.5 四项改动已进入源码：侧唱片清晰度、连续队列浏览、歌词边界、播放失败 3 秒自动下一首。
+- 实际 Gradle 尝试因当前执行环境无法解析 services.gradle.org 而未进入 Android/AGP 编译阶段，不宣称 Android 真编译通过。
+- 最终发布包会在生成 SHA256SUMS.txt 后逐项校验，并执行 ZIP 解压完整性测试。

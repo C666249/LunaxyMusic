@@ -1,0 +1,8 @@
+Lunaxy Music delivery rules
+- Full source ZIPs: LunaxyMusic-V<version>-Stable.zip / LunaxyMusic-V<version>-Beta.zip
+- Stable applicationId: com.xingyu.music
+- Beta applicationId: com.xingyu.music.beta1
+- Android Studio project root must contain settings.gradle.kts
+- APK export names must include project + channel + version + buildType
+- Every ZIP must contain WORKFLOW.md, DELIVERY_RULE.txt, PROJECT_STATE.md, release notes, validation record and SHA256SUMS.txt
+- Never claim Android compilation succeeded when only static checks ran

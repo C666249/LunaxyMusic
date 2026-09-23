@@ -1,0 +1,618 @@
+--- V71/BUILD_APK.bat
++++ V72/BUILD_APK.bat
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   Lunaxy Music V71 - Debug APK Build
++echo   Lunaxy Music V72 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\Lunaxy Music V71.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\Lunaxy Music V72.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\Lunaxy Music V71.apk
++echo [OK] APK: %CD%\dist\Lunaxy Music V72.apk
+ pause
+--- V71/app/build.gradle.kts
++++ V72/app/build.gradle.kts
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 710
+-        versionName = "71.0.0"
++        versionCode = 720
++        versionName = "72.0.0"
+     }
+ 
+     buildTypes {
+@@ -35,12 +35,12 @@
+ 
+ // Keep AGP's internal APK name intact for Android Studio install/run tasks, then export a
+ // share-ready copy with the product name after assembly. This avoids relying on deprecated
+-// internal VariantOutput APIs while ensuring the file users share is named "Lunaxy Music V71.apk".
++// internal VariantOutput APIs while ensuring the file users share is named "Lunaxy Music V72.apk".
+ tasks.matching { it.name == "assembleDebug" }.configureEach {
+     doLast {
+         val apkDir = project.layout.buildDirectory.dir("outputs/apk/debug").get().asFile
+         val source = apkDir.resolve("app-debug.apk")
+-        if (source.isFile) source.copyTo(apkDir.resolve("Lunaxy Music V71.apk"), overwrite = true)
++        if (source.isFile) source.copyTo(apkDir.resolve("Lunaxy Music V72.apk"), overwrite = true)
+     }
+ }
+ 
+@@ -49,6 +49,6 @@
+         val apkDir = project.layout.buildDirectory.dir("outputs/apk/release").get().asFile
+         val source = listOf(apkDir.resolve("app-release.apk"), apkDir.resolve("app-release-unsigned.apk"))
+             .firstOrNull { it.isFile }
+-        if (source != null) source.copyTo(apkDir.resolve("Lunaxy Music V71.apk"), overwrite = true)
++        if (source != null) source.copyTo(apkDir.resolve("Lunaxy Music V72.apk"), overwrite = true)
+     }
+ }
+--- V71/app/src/main/java/com/xingyu/music/MainActivity.java
++++ V72/app/src/main/java/com/xingyu/music/MainActivity.java
+@@ -101,6 +101,7 @@
+ import com.xingyu.music.ui.ImageLoader;
+ import com.xingyu.music.ui.LyricLineView;
+ import com.xingyu.music.ui.OnboardingOverlay;
++import com.xingyu.music.ui.PlatformOrbView;
+ import com.xingyu.music.ui.RingtoneLyricSelectorView;
+ import com.xingyu.music.ui.LyricGestureScrollView;
+ import com.xingyu.music.ui.StarfieldView;
+@@ -3561,7 +3562,7 @@
+      * This is presentation-only and does not change Song variants, ranking or route selection.
+      */
+     private void bindSearchPlatformDots(LinearLayout strip, Song song) {
+-        bindPlatformDots(strip, song, 7, 5);
++        bindPlatformDots(strip, song, 10, 4);
+     }
+ 
+     /**
+@@ -3576,20 +3577,18 @@
+         if (song == null) return;
+         String[] sources = {"wy", "tx", "kw", "kg"};
+         int[] colors = {Ui.PURPLE, Ui.BLUE, Ui.GREEN, Ui.GOLD};
++        long rowPhase = Math.floorMod(song.key().hashCode(), 360);
+         int added = 0;
+         for (int i = 0; i < sources.length; i++) {
+             if (song.variant(sources[i]) == null) continue;
+-            View dot = new View(this);
+-            dot.setBackground(Ui.round(colors[i], 99, this));
+-            dot.setAlpha(.98f);
++            PlatformOrbView dot = new PlatformOrbView(this, colors[i], rowPhase + i * 105L);
+             LinearLayout.LayoutParams lp = Ui.lp(Ui.dp(this, dotDp), Ui.dp(this, dotDp));
+             if (added > 0) lp.leftMargin = Ui.dp(this, gapDp);
+             strip.addView(dot, lp);
+             added++;
+         }
+         if (added == 0) {
+-            View dot = new View(this);
+-            dot.setBackground(Ui.round(Ui.DIM, 99, this));
++            PlatformOrbView dot = new PlatformOrbView(this, Ui.DIM, rowPhase);
+             strip.addView(dot, Ui.lp(Ui.dp(this, dotDp), Ui.dp(this, dotDp)));
+         }
+         strip.setContentDescription("可用平台：" + song.sourceLabel());
+@@ -5700,7 +5699,7 @@
+         text.addView(artist, new LinearLayout.LayoutParams(-1, 0, 1f));
+         row.addView(text, new LinearLayout.LayoutParams(0, Ui.dp(this, 56), 1f));
+ 
+-        LinearLayout src = platformDotsView(song, 8, 5);
++        LinearLayout src = platformDotsView(song, 11, 4);
+         LinearLayout.LayoutParams sourceDotsLp = Ui.lp(-2, Ui.dp(this, 34));
+         sourceDotsLp.leftMargin = Ui.dp(this, 2);
+         sourceDotsLp.rightMargin = Ui.dp(this, 5);
+@@ -5805,8 +5804,24 @@
+         if (playback == null) return "定时关闭";
+         long remaining = playback.sleepTimerRemainingMs();
+         if (remaining <= 0L) return "定时关闭";
+-        long minutes = Math.max(1L, (remaining + 59_999L) / 60_000L);
+-        return "定时关闭 · 剩余" + minutes + "分钟";
++        return "定时关闭 · 剩余" + formatSleepTimerRemaining(remaining);
++    }
++
++    private String formatSleepTimerRemaining(long ms) {
++        long totalSeconds = Math.max(0L, (ms + 999L) / 1000L);
++        long hours = totalSeconds / 3600L;
++        long minutes = (totalSeconds % 3600L) / 60L;
++        long seconds = totalSeconds % 60L;
++        if (hours > 0L) return hours + "小时" + minutes + "分钟" + seconds + "秒";
++        return minutes + "分钟" + seconds + "秒";
++    }
++
++    private String formatSleepTimerClock(long ms) {
++        long totalSeconds = Math.max(0L, (ms + 999L) / 1000L);
++        long hours = totalSeconds / 3600L;
++        long minutes = (totalSeconds % 3600L) / 60L;
++        long seconds = totalSeconds % 60L;
++        return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds);
+     }
+ 
+     private void showSleepTimerOptions() {
+@@ -5814,25 +5829,168 @@
+             toast("播放器尚未启动");
+             return;
+         }
+-        long remaining = playback.sleepTimerRemainingMs();
+-        String subtitle = remaining > 0L
+-                ? "当前已开启 · 剩余约 " + Math.max(1L, (remaining + 59_999L) / 60_000L) + " 分钟 · 到点只暂停播放，不清空队列"
+-                : "到点自动暂停播放，不清空播放列表；之后仍可从原位置继续听";
+-        String[] options = remaining > 0L
+-                ? new String[]{"15分钟后", "30分钟后", "45分钟后", "60分钟后", "90分钟后", "取消当前定时"}
+-                : new String[]{"15分钟后", "30分钟后", "45分钟后", "60分钟后", "90分钟后"};
+-        showGlassOptions("定时关闭", subtitle, options, which -> {
+-            if (which < 0 || which >= options.length || playback == null) return;
+-            if ("取消当前定时".equals(options[which])) {
++        final long initialRemaining = playback.sleepTimerRemainingMs();
++        LinearLayout card = modalCard("定时关闭", "到点只暂停播放，不清空队列、歌曲或当前进度");
++
++        LinearLayout status = Ui.column(this);
++        status.setGravity(Gravity.CENTER);
++        status.setPadding(Ui.dp(this, 14), Ui.dp(this, 13), Ui.dp(this, 14), Ui.dp(this, 13));
++        status.setBackground(Ui.tintedGlass(Ui.CYAN, 20, this));
++        TextView statusLabel = Ui.text(this, initialRemaining > 0L ? "当前剩余" : "当前未开启", 11.4f,
++                initialRemaining > 0L ? Ui.CYAN : Ui.DIM, true);
++        statusLabel.setGravity(Gravity.CENTER);
++        TextView statusClock = Ui.text(this,
++                initialRemaining > 0L ? formatSleepTimerClock(initialRemaining) : "00:00:00",
++                28f, Ui.TEXT, true);
++        statusClock.setGravity(Gravity.CENTER);
++        statusClock.setLetterSpacing(.055f);
++        TextView statusExact = Ui.text(this,
++                initialRemaining > 0L ? formatSleepTimerRemaining(initialRemaining) : "可快速选择，也可精确到秒",
++                11.7f, Ui.TEXT_2, false);
++        statusExact.setGravity(Gravity.CENTER);
++        LinearLayout.LayoutParams clockLp = Ui.lp(-1, Ui.dp(this, 42)); clockLp.topMargin = Ui.dp(this, 3);
++        LinearLayout.LayoutParams exactLp = Ui.lp(-1, Ui.dp(this, 24)); exactLp.topMargin = Ui.dp(this, 1);
++        status.addView(statusLabel, Ui.lp(-1, Ui.dp(this, 20)));
++        status.addView(statusClock, clockLp);
++        status.addView(statusExact, exactLp);
++        LinearLayout.LayoutParams statusLp = Ui.lp(-1, Ui.dp(this, 102)); statusLp.topMargin = Ui.dp(this, 12);
++        card.addView(status, statusLp);
++
++        TextView quickTitle = Ui.text(this, "快速定时", 11.3f, Ui.DIM, true);
++        LinearLayout.LayoutParams quickTitleLp = Ui.lp(-1, Ui.dp(this, 24)); quickTitleLp.topMargin = Ui.dp(this, 12);
++        card.addView(quickTitle, quickTitleLp);
++        LinearLayout quickRow = Ui.row(this);
++        quickRow.setGravity(Gravity.CENTER_VERTICAL);
++        String[] presetLabels = {"15分", "30分", "45分", "60分", "90分"};
++        int[] presetMinutes = {15, 30, 45, 60, 90};
++        for (int i = 0; i < presetLabels.length; i++) {
++            final int preset = presetMinutes[i];
++            TextView chip = Ui.text(this, presetLabels[i], 11.6f, Ui.TEXT, true);
++            chip.setGravity(Gravity.CENTER);
++            chip.setClickable(true); chip.setFocusable(true);
++            chip.setBackground(Ui.glass(92, 14, 24, this));
++            Ui.applyRipple(chip, Color.TRANSPARENT);
++            chip.setOnClickListener(v -> {
++                if (playback == null) return;
++                playback.setSleepTimerDurationMs(preset * 60_000L);
++                dismissModalNow();
++                toast("已设置 · " + preset + "分钟后暂停");
++            });
++            LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(0, Ui.dp(this, 38), 1f);
++            if (i > 0) chipLp.leftMargin = Ui.dp(this, 6);
++            quickRow.addView(chip, chipLp);
++        }
++        card.addView(quickRow, Ui.lp(-1, Ui.dp(this, 38)));
++
++        TextView customTitle = Ui.text(this, "自定义", 11.3f, Ui.DIM, true);
++        LinearLayout.LayoutParams customTitleLp = Ui.lp(-1, Ui.dp(this, 24)); customTitleLp.topMargin = Ui.dp(this, 12);
++        card.addView(customTitle, customTitleLp);
++
++        long startSeconds = initialRemaining > 0L ? Math.max(1L, (initialRemaining + 999L) / 1000L) : 30L * 60L;
++        int[] custom = {
++                (int) Math.min(99L, startSeconds / 3600L),
++                (int) ((startSeconds % 3600L) / 60L),
++                (int) (startSeconds % 60L)
++        };
++        LinearLayout customRow = Ui.row(this);
++        String[] units = {"小时", "分钟", "秒"};
++        int[] maxValues = {99, 59, 59};
++        int[] longSteps = {5, 10, 10};
++        for (int i = 0; i < 3; i++) {
++            LinearLayout cell = sleepTimerStepper(units[i], i, custom, maxValues[i], longSteps[i]);
++            LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(0, Ui.dp(this, 118), 1f);
++            if (i > 0) cellLp.leftMargin = Ui.dp(this, 8);
++            customRow.addView(cell, cellLp);
++        }
++        card.addView(customRow, Ui.lp(-1, Ui.dp(this, 118)));
++        TextView hint = Ui.text(this, "轻点 ＋/− 调 1；长按一次快速调 5/10。至少设置 1 秒。", 10.6f, Ui.DIM, false);
++        hint.setGravity(Gravity.CENTER);
++        LinearLayout.LayoutParams hintLp = Ui.lp(-1, Ui.dp(this, 30)); hintLp.topMargin = Ui.dp(this, 4);
++        card.addView(hint, hintLp);
++
++        LinearLayout actions = Ui.row(this); actions.setGravity(Gravity.END);
++        TextView secondary = modalButton(initialRemaining > 0L ? "取消定时" : "关闭", false);
++        secondary.setOnClickListener(v -> {
++            if (initialRemaining > 0L && playback != null) {
+                 playback.cancelSleepTimer();
+                 toast("已取消定时关闭");
++            }
++            dismissModalNow();
++        });
++        actions.addView(secondary, Ui.lp(Ui.dp(this, 106), Ui.dp(this, 46)));
++        Space gap = new Space(this); actions.addView(gap, Ui.lp(Ui.dp(this, 8), 1));
++        TextView apply = modalButton(initialRemaining > 0L ? "重新设定" : "开始定时", true);
++        apply.setOnClickListener(v -> {
++            long totalSeconds = custom[0] * 3600L + custom[1] * 60L + custom[2];
++            if (totalSeconds <= 0L) {
++                toast("定时时长至少 1 秒");
+                 return;
+             }
+-            int[] minutes = {15, 30, 45, 60, 90};
+-            if (which >= minutes.length) return;
+-            playback.setSleepTimerMinutes(minutes[which]);
+-            toast("将在 " + minutes[which] + " 分钟后暂停播放");
+-        });
++            if (playback == null) return;
++            playback.setSleepTimerDurationMs(totalSeconds * 1000L);
++            dismissModalNow();
++            toast("已设置 · " + formatSleepTimerRemaining(totalSeconds * 1000L) + "后暂停");
++        });
++        actions.addView(apply, Ui.lp(Ui.dp(this, 116), Ui.dp(this, 46)));
++        LinearLayout.LayoutParams actionsLp = Ui.lp(-1, Ui.dp(this, 46)); actionsLp.topMargin = Ui.dp(this, 10);
++        card.addView(actions, actionsLp);
++
++        presentModal(card);
++        final Runnable countdownTicker = new Runnable() {
++            @Override public void run() {
++                if (card.getParent() == null || playback == null) return;
++                long remaining = playback.sleepTimerRemainingMs();
++                if (remaining > 0L) {
++                    statusLabel.setText("当前剩余");
++                    statusLabel.setTextColor(Ui.CYAN);
++                    statusClock.setText(formatSleepTimerClock(remaining));
++                    statusExact.setText(formatSleepTimerRemaining(remaining));
++                } else {
++                    statusLabel.setText("当前未开启");
++                    statusLabel.setTextColor(Ui.DIM);
++                    statusClock.setText("00:00:00");
++                    statusExact.setText("可快速选择，也可精确到秒");
++                }
++                main.postDelayed(this, 250L);
++            }
++        };
++        main.post(countdownTicker);
++    }
++
++    private LinearLayout sleepTimerStepper(String unit, int index, int[] values,
++                                           int maxValue, int longStep) {
++        LinearLayout cell = Ui.column(this);
++        cell.setGravity(Gravity.CENTER);
++        cell.setBackground(Ui.glass(108, 18, 26, this));
++
++        TextView plus = Ui.text(this, "+", 18f, Ui.CYAN, true);
++        plus.setGravity(Gravity.CENTER); plus.setClickable(true); plus.setFocusable(true);
++        Ui.applyRipple(plus, Color.TRANSPARENT);
++        TextView value = Ui.text(this, String.format(Locale.US, "%02d", values[index]), 22f, Ui.TEXT, true);
++        value.setGravity(Gravity.CENTER); value.setLetterSpacing(.04f);
++        TextView unitLabel = Ui.text(this, unit, 10.2f, Ui.DIM, false);
++        unitLabel.setGravity(Gravity.CENTER);
++        TextView minus = Ui.text(this, "−", 18f, Ui.TEXT_2, true);
++        minus.setGravity(Gravity.CENTER); minus.setClickable(true); minus.setFocusable(true);
++        Ui.applyRipple(minus, Color.TRANSPARENT);
++        SimpleAction increment = () -> updateSleepTimerStepper(index, values, value, 1, maxValue);
++        SimpleAction decrement = () -> updateSleepTimerStepper(index, values, value, -1, maxValue);
++        plus.setOnClickListener(v -> increment.run());
++        minus.setOnClickListener(v -> decrement.run());
++        plus.setOnLongClickListener(v -> { updateSleepTimerStepper(index, values, value, longStep, maxValue); return true; });
++        minus.setOnLongClickListener(v -> { updateSleepTimerStepper(index, values, value, -longStep, maxValue); return true; });
++
++        cell.addView(plus, Ui.lp(-1, Ui.dp(this, 28)));
++        cell.addView(value, Ui.lp(-1, Ui.dp(this, 34)));
++        cell.addView(unitLabel, Ui.lp(-1, Ui.dp(this, 22)));
++        cell.addView(minus, Ui.lp(-1, Ui.dp(this, 28)));
++        return cell;
++    }
++
++    private void updateSleepTimerStepper(int index, int[] values, TextView view, int delta, int maxValue) {
++        int next = Math.max(0, Math.min(maxValue, values[index] + delta));
++        values[index] = next;
++        view.setText(String.format(Locale.US, "%02d", next));
+     }
+ 
+     private void clearActivePlaylistUiRefs() {
+@@ -6457,7 +6615,7 @@
+             texts.addView(artist, new LinearLayout.LayoutParams(-1, 0, 1f));
+             row.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(MainActivity.this, 48), 1f));
+ 
+-            LinearLayout source = platformDotsView(song, 8, 5);
++            LinearLayout source = platformDotsView(song, 11, 4);
+             LinearLayout.LayoutParams sourceDotsLp = Ui.lp(-2, Ui.dp(MainActivity.this, 32));
+             sourceDotsLp.leftMargin = Ui.dp(MainActivity.this, 2);
+             sourceDotsLp.rightMargin = Ui.dp(MainActivity.this, 4);
+@@ -7826,7 +7984,7 @@
+         if (playerOverlay == null || playerOverlay.getVisibility() != View.VISIBLE || s.song == null) return;
+         nowTitle.setText(s.song.title);
+         nowArtist.setText(s.song.artist + (s.song.album.isEmpty() ? "" : "  ·  " + s.song.album));
+-        bindPlatformDots(nowSource, s.song, 8, 6);
++        bindPlatformDots(nowSource, s.song, 11, 5);
+         int sourceTint = s.song.variants().size() > 1 ? Ui.CYAN : ("tx".equals(s.song.source) ? Ui.GREEN : Ui.GOLD);
+         nowPlayIcon.setType(s.playing ? IconView.Type.PAUSE : IconView.Type.PLAY);
+         nowFavoriteIcon.setIconColor(isFavorite(s.song) ? Ui.PINK : Ui.TEXT_2);
+--- V71/app/src/main/java/com/xingyu/music/playback/PlaybackService.java
++++ V72/app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+@@ -314,13 +314,20 @@
+         notifyState();
+     }
+ 
+-    /** V70 wall-clock sleep timer. It only pauses playback and preserves queue/current position. */
++    /** V70+ wall-clock sleep timer. It only pauses playback and preserves queue/current position. */
+     public void setSleepTimerMinutes(int minutes) {
+-        if (minutes <= 0) {
++        setSleepTimerDurationMs(minutes <= 0 ? 0L : Math.max(1, minutes) * 60_000L);
++    }
++
++    /** V72 exact-duration entry point used by the hour/minute/second sleep-timer UI. */
++    public void setSleepTimerDurationMs(long durationMs) {
++        if (durationMs <= 0L) {
+             cancelSleepTimer();
+             return;
+         }
+-        sleepTimerDeadlineAt = System.currentTimeMillis() + Math.max(1, minutes) * 60_000L;
++        long now = System.currentTimeMillis();
++        long safeDuration = Math.max(1_000L, durationMs);
++        sleepTimerDeadlineAt = safeDuration > Long.MAX_VALUE - now ? Long.MAX_VALUE : now + safeDuration;
+         getSharedPreferences(SLEEP_TIMER_PREFS, MODE_PRIVATE).edit()
+                 .putLong(SLEEP_TIMER_DEADLINE, sleepTimerDeadlineAt).apply();
+         scheduleSleepTimer();
+--- V71/app/src/main/java/com/xingyu/music/ui/PlatformOrbView.java
++++ V72/app/src/main/java/com/xingyu/music/ui/PlatformOrbView.java
+@@ -0,0 +1,131 @@
++package com.xingyu.music.ui;
++
++import android.animation.ValueAnimator;
++import android.content.Context;
++import android.graphics.Canvas;
++import android.graphics.Color;
++import android.graphics.Paint;
++import android.graphics.RadialGradient;
++import android.graphics.Shader;
++import android.view.View;
++import android.view.animation.AccelerateDecelerateInterpolator;
++
++/**
++ * Presentation-only platform identity orb.
++ *
++ * A tiny layered sphere is used instead of a flat dot: soft halo, shaded body,
++ * glass edge and a one-shot specular shimmer when the row appears. It carries
++ * no source-selection logic and never reads or writes playback state.
++ */
++public final class PlatformOrbView extends View {
++    private final int baseColor;
++    private final long shimmerDelayMs;
++    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private RadialGradient bodyShader;
++    private ValueAnimator shimmerAnimator;
++    private float shimmer;
++    private float cx;
++    private float cy;
++    private float bodyRadius;
++
++    public PlatformOrbView(Context context, int baseColor, long shimmerDelayMs) {
++        super(context);
++        this.baseColor = baseColor;
++        this.shimmerDelayMs = Math.max(0L, shimmerDelayMs);
++        stroke.setStyle(Paint.Style.STROKE);
++        stroke.setStrokeWidth(Ui.dp(context, .55f));
++        setClickable(false);
++        setFocusable(false);
++    }
++
++    @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
++        super.onSizeChanged(w, h, oldw, oldh);
++        float min = Math.min(w, h);
++        cx = w * .5f;
++        cy = h * .5f;
++        bodyRadius = min * .31f;
++        float lightX = cx - bodyRadius * .34f;
++        float lightY = cy - bodyRadius * .40f;
++        int bright = Ui.mix(baseColor, Color.WHITE, .58f);
++        int mid = Ui.mix(baseColor, Color.WHITE, .16f);
++        int edge = Ui.mix(baseColor, Color.BLACK, .38f);
++        bodyShader = new RadialGradient(
++                lightX, lightY, bodyRadius * 1.56f,
++                new int[]{bright, mid, baseColor, edge},
++                new float[]{0f, .23f, .62f, 1f},
++                Shader.TileMode.CLAMP);
++    }
++
++    @Override protected void onDraw(Canvas canvas) {
++        super.onDraw(canvas);
++        if (bodyRadius <= 0f) return;
++
++        // Halo stays inside the view bounds so hardware rendering remains cheap and predictable.
++        paint.setShader(null);
++        paint.setStyle(Paint.Style.FILL);
++        paint.setColor(withAlpha(baseColor, 22 + Math.round(26f * shimmer)));
++        canvas.drawCircle(cx, cy, bodyRadius * 1.55f, paint);
++        paint.setColor(withAlpha(baseColor, 36 + Math.round(24f * shimmer)));
++        canvas.drawCircle(cx, cy, bodyRadius * 1.23f, paint);
++
++        paint.setShader(bodyShader);
++        canvas.drawCircle(cx, cy, bodyRadius, paint);
++        paint.setShader(null);
++
++        // Fine glass rim gives the tiny sphere a crisp, premium edge instead of a flat sticker look.
++        stroke.setColor(Color.argb(88, 255, 255, 255));
++        canvas.drawCircle(cx, cy, bodyRadius - stroke.getStrokeWidth() * .5f, stroke);
++        stroke.setColor(Color.argb(48, 0, 0, 0));
++        canvas.drawArc(cx - bodyRadius, cy - bodyRadius, cx + bodyRadius, cy + bodyRadius,
++                28f, 150f, false, stroke);
++
++        // Permanent top-left specular point.
++        paint.setColor(Color.argb(185, 255, 255, 255));
++        canvas.drawCircle(cx - bodyRadius * .34f, cy - bodyRadius * .38f,
++                Math.max(1f, bodyRadius * .13f), paint);
++
++        // One-shot moving highlight. The stagger is supplied by the caller so rows do not flash in sync.
++        if (shimmer > 0f && shimmer < 1f) {
++            float wave = (float) Math.sin(Math.PI * shimmer);
++            float sx = cx - bodyRadius * .48f + bodyRadius * .96f * shimmer;
++            float sy = cy - bodyRadius * .46f + bodyRadius * .18f * shimmer;
++            RadialGradient glint = new RadialGradient(
++                    sx, sy, Math.max(1f, bodyRadius * .54f),
++                    new int[]{Color.argb(Math.round(150f * wave), 255, 255, 255), Color.TRANSPARENT},
++                    new float[]{0f, 1f}, Shader.TileMode.CLAMP);
++            paint.setShader(glint);
++            canvas.drawCircle(cx, cy, bodyRadius, paint);
++            paint.setShader(null);
++        }
++    }
++
++    @Override protected void onAttachedToWindow() {
++        super.onAttachedToWindow();
++        startShimmerOnce();
++    }
++
++    @Override protected void onDetachedFromWindow() {
++        if (shimmerAnimator != null) shimmerAnimator.cancel();
++        shimmerAnimator = null;
++        super.onDetachedFromWindow();
++    }
++
++    private void startShimmerOnce() {
++        if (shimmerAnimator != null) return;
++        shimmerAnimator = ValueAnimator.ofFloat(0f, 1f);
++        shimmerAnimator.setStartDelay(shimmerDelayMs);
++        shimmerAnimator.setDuration(820L);
++        shimmerAnimator.setInterpolator(new AccelerateDecelerateInterpolator());
++        shimmerAnimator.addUpdateListener(a -> {
++            shimmer = (float) a.getAnimatedValue();
++            invalidate();
++        });
++        shimmerAnimator.start();
++    }
++
++    private static int withAlpha(int color, int alpha) {
++        return Color.argb(Math.max(0, Math.min(255, alpha)),
++                Color.red(color), Color.green(color), Color.blue(color));
++    }
++}
+--- V71/README_验收说明.txt
++++ V72/README_验收说明.txt
+@@ -1,27 +1,29 @@
+-【当前版本】Lunaxy Music V71 — Global Platform Dots + Versioned APK
++【当前版本】Lunaxy Music V72 — Premium Platform Orbs + Exact Sleep Timer
+ 
+ 【基线】
+-严格基于 LunaxyMusic-V70-Full.zip 增量修改。
++严格基于用户提供的 LunaxyMusic-V71-Full(1).zip 增量修改；该 ZIP 的 SHA256SUMS.txt 已在修改前完整校验 PASS。
+ V60 完整源码继续永久保留为 Golden Recovery。
+ 
+ 【本轮核心】
+-1. 修正 V70 只改到“搜索全部页”、综合搜索/歌单仍显示长平台文字的问题。
+-2. 所有每首歌曲的来源身份展示统一为四色圆点：网易紫 / QQ蓝 / 酷我绿 / 酷狗黄。覆盖搜索综合结果、搜索全部页、普通/导入歌单、收藏/历史等通用歌曲行、手动排序以及正在播放详情。
+-3. 顶部平台筛选、智能音源矩阵坐标轴和诊断文字仍保留平台名称，因为它们承担筛选/解释作用且不会挤压歌名。
+-4. 本轮圆点只读取 Song.variant()，不改 Song variants/sourceLabel、搜索合并、SearchRanker、Catalog、Provider Matrix、Learning V4、下载矩阵或播放链。
+-5. V70 定时关闭功能完整保留。
+-6. APK 分享产物从本版开始必须带版本号：Lunaxy Music V71.apk。
++1. 网易紫 / QQ蓝 / 酷我绿 / 酷狗黄的平台身份不改，只把 V71 的扁平小圆点升级为有立体明暗、玻璃边缘、柔和外晕与一次性错峰高光动画的微型光泽球。
++2. 圆点仍只读取 Song.variant()；不改 variants/source/sourceLabel、搜索合并、SearchRanker、Catalog、Provider Matrix、Learning、下载矩阵或播放链。
++3. 定时关闭剩余时间改为精确显示分钟+秒；超过 1 小时同时显示小时。
++4. 定时关闭弹框重做为 Lunaxy 玻璃风：实时 HH:MM:SS、精确中文剩余时间、15/30/45/60/90 分钟快速按钮、自定义小时/分钟/秒三列控制。
++5. PlaybackService 只给既有 sleep timer 增加 durationMs 精确入口；原 deadline 持久化、Handler + AlarmManager、到点只 pause 的行为不变。
++6. APK 分享产物：Lunaxy Music V72.apk。
+ 
+ 【重点真机验收】
+-A. 综合搜索结果：每首歌右侧不再出现“网易 · QQ · 酷我 · 酷狗”长胶囊，只显示对应四色圆点。
+-B. 打开任意歌单/收藏/最近播放：每首歌曲同样只显示圆点，歌名获得完整横向空间。
+-C. 搜索“全部”页、歌单手动排序页、正在播放详情的平台身份也应使用同一圆点语言。
+-D. 顶部“网易/QQ/酷我/酷狗”筛选按钮仍是文字，这是可点击筛选控件，不属于每首歌曲的来源标签。
+-E. V70 定时关闭、V69 厂商媒体兼容/桌面歌词、V66 Learning V4、下载矩阵及播放链不得回归。
+-F. Android Studio assemble 后额外 APK 名必须为 Lunaxy Music V71.apk。
++A. 搜索、歌单、收藏、最近播放、排序页、正在播放详情：平台球应明显比 V71 更有层次，但尺寸仍紧凑，不挤压歌名。
++B. 首次出现的球会有一次轻微高光扫过；不能持续频闪、不能拖慢长歌单滚动。
++C. 打开当前歌曲“更多 → 定时关闭”：顶部应按秒实时变化，例如 29分钟58秒；1小时以上显示小时/分钟/秒。
++D. 快速选择 15/30/45/60/90 分钟均可正常重设。
++E. 自定义可设小时/分钟/秒；0:0:0 不允许提交；1 秒可以提交。
++F. 到点只暂停，播放列表、当前歌曲、播放位置仍保留；取消定时后不能误暂停。
++G. V71 平台身份逻辑、V69 媒体兼容/桌面歌词、V66 Learning/下载矩阵及播放核心不得回归。
++H. Android Studio assemble 后额外 APK 名必须为 Lunaxy Music V72.apk。
+ 
+ 【版本】
+ - applicationId / namespace：com.xingyu.music
+-- versionCode：710
+-- versionName：71.0.0
+-- assembleDebug 后继续额外生成：Lunaxy Music V71.apk
++- versionCode：720
++- versionName：72.0.0
++- assembleDebug 后继续额外生成：Lunaxy Music V72.apk
+--- V71/LUNAXY_V72_平台光泽球与精确睡眠定时.md
++++ V72/LUNAXY_V72_平台光泽球与精确睡眠定时.md
+@@ -0,0 +1,31 @@
++# Lunaxy Music V72：平台光泽球与精确睡眠定时
++
++V72 严格基于用户提供并校验通过的 V71 完整源码增量修改；V60 继续永久保留为 Golden Recovery。
++
++## 1. 四色平台圆点升级为“微型玻璃光泽球”
++
++V71 的网易紫 / QQ 蓝 / 酷我绿 / 酷狗黄身份逻辑完全不变，只升级展示层：
++
++- 新增 `PlatformOrbView`，使用分层球体绘制：柔和外晕、径向明暗、玻璃边缘、高光点；
++- 每个球在首次出现时做一次很轻的错峰高光扫过，不做持续闪烁，避免长列表常驻动画造成性能浪费；
++- 不同歌曲按歌曲 key 错开动画相位，避免整屏圆点同时闪；
++- 搜索“全部”、综合结果、普通/导入歌单、收藏/最近播放、手动排序、正在播放详情沿用同一套高级圆点语言；
++- 圆点仍只读取 `Song.variant()`，不改变 variants/source/sourceLabel、排序、搜索合并、Provider Matrix 或播放路线。
++
++## 2. 定时关闭精确到秒 + 自定义时分秒
++
++V70 的 deadline + SharedPreferences + Handler + AlarmManager 机制继续保留，本轮只扩展 UI 与时长输入：
++
++- “定时关闭”菜单由“剩余 N 分钟”升级为“剩余 N 分钟 N 秒”；超过 1 小时会显示“小时/分钟/秒”；
++- 新弹框改为 Lunaxy 玻璃底部卡片：顶部实时 `HH:MM:SS` 倒计时 + 中文精确剩余时间；
++- 保留 15/30/45/60/90 分钟快速定时；
++- 新增“小时 / 分钟 / 秒”三列自定义控制，轻点 ±1，长按一次快速 ±5/±10；范围为 0–99 小时、0–59 分、0–59 秒；
++- 最短 1 秒；重新设定会覆盖旧 deadline；取消仍只取消定时；
++- 到点行为仍然只是 `pause()`，不会清空队列、当前歌曲或播放进度。
++
++## 3. 版本
++
++- versionCode = 720
++- versionName = 72.0.0
++- applicationId / namespace = `com.xingyu.music`
++- assembleDebug / assembleRelease / BUILD_APK.bat 额外输出：`Lunaxy Music V72.apk`
+--- V71/changes/V72_LOCKED_CORE_GUARD.txt
++++ V72/changes/V72_LOCKED_CORE_GUARD.txt
+@@ -0,0 +1,34 @@
++Lunaxy Music V72 — V71 Locked Core Guard
++
++本轮仅允许：MainActivity 平台身份圆点视觉/定时关闭 UI；新增纯展示 PlatformOrbView；PlaybackService 仅扩展 sleep timer 的精确毫秒时长入口。
++Provider/Route Learning、READY、播放解析/失败恢复、Download Matrix、Catalog/歌单导入、Desktop Lyrics 均不得改动。
++PASS	app/src/main/java/com/xingyu/music/data/AudioProviderHub.java	c7651983fdca5924b406cc64b9301670455b53f845cb12f4583bb72ef8113faa
++PASS	app/src/main/java/com/xingyu/music/data/ExactTrackMatcher.java	f9ef5c0d1815261ed6ee36932027efb877c810973f0bcd68532822c4fe36f44e
++PASS	app/src/main/java/com/xingyu/music/data/KugouMusicApi.java	e7e49ab5e0490b7794b0764751921ce6e3c03d5d192819282d2c7363454cded4
++PASS	app/src/main/java/com/xingyu/music/data/KuwoMusicApi.java	6ce67e50e3dc6ac8fdd1ff4f0713faf05c1cb6edc33de35019f93143596d2c2a
++PASS	app/src/main/java/com/xingyu/music/data/LibraryStore.java	cee41d981e74db185075d303135dffdc25c308ae120d98338f0cd10fad9e670f
++PASS	app/src/main/java/com/xingyu/music/data/LxAudioProvider.java	b8fe86c0336581acb420ee09994cf350f9a99c02d7d919af2f88f851ee619317
++PASS	app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java	d6f4ac52367b0f3952eb24deae432cad45774e51c75ca3d4425114d4af01882c
++PASS	app/src/main/java/com/xingyu/music/data/NeteaseApi.java	5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
++PASS	app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java	013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
++PASS	app/src/main/java/com/xingyu/music/data/QQMusicApi.java	bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
++PASS	app/src/main/java/com/xingyu/music/data/SearchRanker.java	84e16e8234ca7dd0ac4547e40ade7eea2a31e6730dfe49758725a0d388645954
++PASS	app/src/main/java/com/xingyu/music/data/SourceCoordinator.java	5824250b2036e37c8fd1715d5c2f6032206d0d0c03062bb1cf90e90ecb339521
++PASS	app/src/main/java/com/xingyu/music/data/SourceHealthStore.java	7030f36fd5a56d39180375d6cbede0bbb0b89784b06c6dbc503d088da02868d1
++PASS	app/src/main/java/com/xingyu/music/data/TrackRouteStore.java	da277007fafcad5b5bba280338d4b186d4626d51f1a450ad6667300301bc00fd
++PASS	app/src/main/java/com/xingyu/music/data/TrackVariantEnricher.java	21a01b2158383768296bcd0aa52f5a27d4f309733b9db665311544b711eabf0a
++PASS	app/src/main/java/com/xingyu/music/data/TrackVariantStore.java	f693e72a5e55c2221808951e7776720604ec6eeee837f0d707feb91be4978858
++PASS	app/src/main/java/com/xingyu/music/download/AudioClipper.java	6595a41d9552518eafc1ff8416f21a8a760379c01b6d321d10f84b7ab0a7fde9
++PASS	app/src/main/java/com/xingyu/music/download/DownloadResolver.java	37a7658b34bd1c4c8b53df3a25abc939826e062998eaac3f275979e2e9adf69f
++PASS	app/src/main/java/com/xingyu/music/download/DownloadRouteStore.java	887c6543140ad2452d801a08b166a85eddf305bc9fe22db97e235b9019be3a23
++PASS	app/src/main/java/com/xingyu/music/download/OfflineDownloadService.java	26fdeef161186ca768c0e2077e33830385b35659a7f85389a70d84aac9d2c711
++PASS	app/src/main/java/com/xingyu/music/download/OfflineStore.java	f8880ac937a6df5f58599ba92b674d1ebbc17b8cbc9881f01214f6eb9b72140a
++PASS	app/src/main/java/com/xingyu/music/download/RingtoneHelper.java	cb060b2c981c9d67c2fc6caeb712063fe70a3969eb884fde1f179d67e62360c4
++PASS	app/src/main/java/com/xingyu/music/model/Song.java	d9917b36648085e661dca0061b62b3141829a33f164c8cdbeb23a0039cfc02f8
++PASS	app/src/main/java/com/xingyu/music/model/SourceVariant.java	333af304393ce3eb126f6b168dbcfafb0fed7c0e30a056860db99a9d52cb18fb
++PASS	app/src/main/java/com/xingyu/music/ui/RingtoneLyricSelectorView.java	c498b0ff81e7f170146d6eb630b8af7d1572379a8c46b12604642095f9b4e0a3
++AUTHORIZED_SLEEP_TIMER_CHANGE	app/src/main/java/com/xingyu/music/playback/PlaybackService.java	V71=9544e9bfa97a25eb2f1a8ebac54a606ffdae2e0de821ff3ad2e6890df096cec2	V72=e488ae0b0cc00e18c49f08d3f3ebda384149d559cebc88da9dd644dacec42369	只把分钟入口委托到精确 durationMs；deadline/Handler+AlarmManager/到点 pause 语义不变
++
++BYTE_IDENTICAL=25/25 locked files
++PlaybackService core route/state methods: 18/18 method-body identical to V71.
++MainActivity playback/search + download-plan guard methods: 11/11 method-body identical to V71.

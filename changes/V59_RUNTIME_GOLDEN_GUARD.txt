@@ -1,0 +1,2 @@
+Changed app/src/main files:
+java/com/xingyu/music/MainActivity.java

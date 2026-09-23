@@ -1,0 +1,11 @@
+Sunflower V4.1 Ringtone Safety Guard
+
+HARD WALL:
+- AudioClipper operates on OfflineStore.Record.file() only.
+- RingtoneHelper operates on local File / MediaStore / RingtoneManager only.
+- Neither class may call any playback/provider resolver or mutate playback health/route learning.
+- No online fallback is allowed when local clipping fails.
+- Unsupported local audio containers must fail closed or use the original complete offline file by explicit user choice.
+- System-set success is only reported after RingtoneManager read-back confirms the requested URI.
+
+V4 download isolation core remains byte-identical.

@@ -1,0 +1,1030 @@
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=LUNAXY_V69_跨厂商媒体兼容与高清桌面歌词.md' '--exclude=V69_自测结果.txt' '--exclude=README_验收说明.txt' '--exclude=V69_LOCKED_CORE_GUARD.txt' /mnt/data/v68/LunaxyMusic-V68/BUILD_APK.bat /mnt/data/v69work/BUILD_APK.bat
+--- /mnt/data/v68/LunaxyMusic-V68/BUILD_APK.bat	2026-08-14 06:51:53.000000000 +0000
++++ /mnt/data/v69work/BUILD_APK.bat	2026-08-14 07:46:23.002673030 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   Lunaxy Music V67 - Debug APK Build
++echo   Lunaxy Music V69 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=LUNAXY_V69_跨厂商媒体兼容与高清桌面歌词.md' '--exclude=V69_自测结果.txt' '--exclude=README_验收说明.txt' '--exclude=V69_LOCKED_CORE_GUARD.txt' /mnt/data/v68/LunaxyMusic-V68/app/build.gradle.kts /mnt/data/v69work/app/build.gradle.kts
+--- /mnt/data/v68/LunaxyMusic-V68/app/build.gradle.kts	2026-08-14 07:14:09.000000000 +0000
++++ /mnt/data/v69work/app/build.gradle.kts	2026-08-14 07:38:35.582324546 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 680
+-        versionName = "68.0.0"
++        versionCode = 690
++        versionName = "69.0.0"
+     }
+ 
+     buildTypes {
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=LUNAXY_V69_跨厂商媒体兼容与高清桌面歌词.md' '--exclude=V69_自测结果.txt' '--exclude=README_验收说明.txt' '--exclude=V69_LOCKED_CORE_GUARD.txt' /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/MainActivity.java /mnt/data/v69work/app/src/main/java/com/xingyu/music/MainActivity.java
+--- /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-14 07:14:09.000000000 +0000
++++ /mnt/data/v69work/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-14 07:44:53.331369072 +0000
+@@ -226,6 +226,9 @@
+     private long pendingRingtoneEndMs = 0L;
+     private boolean pendingDesktopLyricsEnable;
+     private boolean pendingDesktopLyricsDirectEnable;
++    // 0 none, 1 direct enable, 2 settings enable, 3 compatibility-only request. Android 13+ notification permission is
++    // requested only from a user-initiated desktop-lyrics action, never at app startup.
++    private int pendingDesktopLyricsNotificationMode;
+     private android.media.MediaPlayer localMusicPreviewPlayer;
+     private String localMusicPreviewKey = "";
+     private boolean localMusicPreviewResumePlayback;
+@@ -309,6 +312,7 @@
+     private static final int REQ_LOCAL_AUDIO = 2108;
+     private static final int REQ_EXPORT_PLAYLIST = 2109;
+     private static final int REQ_IMPORT_LUNAXY_PLAYLIST = 2110;
++    private static final int REQ_DESKTOP_LYRIC_NOTIFICATIONS = 2111;
+     private boolean pendingWeatherRadioOpen;
+ 
+     private static final class SmartCollection {
+@@ -528,21 +532,13 @@
+         super.onResume();
+         if (pendingDesktopLyricsDirectEnable) {
+             pendingDesktopLyricsDirectEnable = false;
+-            if (Settings.canDrawOverlays(this)) {
+-                DesktopLyricService.start(this);
+-                toast("桌面歌词已开启");
+-            } else {
+-                toast("未获得悬浮窗权限 · 桌面歌词未开启");
+-            }
++            if (Settings.canDrawOverlays(this)) enableDesktopLyricsAfterOverlay(true);
++            else toast("未获得悬浮窗权限 · 桌面歌词未开启");
+         }
+         if (pendingDesktopLyricsEnable) {
+             pendingDesktopLyricsEnable = false;
+-            if (Settings.canDrawOverlays(this)) {
+-                DesktopLyricService.start(this);
+-                main.postDelayed(this::showDesktopLyricSettings, 180L);
+-            } else {
+-                toast("未获得悬浮窗权限 · 桌面歌词未开启");
+-            }
++            if (Settings.canDrawOverlays(this)) enableDesktopLyricsAfterOverlay(false);
++            else toast("未获得悬浮窗权限 · 桌面歌词未开启");
+         }
+         boolean resumedPendingTone = false;
+         if (!pendingRingtoneSongKey.isEmpty() && offlineStore != null && RingtoneHelper.canWriteSystemSettings(this)) {
+@@ -2323,6 +2319,26 @@
+             }
+             return;
+         }
++        if (requestCode == REQ_DESKTOP_LYRIC_NOTIFICATIONS) {
++            int mode = pendingDesktopLyricsNotificationMode;
++            pendingDesktopLyricsNotificationMode = 0;
++            if (mode == 3) {
++                if (granted) {
++                    if (playback != null) playback.refreshSystemSurface();
++                    toast("系统通知已允许 · 媒体控制兼容性已增强");
++                } else toast("通知仍未允许 · 可在系统通知设置中手动开启");
++                main.postDelayed(this::showDesktopLyricSettings, 180L);
++                return;
++            }
++            if (Settings.canDrawOverlays(this)) {
++                DesktopLyricService.start(this);
++                if (!granted && Build.VERSION.SDK_INT >= 33)
++                    toast("桌面歌词已开启 · 通知未授权时部分厂商可能不显示系统媒体卡");
++                else if (mode == 1) toast("桌面歌词已开启");
++                if (mode == 2) main.postDelayed(this::showDesktopLyricSettings, 180L);
++            }
++            return;
++        }
+         if (requestCode == REQ_LOCAL_AUDIO) {
+             boolean wanted = pendingLocalMusicScan; pendingLocalMusicScan = false;
+             if (wanted && granted) scanLocalMusic();
+@@ -4420,8 +4436,46 @@
+             }
+             return;
+         }
++        enableDesktopLyricsAfterOverlay(true);
++    }
++
++    private void enableDesktopLyricsAfterOverlay(boolean direct) {
++        if (maybeRequestDesktopLyricNotificationPermission(direct ? 1 : 2)) return;
+         DesktopLyricService.start(this);
+-        toast(DesktopLyricService.enabled(this) ? "桌面歌词已开启" : "正在开启桌面歌词");
++        if (direct) toast(DesktopLyricService.enabled(this) ? "桌面歌词已开启" : "正在开启桌面歌词");
++        else main.postDelayed(this::showDesktopLyricSettings, 180L);
++    }
++
++    private boolean maybeRequestDesktopLyricNotificationPermission(int mode) {
++        if (Build.VERSION.SDK_INT < 33
++                || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return false;
++        SharedPreferences p = getSharedPreferences("xingyu_ui_settings", MODE_PRIVATE);
++        if (p.getBoolean("desktop_notification_prompted_v1", false)) return false;
++        p.edit().putBoolean("desktop_notification_prompted_v1", true).apply();
++        pendingDesktopLyricsNotificationMode = mode;
++        requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_DESKTOP_LYRIC_NOTIFICATIONS);
++        return true;
++    }
++
++    private void requestDesktopLyricNotificationCompatibility() {
++        if (Build.VERSION.SDK_INT < 33) { toast("当前 Android 版本无需单独授予通知权限"); return; }
++        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
++            if (playback != null) playback.refreshSystemSurface();
++            toast("系统通知已允许");
++            return;
++        }
++        SharedPreferences p = getSharedPreferences("xingyu_ui_settings", MODE_PRIVATE);
++        if (!p.getBoolean("desktop_notification_prompted_v1", false)) {
++            p.edit().putBoolean("desktop_notification_prompted_v1", true).apply();
++            pendingDesktopLyricsNotificationMode = 3;
++            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_DESKTOP_LYRIC_NOTIFICATIONS);
++            return;
++        }
++        try {
++            Intent i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
++                    .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
++            startActivity(i);
++        } catch (Exception e) { toast("请在系统设置中允许 Lunaxy 通知"); }
+     }
+ 
+     private void showDesktopLyricSettings() {
+@@ -4445,8 +4499,26 @@
+         TextView dot=Ui.text(this,enabled?"●":"○",16f,enabled?Ui.mix(nowAccent,Color.WHITE,.2f):Ui.DIM,true);dot.setGravity(Gravity.CENTER);hero.addView(dot,Ui.lp(Ui.dp(this,32),Ui.dp(this,40)));
+         LinearLayout.LayoutParams hp=Ui.lp(-1,Ui.dp(this,60));hp.topMargin=Ui.dp(this,10);card.addView(hero,hp);
+ 
++        if (Build.VERSION.SDK_INT >= 33
++                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
++            TextView compat = modalButton("系统媒体卡兼容 · 允许通知", false);
++            compat.setTextSize(11.2f);
++            compat.setTextColor(Ui.CYAN);
++            compat.setOnClickListener(v -> { dismissModalNow(); requestDesktopLyricNotificationCompatibility(); });
++            LinearLayout.LayoutParams nlp=Ui.lp(-1,Ui.dp(this,42));nlp.topMargin=Ui.dp(this,8);card.addView(compat,nlp);
++        }
++
+         TextView toggle=modalButton(enabled?"关闭桌面歌词":"开启桌面歌词",!enabled);if(enabled)toggle.setTextColor(Ui.PINK);
+-        toggle.setOnClickListener(v->{if(DesktopLyricService.enabled(this))DesktopLyricService.stop(this);else DesktopLyricService.start(this);dismissModalNow();main.postDelayed(this::showDesktopLyricSettings,140L);});
++        toggle.setOnClickListener(v->{
++            if (DesktopLyricService.enabled(this)) {
++                DesktopLyricService.stop(this);
++                dismissModalNow();
++                main.postDelayed(this::showDesktopLyricSettings,140L);
++            } else {
++                dismissModalNow();
++                enableDesktopLyricsAfterOverlay(false);
++            }
++        });
+         LinearLayout.LayoutParams tp=Ui.lp(-1,Ui.dp(this,48));tp.topMargin=Ui.dp(this,9);card.addView(toggle,tp);
+ 
+         LinearLayout lines=Ui.row(this);TextView single=modalButton("单行",false),dual=modalButton("双行",false);
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=LUNAXY_V69_跨厂商媒体兼容与高清桌面歌词.md' '--exclude=V69_自测结果.txt' '--exclude=README_验收说明.txt' '--exclude=V69_LOCKED_CORE_GUARD.txt' /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/desktop/DesktopLyricService.java /mnt/data/v69work/app/src/main/java/com/xingyu/music/desktop/DesktopLyricService.java
+--- /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/desktop/DesktopLyricService.java	2026-08-13 18:22:07.000000000 +0000
++++ /mnt/data/v69work/app/src/main/java/com/xingyu/music/desktop/DesktopLyricService.java	2026-08-14 07:42:22.015743540 +0000
+@@ -93,7 +93,7 @@
+     private WindowManager.LayoutParams lp;
+     private LinearLayout root;
+     private DesktopLyricLaneView currentLine;
+-    private TextView nextLine;
++    private DesktopLyricLaneView nextLine;
+     private LinearLayout controlPanel;
+     private PlaybackService playback;
+     private boolean bound;
+@@ -256,7 +256,8 @@
+                 WindowManager.LayoutParams.MATCH_PARENT,
+                 WindowManager.LayoutParams.WRAP_CONTENT,
+                 Build.VERSION.SDK_INT >= 26 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY : WindowManager.LayoutParams.TYPE_PHONE,
+-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
++                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
++                        | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                 PixelFormat.TRANSLUCENT);
+         lp.gravity = Gravity.TOP | Gravity.START;
+         lp.x = 0;
+@@ -269,18 +270,14 @@
+         root.setBackgroundColor(Color.TRANSPARENT);
+ 
+         currentLine = new DesktopLyricLaneView(this);
+-        currentLine.setPreferredTextSize(18.2f, 14.8f);
+-        currentLine.setShadowLayer(Ui.dp(this, 2.2f), 0f, Ui.dp(this, .7f), Color.argb(225, 0, 0, 0));
+-        root.addView(currentLine, new LinearLayout.LayoutParams(-1, Ui.dp(this, 31)));
+-
+-        nextLine = new TextView(this);
+-        nextLine.setGravity(Gravity.CENTER);
+-        nextLine.setSingleLine(true);
+-        nextLine.setIncludeFontPadding(false);
+-        nextLine.setTextSize(14.6f);
+-        nextLine.setTextColor(Color.argb(185, 245, 246, 250));
+-        nextLine.setShadowLayer(Ui.dp(this, 2.0f), 0f, Ui.dp(this, .7f), Color.argb(220, 0, 0, 0));
+-        root.addView(nextLine, new LinearLayout.LayoutParams(-1, Ui.dp(this, 25)));
++        currentLine.setPreferredTextSize(18.6f, 15.8f);
++        currentLine.setOutline(.82f, Color.argb(215, 0, 0, 0));
++        root.addView(currentLine, new LinearLayout.LayoutParams(-1, Ui.dp(this, 32)));
++
++        nextLine = new DesktopLyricLaneView(this);
++        nextLine.setPreferredTextSize(14.9f, 13.9f);
++        nextLine.setOutline(.68f, Color.argb(195, 0, 0, 0));
++        root.addView(nextLine, new LinearLayout.LayoutParams(-1, Ui.dp(this, 26)));
+ 
+         controlPanel = buildControlPanel();
+         LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(Ui.dp(this, 292), Ui.dp(this, 92));
+@@ -344,15 +341,15 @@
+         locked = p.getBoolean(KEY_LOCKED, false);
+         doubleLine = p.getBoolean(KEY_DOUBLE, true);
+         float scale = clampScale(p.getFloat(KEY_FONT_SCALE, 1f));
+-        currentLine.setPreferredTextSize(18.2f * scale, 14.8f * scale);
+-        nextLine.setTextSize(14.6f * scale);
++        currentLine.setPreferredTextSize(18.6f * scale, 15.8f * scale);
++        nextLine.setPreferredTextSize(14.9f * scale, 13.9f * scale);
+         nextLine.setVisibility(doubleLine ? View.VISIBLE : View.GONE);
+         // V3 renderer invariant: the lyric lane itself is always visible when the service is alive.
+         currentLine.setVisibility(View.VISIBLE);
+         currentLine.animate().cancel();
+         currentLine.setAlpha(1f);
+         currentLine.setTranslationY(0f);
+-        if (doubleLine) { nextLine.setAlpha(.58f); nextLine.setTranslationY(0f); }
++        if (doubleLine) { nextLine.setAlpha(.78f); nextLine.setTranslationY(0f); }
+         applyLyricPalette();
+         if (locked) hideControlPanel();
+         if (lp != null) {
+@@ -390,8 +387,9 @@
+             }
+         }
+         currentLine.setGradientColors(start, end);
+-        nextLine.setTextColor(Ui.mix(end, Color.WHITE, .24f));
+-        nextLine.setAlpha(.62f);
++        int secondary = Ui.mix(end, Color.WHITE, .30f);
++        nextLine.setGradientColors(secondary, secondary);
++        nextLine.setAlpha(.78f);
+     }
+ 
+     private static int readableAccent(int color) {
+@@ -613,6 +611,7 @@
+         channel.setSound(null, null);
+         channel.enableVibration(false);
+         channel.setShowBadge(false);
++        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+         nm.createNotificationChannel(channel);
+     }
+ 
+@@ -632,9 +631,9 @@
+                 .setContentText(locked ? "已锁定 · 触摸穿透" : "未锁定 · 可移动")
+                 .setOngoing(true).setOnlyAlertOnce(true).setShowWhen(false).setContentIntent(open)
+                 // The icon describes CURRENT state; tapping still toggles it.
+-                .addAction(new Notification.Action.Builder(locked ? R.drawable.ic_lyric_lock : R.drawable.ic_lyric_unlock,
++                .addAction(new Notification.Action.Builder(locked ? R.drawable.ic_lyric_lock_system : R.drawable.ic_lyric_unlock_system,
+                         locked ? "已锁定" : "未锁定", lock).build())
+-                .addAction(new Notification.Action.Builder(R.drawable.ic_lyric_close, "关闭", close).build())
++                .addAction(new Notification.Action.Builder(R.drawable.ic_lyric_close_system, "关闭", close).build())
+                 .build();
+     }
+ 
+@@ -681,7 +680,7 @@
+         nextLine.animate().cancel();
+         nextLine.setAlpha(0f);
+         nextLine.setTranslationY(Ui.dp(this, 4));
+-        nextLine.animate().alpha(.58f).translationY(0f).setDuration(260L).start();
++        nextLine.animate().alpha(.78f).translationY(0f).setDuration(240L).start();
+     }
+ 
+     private static String safeLine(String s) { return s == null ? "" : s.trim(); }
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=LUNAXY_V69_跨厂商媒体兼容与高清桌面歌词.md' '--exclude=V69_自测结果.txt' '--exclude=README_验收说明.txt' '--exclude=V69_LOCKED_CORE_GUARD.txt' /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/playback/PlaybackService.java /mnt/data/v69work/app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+--- /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-14 06:05:31.000000000 +0000
++++ /mnt/data/v69work/app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-14 07:42:22.015518835 +0000
+@@ -228,6 +228,19 @@
+                 }
+             }
+         });
++        // Keep the framework MediaSession explicit for older/vendor SystemUI implementations.
++        // These flags/activity/audio attributes only describe the media surface; ExoPlayer routing
++        // and the proven READY/fallback state machine remain unchanged.
++        mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS
++                | MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
++        PendingIntent sessionActivity = PendingIntent.getActivity(this, 10,
++                new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP),
++                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
++        mediaSession.setSessionActivity(sessionActivity);
++        mediaSession.setPlaybackToLocal(new android.media.AudioAttributes.Builder()
++                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
++                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
++                .build());
+         mediaSession.setActive(true);
+ 
+         IntentFilter noisy = new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
+@@ -789,9 +802,9 @@
+             playbackStateBuilder.addCustomAction(new PlaybackState.CustomAction.Builder(
+                     CUSTOM_DESKTOP_LYRIC,
+                     lyricEnabled ? (lyricLocked ? "已锁定歌词" : "未锁定歌词") : "桌面歌词",
+-                    lyricEnabled ? (lyricLocked ? R.drawable.ic_lyric_lock : R.drawable.ic_lyric_unlock) : R.drawable.ic_lyric_toggle).build());
++                    lyricEnabled ? (lyricLocked ? R.drawable.ic_lyric_lock_system : R.drawable.ic_lyric_unlock_system) : R.drawable.ic_lyric_toggle_system).build());
+             if (lyricEnabled) playbackStateBuilder.addCustomAction(new PlaybackState.CustomAction.Builder(
+-                    CUSTOM_DESKTOP_LYRIC_CLOSE, "关闭歌词", R.drawable.ic_lyric_close).build());
++                    CUSTOM_DESKTOP_LYRIC_CLOSE, "关闭歌词", R.drawable.ic_lyric_close_system).build());
+         }
+         mediaSession.setPlaybackState(playbackStateBuilder.build());
+         if (s != null) {
+@@ -850,10 +863,10 @@
+         b.addAction(new Notification.Action.Builder(R.drawable.ic_media_next, "下一首", next).build());
+         if (overlayGranted) {
+             b.addAction(new Notification.Action.Builder(lyricEnabled
+-                            ? (lyricLocked ? R.drawable.ic_lyric_lock : R.drawable.ic_lyric_unlock)
+-                            : R.drawable.ic_lyric_toggle,
++                            ? (lyricLocked ? R.drawable.ic_lyric_lock_system : R.drawable.ic_lyric_unlock_system)
++                            : R.drawable.ic_lyric_toggle_system,
+                     lyricEnabled ? (lyricLocked ? "已锁定歌词" : "未锁定歌词") : "桌面歌词", lyricState).build());
+-            if (lyricEnabled) b.addAction(new Notification.Action.Builder(R.drawable.ic_lyric_close, "关闭歌词", lyricClose).build());
++            if (lyricEnabled) b.addAction(new Notification.Action.Builder(R.drawable.ic_lyric_close_system, "关闭歌词", lyricClose).build());
+         }
+         b.setStyle(new Notification.MediaStyle()
+                 .setMediaSession(mediaSession == null ? null : mediaSession.getSessionToken())
+@@ -872,6 +885,8 @@
+         NotificationChannel c = new NotificationChannel(CHANNEL, getString(R.string.notification_channel), NotificationManager.IMPORTANCE_LOW);
+         c.setSound(null, null);
+         c.enableVibration(false);
++        c.setShowBadge(false);
++        c.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+         nm.createNotificationChannel(c);
+     }
+ 
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=LUNAXY_V69_跨厂商媒体兼容与高清桌面歌词.md' '--exclude=V69_自测结果.txt' '--exclude=README_验收说明.txt' '--exclude=V69_LOCKED_CORE_GUARD.txt' /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/ui/DesktopLyricLaneView.java /mnt/data/v69work/app/src/main/java/com/xingyu/music/ui/DesktopLyricLaneView.java
+--- /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/ui/DesktopLyricLaneView.java	2026-08-13 17:19:26.000000000 +0000
++++ /mnt/data/v69work/app/src/main/java/com/xingyu/music/ui/DesktopLyricLaneView.java	2026-08-14 07:39:02.697433240 +0000
+@@ -2,22 +2,40 @@
+ 
+ import android.content.Context;
+ import android.graphics.Canvas;
++import android.graphics.Color;
+ import android.graphics.LinearGradient;
++import android.graphics.Paint;
+ import android.graphics.Shader;
++import android.graphics.Typeface;
+ import android.text.TextPaint;
+ import android.text.TextUtils;
+ import android.view.Gravity;
++import android.view.View;
+ import android.widget.TextView;
+ 
+-/** Full-color desktop lyric line with adaptive size and marquee for very long sentences. */
++/**
++ * High-clarity desktop lyric line with adaptive size and marquee for very long sentences.
++ *
++ * Instead of a large blurred TextView shadow, glyphs are rendered in two crisp passes:
++ * a narrow dark outline followed by the normal gradient fill. This keeps edges readable on
++ * bright and dark wallpapers and avoids density/GPU-dependent blur on overlay windows.
++ */
+ public final class DesktopLyricLaneView extends TextView {
+     private int start = Ui.LYRIC_ICE_START;
+     private int end = Ui.LYRIC_ICE_END;
+     private float preferredSp = 18.2f;
+     private float minSp = 15.0f;
++    private float outlinePx;
++    private int outlineColor = Color.argb(205, 0, 0, 0);
++    private LinearGradient gradient;
++    private int gradientWidth = -1;
++    private int gradientStart;
++    private int gradientEnd;
+ 
+     public DesktopLyricLaneView(Context context) {
+         super(context);
++        float d = Math.max(1f, getResources().getDisplayMetrics().density);
++        outlinePx = Math.max(1.15f, .78f * d);
+         setGravity(Gravity.CENTER);
+         setSingleLine(true);
+         setIncludeFontPadding(false);
+@@ -25,12 +43,35 @@
+         setEllipsize(null);
+         setMarqueeRepeatLimit(-1);
+         setTextSize(preferredSp);
++        setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+         setAlpha(1f);
++        // Overlay windows are rendered by OEM SystemUI/compositor stacks that are not identical.
++        // Keep the text path explicit and hardware backed, while avoiding blurred shadow layers.
++        setLayerType(View.LAYER_TYPE_HARDWARE, null);
++        TextPaint p = getPaint();
++        p.setAntiAlias(true);
++        p.setSubpixelText(true);
++        p.setDither(true);
++        p.setHinting(Paint.HINTING_ON);
++    }
++
++    public void setGradientColors(int a, int b) {
++        start = a;
++        end = b;
++        gradientWidth = -1;
++        invalidate();
++    }
++
++    public void setOutline(float dp, int color) {
++        float d = Math.max(1f, getResources().getDisplayMetrics().density);
++        outlinePx = Math.max(.75f, dp * d);
++        outlineColor = color;
++        invalidate();
+     }
+ 
+-    public void setGradientColors(int a, int b) { start = a; end = b; invalidate(); }
+     public void setPreferredTextSize(float sp, float minSp) {
+-        preferredSp = Math.max(12f, sp); this.minSp = Math.max(11f, Math.min(preferredSp, minSp));
++        preferredSp = Math.max(12f, sp);
++        this.minSp = Math.max(11f, Math.min(preferredSp, minSp));
+         adapt();
+     }
+ 
+@@ -46,7 +87,9 @@
+         float width = p.measureText(getText() == null ? "" : getText().toString());
+         if (width > available && available > 20) {
+             float ratio = available / Math.max(1f, width);
+-            float target = Math.max(minSp, preferredSp * ratio * .98f);
++            // Do not shrink a long desktop lyric into a thin, soft line. Once the readable floor
++            // is reached, native marquee takes over instead of reducing glyph detail further.
++            float target = Math.max(minSp, preferredSp * ratio * .985f);
+             setTextSize(target);
+             width = getPaint().measureText(getText() == null ? "" : getText().toString());
+         }
+@@ -57,14 +100,50 @@
+     }
+ 
+     @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+-        super.onSizeChanged(w, h, oldw, oldh); post(this::adapt);
++        super.onSizeChanged(w, h, oldw, oldh);
++        gradientWidth = -1;
++        post(this::adapt);
++    }
++
++    private Shader fillShader() {
++        int width = Math.max(1, getWidth() - getPaddingLeft() - getPaddingRight());
++        if (gradient == null || gradientWidth != width || gradientStart != start || gradientEnd != end) {
++            float left = getPaddingLeft();
++            float right = Math.max(left + 1f, getWidth() - getPaddingRight());
++            gradient = new LinearGradient(left, 0f, right, 0f, start, end, Shader.TileMode.CLAMP);
++            gradientWidth = width;
++            gradientStart = start;
++            gradientEnd = end;
++        }
++        return gradient;
+     }
+ 
+     @Override protected void onDraw(Canvas canvas) {
+-        float left = getPaddingLeft();
+-        float right = Math.max(left + 1f, getWidth() - getPaddingRight());
+-        getPaint().setShader(new LinearGradient(left, 0f, right, 0f, start, end, Shader.TileMode.CLAMP));
++        TextPaint p = getPaint();
++        Shader oldShader = p.getShader();
++        Paint.Style oldStyle = p.getStyle();
++        float oldStrokeWidth = p.getStrokeWidth();
++        int oldColor = p.getColor();
++        Paint.Join oldJoin = p.getStrokeJoin();
++
++        // Pass 1: narrow solid outline. Unlike setShadowLayer(), this does not blur glyph edges.
++        p.setShader(null);
++        p.setStyle(Paint.Style.STROKE);
++        p.setStrokeJoin(Paint.Join.ROUND);
++        p.setStrokeWidth(outlinePx);
++        p.setColor(outlineColor);
+         super.onDraw(canvas);
+-        getPaint().setShader(null);
++
++        // Pass 2: clean fill. The gradient keeps Lunaxy's cover/accent identity.
++        p.setStyle(Paint.Style.FILL);
++        p.setStrokeWidth(oldStrokeWidth);
++        p.setShader(fillShader());
++        super.onDraw(canvas);
++
++        p.setShader(oldShader);
++        p.setStyle(oldStyle);
++        p.setStrokeWidth(oldStrokeWidth);
++        p.setStrokeJoin(oldJoin);
++        p.setColor(oldColor);
+     }
+ }
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-hdpi/ic_lyric_close_system.png and /mnt/data/v69work/app/src/main/res/drawable-hdpi/ic_lyric_close_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-hdpi/ic_lyric_lock_system.png and /mnt/data/v69work/app/src/main/res/drawable-hdpi/ic_lyric_lock_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-hdpi/ic_lyric_toggle_system.png and /mnt/data/v69work/app/src/main/res/drawable-hdpi/ic_lyric_toggle_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-hdpi/ic_lyric_unlock_system.png and /mnt/data/v69work/app/src/main/res/drawable-hdpi/ic_lyric_unlock_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-mdpi/ic_lyric_close_system.png and /mnt/data/v69work/app/src/main/res/drawable-mdpi/ic_lyric_close_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-mdpi/ic_lyric_lock_system.png and /mnt/data/v69work/app/src/main/res/drawable-mdpi/ic_lyric_lock_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-mdpi/ic_lyric_toggle_system.png and /mnt/data/v69work/app/src/main/res/drawable-mdpi/ic_lyric_toggle_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-mdpi/ic_lyric_unlock_system.png and /mnt/data/v69work/app/src/main/res/drawable-mdpi/ic_lyric_unlock_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xhdpi/ic_lyric_close_system.png and /mnt/data/v69work/app/src/main/res/drawable-xhdpi/ic_lyric_close_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xhdpi/ic_lyric_lock_system.png and /mnt/data/v69work/app/src/main/res/drawable-xhdpi/ic_lyric_lock_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xhdpi/ic_lyric_toggle_system.png and /mnt/data/v69work/app/src/main/res/drawable-xhdpi/ic_lyric_toggle_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xhdpi/ic_lyric_unlock_system.png and /mnt/data/v69work/app/src/main/res/drawable-xhdpi/ic_lyric_unlock_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxhdpi/ic_lyric_close_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxhdpi/ic_lyric_close_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxhdpi/ic_lyric_lock_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxhdpi/ic_lyric_lock_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxhdpi/ic_lyric_toggle_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxhdpi/ic_lyric_toggle_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxhdpi/ic_lyric_unlock_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxhdpi/ic_lyric_unlock_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxxhdpi/ic_lyric_close_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxxhdpi/ic_lyric_close_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxxhdpi/ic_lyric_lock_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxxhdpi/ic_lyric_lock_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxxhdpi/ic_lyric_toggle_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxxhdpi/ic_lyric_toggle_system.png differ
+Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxxhdpi/ic_lyric_unlock_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxxhdpi/ic_lyric_unlock_system.png differ
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=LUNAXY_V69_跨厂商媒体兼容与高清桌面歌词.md' '--exclude=V69_自测结果.txt' '--exclude=README_验收说明.txt' '--exclude=V69_LOCKED_CORE_GUARD.txt' /mnt/data/v68/LunaxyMusic-V68/changes/V68-to-V69_OEM_MEDIA_CRISP_DESKTOP_LYRICS.patch /mnt/data/v69work/changes/V68-to-V69_OEM_MEDIA_CRISP_DESKTOP_LYRICS.patch
+--- /mnt/data/v68/LunaxyMusic-V68/changes/V68-to-V69_OEM_MEDIA_CRISP_DESKTOP_LYRICS.patch	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/v69work/changes/V68-to-V69_OEM_MEDIA_CRISP_DESKTOP_LYRICS.patch	2026-08-14 07:47:23.796607585 +0000
+@@ -0,0 +1,513 @@
++diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=LUNAXY_V69_跨厂商媒体兼容与高清桌面歌词.md' '--exclude=V69_自测结果.txt' '--exclude=README_验收说明.txt' '--exclude=V69_LOCKED_CORE_GUARD.txt' /mnt/data/v68/LunaxyMusic-V68/BUILD_APK.bat /mnt/data/v69work/BUILD_APK.bat
++--- /mnt/data/v68/LunaxyMusic-V68/BUILD_APK.bat	2026-08-14 06:51:53.000000000 +0000
+++++ /mnt/data/v69work/BUILD_APK.bat	2026-08-14 07:46:23.002673030 +0000
++@@ -2,7 +2,7 @@
++ setlocal
++ cd /d "%~dp0"
++ echo ==========================================
++-echo   Lunaxy Music V67 - Debug APK Build
+++echo   Lunaxy Music V69 - Debug APK Build
++ echo ==========================================
++ call gradlew.bat :app:assembleDebug
++ if errorlevel 1 (
++diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=LUNAXY_V69_跨厂商媒体兼容与高清桌面歌词.md' '--exclude=V69_自测结果.txt' '--exclude=README_验收说明.txt' '--exclude=V69_LOCKED_CORE_GUARD.txt' /mnt/data/v68/LunaxyMusic-V68/app/build.gradle.kts /mnt/data/v69work/app/build.gradle.kts
++--- /mnt/data/v68/LunaxyMusic-V68/app/build.gradle.kts	2026-08-14 07:14:09.000000000 +0000
+++++ /mnt/data/v69work/app/build.gradle.kts	2026-08-14 07:38:35.582324546 +0000
++@@ -10,8 +10,8 @@
++         applicationId = "com.xingyu.music"
++         minSdk = 26
++         targetSdk = 36
++-        versionCode = 680
++-        versionName = "68.0.0"
+++        versionCode = 690
+++        versionName = "69.0.0"
++     }
++ 
++     buildTypes {
++diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=LUNAXY_V69_跨厂商媒体兼容与高清桌面歌词.md' '--exclude=V69_自测结果.txt' '--exclude=README_验收说明.txt' '--exclude=V69_LOCKED_CORE_GUARD.txt' /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/MainActivity.java /mnt/data/v69work/app/src/main/java/com/xingyu/music/MainActivity.java
++--- /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-14 07:14:09.000000000 +0000
+++++ /mnt/data/v69work/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-14 07:44:53.331369072 +0000
++@@ -226,6 +226,9 @@
++     private long pendingRingtoneEndMs = 0L;
++     private boolean pendingDesktopLyricsEnable;
++     private boolean pendingDesktopLyricsDirectEnable;
+++    // 0 none, 1 direct enable, 2 settings enable, 3 compatibility-only request. Android 13+ notification permission is
+++    // requested only from a user-initiated desktop-lyrics action, never at app startup.
+++    private int pendingDesktopLyricsNotificationMode;
++     private android.media.MediaPlayer localMusicPreviewPlayer;
++     private String localMusicPreviewKey = "";
++     private boolean localMusicPreviewResumePlayback;
++@@ -309,6 +312,7 @@
++     private static final int REQ_LOCAL_AUDIO = 2108;
++     private static final int REQ_EXPORT_PLAYLIST = 2109;
++     private static final int REQ_IMPORT_LUNAXY_PLAYLIST = 2110;
+++    private static final int REQ_DESKTOP_LYRIC_NOTIFICATIONS = 2111;
++     private boolean pendingWeatherRadioOpen;
++ 
++     private static final class SmartCollection {
++@@ -528,21 +532,13 @@
++         super.onResume();
++         if (pendingDesktopLyricsDirectEnable) {
++             pendingDesktopLyricsDirectEnable = false;
++-            if (Settings.canDrawOverlays(this)) {
++-                DesktopLyricService.start(this);
++-                toast("桌面歌词已开启");
++-            } else {
++-                toast("未获得悬浮窗权限 · 桌面歌词未开启");
++-            }
+++            if (Settings.canDrawOverlays(this)) enableDesktopLyricsAfterOverlay(true);
+++            else toast("未获得悬浮窗权限 · 桌面歌词未开启");
++         }
++         if (pendingDesktopLyricsEnable) {
++             pendingDesktopLyricsEnable = false;
++-            if (Settings.canDrawOverlays(this)) {
++-                DesktopLyricService.start(this);
++-                main.postDelayed(this::showDesktopLyricSettings, 180L);
++-            } else {
++-                toast("未获得悬浮窗权限 · 桌面歌词未开启");
++-            }
+++            if (Settings.canDrawOverlays(this)) enableDesktopLyricsAfterOverlay(false);
+++            else toast("未获得悬浮窗权限 · 桌面歌词未开启");
++         }
++         boolean resumedPendingTone = false;
++         if (!pendingRingtoneSongKey.isEmpty() && offlineStore != null && RingtoneHelper.canWriteSystemSettings(this)) {
++@@ -2323,6 +2319,26 @@
++             }
++             return;
++         }
+++        if (requestCode == REQ_DESKTOP_LYRIC_NOTIFICATIONS) {
+++            int mode = pendingDesktopLyricsNotificationMode;
+++            pendingDesktopLyricsNotificationMode = 0;
+++            if (mode == 3) {
+++                if (granted) {
+++                    if (playback != null) playback.refreshSystemSurface();
+++                    toast("系统通知已允许 · 媒体控制兼容性已增强");
+++                } else toast("通知仍未允许 · 可在系统通知设置中手动开启");
+++                main.postDelayed(this::showDesktopLyricSettings, 180L);
+++                return;
+++            }
+++            if (Settings.canDrawOverlays(this)) {
+++                DesktopLyricService.start(this);
+++                if (!granted && Build.VERSION.SDK_INT >= 33)
+++                    toast("桌面歌词已开启 · 通知未授权时部分厂商可能不显示系统媒体卡");
+++                else if (mode == 1) toast("桌面歌词已开启");
+++                if (mode == 2) main.postDelayed(this::showDesktopLyricSettings, 180L);
+++            }
+++            return;
+++        }
++         if (requestCode == REQ_LOCAL_AUDIO) {
++             boolean wanted = pendingLocalMusicScan; pendingLocalMusicScan = false;
++             if (wanted && granted) scanLocalMusic();
++@@ -4420,8 +4436,46 @@
++             }
++             return;
++         }
+++        enableDesktopLyricsAfterOverlay(true);
+++    }
+++
+++    private void enableDesktopLyricsAfterOverlay(boolean direct) {
+++        if (maybeRequestDesktopLyricNotificationPermission(direct ? 1 : 2)) return;
++         DesktopLyricService.start(this);
++-        toast(DesktopLyricService.enabled(this) ? "桌面歌词已开启" : "正在开启桌面歌词");
+++        if (direct) toast(DesktopLyricService.enabled(this) ? "桌面歌词已开启" : "正在开启桌面歌词");
+++        else main.postDelayed(this::showDesktopLyricSettings, 180L);
+++    }
+++
+++    private boolean maybeRequestDesktopLyricNotificationPermission(int mode) {
+++        if (Build.VERSION.SDK_INT < 33
+++                || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return false;
+++        SharedPreferences p = getSharedPreferences("xingyu_ui_settings", MODE_PRIVATE);
+++        if (p.getBoolean("desktop_notification_prompted_v1", false)) return false;
+++        p.edit().putBoolean("desktop_notification_prompted_v1", true).apply();
+++        pendingDesktopLyricsNotificationMode = mode;
+++        requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_DESKTOP_LYRIC_NOTIFICATIONS);
+++        return true;
+++    }
+++
+++    private void requestDesktopLyricNotificationCompatibility() {
+++        if (Build.VERSION.SDK_INT < 33) { toast("当前 Android 版本无需单独授予通知权限"); return; }
+++        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+++            if (playback != null) playback.refreshSystemSurface();
+++            toast("系统通知已允许");
+++            return;
+++        }
+++        SharedPreferences p = getSharedPreferences("xingyu_ui_settings", MODE_PRIVATE);
+++        if (!p.getBoolean("desktop_notification_prompted_v1", false)) {
+++            p.edit().putBoolean("desktop_notification_prompted_v1", true).apply();
+++            pendingDesktopLyricsNotificationMode = 3;
+++            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_DESKTOP_LYRIC_NOTIFICATIONS);
+++            return;
+++        }
+++        try {
+++            Intent i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+++                    .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+++            startActivity(i);
+++        } catch (Exception e) { toast("请在系统设置中允许 Lunaxy 通知"); }
++     }
++ 
++     private void showDesktopLyricSettings() {
++@@ -4445,8 +4499,26 @@
++         TextView dot=Ui.text(this,enabled?"●":"○",16f,enabled?Ui.mix(nowAccent,Color.WHITE,.2f):Ui.DIM,true);dot.setGravity(Gravity.CENTER);hero.addView(dot,Ui.lp(Ui.dp(this,32),Ui.dp(this,40)));
++         LinearLayout.LayoutParams hp=Ui.lp(-1,Ui.dp(this,60));hp.topMargin=Ui.dp(this,10);card.addView(hero,hp);
++ 
+++        if (Build.VERSION.SDK_INT >= 33
+++                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+++            TextView compat = modalButton("系统媒体卡兼容 · 允许通知", false);
+++            compat.setTextSize(11.2f);
+++            compat.setTextColor(Ui.CYAN);
+++            compat.setOnClickListener(v -> { dismissModalNow(); requestDesktopLyricNotificationCompatibility(); });
+++            LinearLayout.LayoutParams nlp=Ui.lp(-1,Ui.dp(this,42));nlp.topMargin=Ui.dp(this,8);card.addView(compat,nlp);
+++        }
+++
++         TextView toggle=modalButton(enabled?"关闭桌面歌词":"开启桌面歌词",!enabled);if(enabled)toggle.setTextColor(Ui.PINK);
++-        toggle.setOnClickListener(v->{if(DesktopLyricService.enabled(this))DesktopLyricService.stop(this);else DesktopLyricService.start(this);dismissModalNow();main.postDelayed(this::showDesktopLyricSettings,140L);});
+++        toggle.setOnClickListener(v->{
+++            if (DesktopLyricService.enabled(this)) {
+++                DesktopLyricService.stop(this);
+++                dismissModalNow();
+++                main.postDelayed(this::showDesktopLyricSettings,140L);
+++            } else {
+++                dismissModalNow();
+++                enableDesktopLyricsAfterOverlay(false);
+++            }
+++        });
++         LinearLayout.LayoutParams tp=Ui.lp(-1,Ui.dp(this,48));tp.topMargin=Ui.dp(this,9);card.addView(toggle,tp);
++ 
++         LinearLayout lines=Ui.row(this);TextView single=modalButton("单行",false),dual=modalButton("双行",false);
++diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=LUNAXY_V69_跨厂商媒体兼容与高清桌面歌词.md' '--exclude=V69_自测结果.txt' '--exclude=README_验收说明.txt' '--exclude=V69_LOCKED_CORE_GUARD.txt' /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/desktop/DesktopLyricService.java /mnt/data/v69work/app/src/main/java/com/xingyu/music/desktop/DesktopLyricService.java
++--- /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/desktop/DesktopLyricService.java	2026-08-13 18:22:07.000000000 +0000
+++++ /mnt/data/v69work/app/src/main/java/com/xingyu/music/desktop/DesktopLyricService.java	2026-08-14 07:42:22.015743540 +0000
++@@ -93,7 +93,7 @@
++     private WindowManager.LayoutParams lp;
++     private LinearLayout root;
++     private DesktopLyricLaneView currentLine;
++-    private TextView nextLine;
+++    private DesktopLyricLaneView nextLine;
++     private LinearLayout controlPanel;
++     private PlaybackService playback;
++     private boolean bound;
++@@ -256,7 +256,8 @@
++                 WindowManager.LayoutParams.MATCH_PARENT,
++                 WindowManager.LayoutParams.WRAP_CONTENT,
++                 Build.VERSION.SDK_INT >= 26 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY : WindowManager.LayoutParams.TYPE_PHONE,
++-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+++                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+++                        | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
++                 PixelFormat.TRANSLUCENT);
++         lp.gravity = Gravity.TOP | Gravity.START;
++         lp.x = 0;
++@@ -269,18 +270,14 @@
++         root.setBackgroundColor(Color.TRANSPARENT);
++ 
++         currentLine = new DesktopLyricLaneView(this);
++-        currentLine.setPreferredTextSize(18.2f, 14.8f);
++-        currentLine.setShadowLayer(Ui.dp(this, 2.2f), 0f, Ui.dp(this, .7f), Color.argb(225, 0, 0, 0));
++-        root.addView(currentLine, new LinearLayout.LayoutParams(-1, Ui.dp(this, 31)));
++-
++-        nextLine = new TextView(this);
++-        nextLine.setGravity(Gravity.CENTER);
++-        nextLine.setSingleLine(true);
++-        nextLine.setIncludeFontPadding(false);
++-        nextLine.setTextSize(14.6f);
++-        nextLine.setTextColor(Color.argb(185, 245, 246, 250));
++-        nextLine.setShadowLayer(Ui.dp(this, 2.0f), 0f, Ui.dp(this, .7f), Color.argb(220, 0, 0, 0));
++-        root.addView(nextLine, new LinearLayout.LayoutParams(-1, Ui.dp(this, 25)));
+++        currentLine.setPreferredTextSize(18.6f, 15.8f);
+++        currentLine.setOutline(.82f, Color.argb(215, 0, 0, 0));
+++        root.addView(currentLine, new LinearLayout.LayoutParams(-1, Ui.dp(this, 32)));
+++
+++        nextLine = new DesktopLyricLaneView(this);
+++        nextLine.setPreferredTextSize(14.9f, 13.9f);
+++        nextLine.setOutline(.68f, Color.argb(195, 0, 0, 0));
+++        root.addView(nextLine, new LinearLayout.LayoutParams(-1, Ui.dp(this, 26)));
++ 
++         controlPanel = buildControlPanel();
++         LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(Ui.dp(this, 292), Ui.dp(this, 92));
++@@ -344,15 +341,15 @@
++         locked = p.getBoolean(KEY_LOCKED, false);
++         doubleLine = p.getBoolean(KEY_DOUBLE, true);
++         float scale = clampScale(p.getFloat(KEY_FONT_SCALE, 1f));
++-        currentLine.setPreferredTextSize(18.2f * scale, 14.8f * scale);
++-        nextLine.setTextSize(14.6f * scale);
+++        currentLine.setPreferredTextSize(18.6f * scale, 15.8f * scale);
+++        nextLine.setPreferredTextSize(14.9f * scale, 13.9f * scale);
++         nextLine.setVisibility(doubleLine ? View.VISIBLE : View.GONE);
++         // V3 renderer invariant: the lyric lane itself is always visible when the service is alive.
++         currentLine.setVisibility(View.VISIBLE);
++         currentLine.animate().cancel();
++         currentLine.setAlpha(1f);
++         currentLine.setTranslationY(0f);
++-        if (doubleLine) { nextLine.setAlpha(.58f); nextLine.setTranslationY(0f); }
+++        if (doubleLine) { nextLine.setAlpha(.78f); nextLine.setTranslationY(0f); }
++         applyLyricPalette();
++         if (locked) hideControlPanel();
++         if (lp != null) {
++@@ -390,8 +387,9 @@
++             }
++         }
++         currentLine.setGradientColors(start, end);
++-        nextLine.setTextColor(Ui.mix(end, Color.WHITE, .24f));
++-        nextLine.setAlpha(.62f);
+++        int secondary = Ui.mix(end, Color.WHITE, .30f);
+++        nextLine.setGradientColors(secondary, secondary);
+++        nextLine.setAlpha(.78f);
++     }
++ 
++     private static int readableAccent(int color) {
++@@ -613,6 +611,7 @@
++         channel.setSound(null, null);
++         channel.enableVibration(false);
++         channel.setShowBadge(false);
+++        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
++         nm.createNotificationChannel(channel);
++     }
++ 
++@@ -632,9 +631,9 @@
++                 .setContentText(locked ? "已锁定 · 触摸穿透" : "未锁定 · 可移动")
++                 .setOngoing(true).setOnlyAlertOnce(true).setShowWhen(false).setContentIntent(open)
++                 // The icon describes CURRENT state; tapping still toggles it.
++-                .addAction(new Notification.Action.Builder(locked ? R.drawable.ic_lyric_lock : R.drawable.ic_lyric_unlock,
+++                .addAction(new Notification.Action.Builder(locked ? R.drawable.ic_lyric_lock_system : R.drawable.ic_lyric_unlock_system,
++                         locked ? "已锁定" : "未锁定", lock).build())
++-                .addAction(new Notification.Action.Builder(R.drawable.ic_lyric_close, "关闭", close).build())
+++                .addAction(new Notification.Action.Builder(R.drawable.ic_lyric_close_system, "关闭", close).build())
++                 .build();
++     }
++ 
++@@ -681,7 +680,7 @@
++         nextLine.animate().cancel();
++         nextLine.setAlpha(0f);
++         nextLine.setTranslationY(Ui.dp(this, 4));
++-        nextLine.animate().alpha(.58f).translationY(0f).setDuration(260L).start();
+++        nextLine.animate().alpha(.78f).translationY(0f).setDuration(240L).start();
++     }
++ 
++     private static String safeLine(String s) { return s == null ? "" : s.trim(); }
++diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=LUNAXY_V69_跨厂商媒体兼容与高清桌面歌词.md' '--exclude=V69_自测结果.txt' '--exclude=README_验收说明.txt' '--exclude=V69_LOCKED_CORE_GUARD.txt' /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/playback/PlaybackService.java /mnt/data/v69work/app/src/main/java/com/xingyu/music/playback/PlaybackService.java
++--- /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-14 06:05:31.000000000 +0000
+++++ /mnt/data/v69work/app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-14 07:42:22.015518835 +0000
++@@ -228,6 +228,19 @@
++                 }
++             }
++         });
+++        // Keep the framework MediaSession explicit for older/vendor SystemUI implementations.
+++        // These flags/activity/audio attributes only describe the media surface; ExoPlayer routing
+++        // and the proven READY/fallback state machine remain unchanged.
+++        mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS
+++                | MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
+++        PendingIntent sessionActivity = PendingIntent.getActivity(this, 10,
+++                new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP),
+++                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+++        mediaSession.setSessionActivity(sessionActivity);
+++        mediaSession.setPlaybackToLocal(new android.media.AudioAttributes.Builder()
+++                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+++                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+++                .build());
++         mediaSession.setActive(true);
++ 
++         IntentFilter noisy = new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
++@@ -789,9 +802,9 @@
++             playbackStateBuilder.addCustomAction(new PlaybackState.CustomAction.Builder(
++                     CUSTOM_DESKTOP_LYRIC,
++                     lyricEnabled ? (lyricLocked ? "已锁定歌词" : "未锁定歌词") : "桌面歌词",
++-                    lyricEnabled ? (lyricLocked ? R.drawable.ic_lyric_lock : R.drawable.ic_lyric_unlock) : R.drawable.ic_lyric_toggle).build());
+++                    lyricEnabled ? (lyricLocked ? R.drawable.ic_lyric_lock_system : R.drawable.ic_lyric_unlock_system) : R.drawable.ic_lyric_toggle_system).build());
++             if (lyricEnabled) playbackStateBuilder.addCustomAction(new PlaybackState.CustomAction.Builder(
++-                    CUSTOM_DESKTOP_LYRIC_CLOSE, "关闭歌词", R.drawable.ic_lyric_close).build());
+++                    CUSTOM_DESKTOP_LYRIC_CLOSE, "关闭歌词", R.drawable.ic_lyric_close_system).build());
++         }
++         mediaSession.setPlaybackState(playbackStateBuilder.build());
++         if (s != null) {
++@@ -850,10 +863,10 @@
++         b.addAction(new Notification.Action.Builder(R.drawable.ic_media_next, "下一首", next).build());
++         if (overlayGranted) {
++             b.addAction(new Notification.Action.Builder(lyricEnabled
++-                            ? (lyricLocked ? R.drawable.ic_lyric_lock : R.drawable.ic_lyric_unlock)
++-                            : R.drawable.ic_lyric_toggle,
+++                            ? (lyricLocked ? R.drawable.ic_lyric_lock_system : R.drawable.ic_lyric_unlock_system)
+++                            : R.drawable.ic_lyric_toggle_system,
++                     lyricEnabled ? (lyricLocked ? "已锁定歌词" : "未锁定歌词") : "桌面歌词", lyricState).build());
++-            if (lyricEnabled) b.addAction(new Notification.Action.Builder(R.drawable.ic_lyric_close, "关闭歌词", lyricClose).build());
+++            if (lyricEnabled) b.addAction(new Notification.Action.Builder(R.drawable.ic_lyric_close_system, "关闭歌词", lyricClose).build());
++         }
++         b.setStyle(new Notification.MediaStyle()
++                 .setMediaSession(mediaSession == null ? null : mediaSession.getSessionToken())
++@@ -872,6 +885,8 @@
++         NotificationChannel c = new NotificationChannel(CHANNEL, getString(R.string.notification_channel), NotificationManager.IMPORTANCE_LOW);
++         c.setSound(null, null);
++         c.enableVibration(false);
+++        c.setShowBadge(false);
+++        c.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
++         nm.createNotificationChannel(c);
++     }
++ 
++diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=LUNAXY_V69_跨厂商媒体兼容与高清桌面歌词.md' '--exclude=V69_自测结果.txt' '--exclude=README_验收说明.txt' '--exclude=V69_LOCKED_CORE_GUARD.txt' /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/ui/DesktopLyricLaneView.java /mnt/data/v69work/app/src/main/java/com/xingyu/music/ui/DesktopLyricLaneView.java
++--- /mnt/data/v68/LunaxyMusic-V68/app/src/main/java/com/xingyu/music/ui/DesktopLyricLaneView.java	2026-08-13 17:19:26.000000000 +0000
+++++ /mnt/data/v69work/app/src/main/java/com/xingyu/music/ui/DesktopLyricLaneView.java	2026-08-14 07:39:02.697433240 +0000
++@@ -2,22 +2,40 @@
++ 
++ import android.content.Context;
++ import android.graphics.Canvas;
+++import android.graphics.Color;
++ import android.graphics.LinearGradient;
+++import android.graphics.Paint;
++ import android.graphics.Shader;
+++import android.graphics.Typeface;
++ import android.text.TextPaint;
++ import android.text.TextUtils;
++ import android.view.Gravity;
+++import android.view.View;
++ import android.widget.TextView;
++ 
++-/** Full-color desktop lyric line with adaptive size and marquee for very long sentences. */
+++/**
+++ * High-clarity desktop lyric line with adaptive size and marquee for very long sentences.
+++ *
+++ * Instead of a large blurred TextView shadow, glyphs are rendered in two crisp passes:
+++ * a narrow dark outline followed by the normal gradient fill. This keeps edges readable on
+++ * bright and dark wallpapers and avoids density/GPU-dependent blur on overlay windows.
+++ */
++ public final class DesktopLyricLaneView extends TextView {
++     private int start = Ui.LYRIC_ICE_START;
++     private int end = Ui.LYRIC_ICE_END;
++     private float preferredSp = 18.2f;
++     private float minSp = 15.0f;
+++    private float outlinePx;
+++    private int outlineColor = Color.argb(205, 0, 0, 0);
+++    private LinearGradient gradient;
+++    private int gradientWidth = -1;
+++    private int gradientStart;
+++    private int gradientEnd;
++ 
++     public DesktopLyricLaneView(Context context) {
++         super(context);
+++        float d = Math.max(1f, getResources().getDisplayMetrics().density);
+++        outlinePx = Math.max(1.15f, .78f * d);
++         setGravity(Gravity.CENTER);
++         setSingleLine(true);
++         setIncludeFontPadding(false);
++@@ -25,12 +43,35 @@
++         setEllipsize(null);
++         setMarqueeRepeatLimit(-1);
++         setTextSize(preferredSp);
+++        setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
++         setAlpha(1f);
+++        // Overlay windows are rendered by OEM SystemUI/compositor stacks that are not identical.
+++        // Keep the text path explicit and hardware backed, while avoiding blurred shadow layers.
+++        setLayerType(View.LAYER_TYPE_HARDWARE, null);
+++        TextPaint p = getPaint();
+++        p.setAntiAlias(true);
+++        p.setSubpixelText(true);
+++        p.setDither(true);
+++        p.setHinting(Paint.HINTING_ON);
+++    }
+++
+++    public void setGradientColors(int a, int b) {
+++        start = a;
+++        end = b;
+++        gradientWidth = -1;
+++        invalidate();
+++    }
+++
+++    public void setOutline(float dp, int color) {
+++        float d = Math.max(1f, getResources().getDisplayMetrics().density);
+++        outlinePx = Math.max(.75f, dp * d);
+++        outlineColor = color;
+++        invalidate();
++     }
++ 
++-    public void setGradientColors(int a, int b) { start = a; end = b; invalidate(); }
++     public void setPreferredTextSize(float sp, float minSp) {
++-        preferredSp = Math.max(12f, sp); this.minSp = Math.max(11f, Math.min(preferredSp, minSp));
+++        preferredSp = Math.max(12f, sp);
+++        this.minSp = Math.max(11f, Math.min(preferredSp, minSp));
++         adapt();
++     }
++ 
++@@ -46,7 +87,9 @@
++         float width = p.measureText(getText() == null ? "" : getText().toString());
++         if (width > available && available > 20) {
++             float ratio = available / Math.max(1f, width);
++-            float target = Math.max(minSp, preferredSp * ratio * .98f);
+++            // Do not shrink a long desktop lyric into a thin, soft line. Once the readable floor
+++            // is reached, native marquee takes over instead of reducing glyph detail further.
+++            float target = Math.max(minSp, preferredSp * ratio * .985f);
++             setTextSize(target);
++             width = getPaint().measureText(getText() == null ? "" : getText().toString());
++         }
++@@ -57,14 +100,50 @@
++     }
++ 
++     @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
++-        super.onSizeChanged(w, h, oldw, oldh); post(this::adapt);
+++        super.onSizeChanged(w, h, oldw, oldh);
+++        gradientWidth = -1;
+++        post(this::adapt);
+++    }
+++
+++    private Shader fillShader() {
+++        int width = Math.max(1, getWidth() - getPaddingLeft() - getPaddingRight());
+++        if (gradient == null || gradientWidth != width || gradientStart != start || gradientEnd != end) {
+++            float left = getPaddingLeft();
+++            float right = Math.max(left + 1f, getWidth() - getPaddingRight());
+++            gradient = new LinearGradient(left, 0f, right, 0f, start, end, Shader.TileMode.CLAMP);
+++            gradientWidth = width;
+++            gradientStart = start;
+++            gradientEnd = end;
+++        }
+++        return gradient;
++     }
++ 
++     @Override protected void onDraw(Canvas canvas) {
++-        float left = getPaddingLeft();
++-        float right = Math.max(left + 1f, getWidth() - getPaddingRight());
++-        getPaint().setShader(new LinearGradient(left, 0f, right, 0f, start, end, Shader.TileMode.CLAMP));
+++        TextPaint p = getPaint();
+++        Shader oldShader = p.getShader();
+++        Paint.Style oldStyle = p.getStyle();
+++        float oldStrokeWidth = p.getStrokeWidth();
+++        int oldColor = p.getColor();
+++        Paint.Join oldJoin = p.getStrokeJoin();
+++
+++        // Pass 1: narrow solid outline. Unlike setShadowLayer(), this does not blur glyph edges.
+++        p.setShader(null);
+++        p.setStyle(Paint.Style.STROKE);
+++        p.setStrokeJoin(Paint.Join.ROUND);
+++        p.setStrokeWidth(outlinePx);
+++        p.setColor(outlineColor);
++         super.onDraw(canvas);
++-        getPaint().setShader(null);
+++
+++        // Pass 2: clean fill. The gradient keeps Lunaxy's cover/accent identity.
+++        p.setStyle(Paint.Style.FILL);
+++        p.setStrokeWidth(oldStrokeWidth);
+++        p.setShader(fillShader());
+++        super.onDraw(canvas);
+++
+++        p.setShader(oldShader);
+++        p.setStyle(oldStyle);
+++        p.setStrokeWidth(oldStrokeWidth);
+++        p.setStrokeJoin(oldJoin);
+++        p.setColor(oldColor);
++     }
++ }
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-hdpi/ic_lyric_close_system.png and /mnt/data/v69work/app/src/main/res/drawable-hdpi/ic_lyric_close_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-hdpi/ic_lyric_lock_system.png and /mnt/data/v69work/app/src/main/res/drawable-hdpi/ic_lyric_lock_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-hdpi/ic_lyric_toggle_system.png and /mnt/data/v69work/app/src/main/res/drawable-hdpi/ic_lyric_toggle_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-hdpi/ic_lyric_unlock_system.png and /mnt/data/v69work/app/src/main/res/drawable-hdpi/ic_lyric_unlock_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-mdpi/ic_lyric_close_system.png and /mnt/data/v69work/app/src/main/res/drawable-mdpi/ic_lyric_close_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-mdpi/ic_lyric_lock_system.png and /mnt/data/v69work/app/src/main/res/drawable-mdpi/ic_lyric_lock_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-mdpi/ic_lyric_toggle_system.png and /mnt/data/v69work/app/src/main/res/drawable-mdpi/ic_lyric_toggle_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-mdpi/ic_lyric_unlock_system.png and /mnt/data/v69work/app/src/main/res/drawable-mdpi/ic_lyric_unlock_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xhdpi/ic_lyric_close_system.png and /mnt/data/v69work/app/src/main/res/drawable-xhdpi/ic_lyric_close_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xhdpi/ic_lyric_lock_system.png and /mnt/data/v69work/app/src/main/res/drawable-xhdpi/ic_lyric_lock_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xhdpi/ic_lyric_toggle_system.png and /mnt/data/v69work/app/src/main/res/drawable-xhdpi/ic_lyric_toggle_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xhdpi/ic_lyric_unlock_system.png and /mnt/data/v69work/app/src/main/res/drawable-xhdpi/ic_lyric_unlock_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxhdpi/ic_lyric_close_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxhdpi/ic_lyric_close_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxhdpi/ic_lyric_lock_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxhdpi/ic_lyric_lock_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxhdpi/ic_lyric_toggle_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxhdpi/ic_lyric_toggle_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxhdpi/ic_lyric_unlock_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxhdpi/ic_lyric_unlock_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxxhdpi/ic_lyric_close_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxxhdpi/ic_lyric_close_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxxhdpi/ic_lyric_lock_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxxhdpi/ic_lyric_lock_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxxhdpi/ic_lyric_toggle_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxxhdpi/ic_lyric_toggle_system.png differ
++Binary files /mnt/data/v68/LunaxyMusic-V68/app/src/main/res/drawable-xxxhdpi/ic_lyric_unlock_system.png and /mnt/data/v69work/app/src/main/res/drawable-xxxhdpi/ic_lyric_unlock_system.png differ

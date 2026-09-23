@@ -1,0 +1,13 @@
+Lunaxy Music V92.5 自测结果 (Stable)
+
+[PASS] V92.5 四项需求断言存在：唱片清晰度、连续队列浏览、歌词边界、失败3秒自动下一首
+[PASS] app/src/main/res XML 17 个全部可解析
+[PASS] Java 94 个文件字符串/注释感知括号结构扫描 0 error
+[PASS] 修改 Java 使用 javac 解析烟测，未出现 ; expected / illegal start / reached end 等 parse-like syntax error
+[PASS] Stable/Beta 94 个 Java 运行时文件 SHA-256 一致
+[PASS] Stable applicationId = com.xingyu.music
+[PASS] Beta applicationId = com.xingyu.music.beta1，App 名带 Beta，Manifest 使用 icon_stardust_beta
+[PASS] PlaybackService / SourceCoordinator / PlaybackUrlStore / RecommendationEngine / SearchPerformanceStore / LyricCacheStore / ImageLoader 与 V92.4 基线字节级未改
+[PASS] 横向预览阶段不调用播放解析；仅 commitTrackBrowsePlayback 最终一次 playback.playAt(target)
+[PASS] 失败自动下一首绑定 songKey，并检查 error / queue size / current song 后执行
+[BLOCKED] Android 真 Gradle 编译：services.gradle.org DNS 无法解析，Gradle 9.5.0 未下载

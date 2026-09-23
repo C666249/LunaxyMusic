@@ -1,0 +1,483 @@
+diff -ruN '--exclude=V34-to-V35_UI_LIST_DOWNLOAD_SAFETY.patch' LunaxyMusic-V34/BUILD_APK.bat LunaxyMusic-V35/BUILD_APK.bat
+--- LunaxyMusic-V34/BUILD_APK.bat	2026-08-10 15:46:54.000000000 +0000
++++ LunaxyMusic-V35/BUILD_APK.bat	2026-08-10 16:50:48.496288019 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   LunaxyMusic V34 - Debug APK Build
++echo   LunaxyMusic V35 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V34-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V35-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\LunaxyMusic-V34-debug.apk
++echo [OK] APK: %CD%\dist\LunaxyMusic-V35-debug.apk
+ pause
+diff -ruN '--exclude=V34-to-V35_UI_LIST_DOWNLOAD_SAFETY.patch' "LunaxyMusic-V34/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt" "LunaxyMusic-V35/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"
+--- "LunaxyMusic-V34/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-10 15:48:06.000000000 +0000
++++ "LunaxyMusic-V35/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-10 16:54:05.608118536 +0000
+@@ -1,3 +1,20 @@
++LunaxyMusic V35.0 — 当前 Android Studio 完整工程
++
++【本版快速验收】
++1. 播放详情页来源标签右侧不再显示独立下载按钮；需要下载时只通过右上角“…”菜单进入。
++2. 手动滑歌词停下后：保留 2 秒选中态，但取消旧的虚线外框，改为无描边的轻量半透明焦点底。
++3. 最近播放 / 每日推荐 / 私人电台 / 天气电台详情中点击歌曲：整个列表作为播放队列，但当前详情页不重建、不跳回顶部，可从原位置继续下滑。
++4. QQ（含“QQ · 网易”聚合身份）继续彻底禁止下载；点击下载必须在任何缓存/线程/CDN访问之前立即拦截。
++5. 下载路径进一步收紧为“纯网易 wy 白名单 + Media3 READY URL CACHE-ONLY”；未来未知来源默认不允许下载。
++6. 网络播放核心 V34→V35 25/25 字节级未改；并与 V31 对照：18 个网络主链对象中 16 个字节完全相同，SourceCoordinator/Song 的差异仅为 V32 后新增的 local/offline 直通分支与“离线”标签，QQ/网易网络解析路径正文与 V31 保持一致。详见 changes\PLAYBACK_CORE_GUARD_V35.txt。
++7. 网易下载静态隔离审计见 changes\NETEASE_DOWNLOAD_ISOLATION_GUARD_V35.txt。
++8. V34→V35 源码差异见 changes\V34-to-V35_UI_LIST_DOWNLOAD_SAFETY.patch。
++9. BUILD_APK.bat 成功构建后输出 dist\LunaxyMusic-V35-debug.apk。
++
++----------------------------------------
++以下保留旧版本验收记录，供回退/排查历史问题使用。
++----------------------------------------
++
+ LunaxyMusic V34.0 — 当前 Android Studio 完整工程
+ 
+ 【本版快速验收】
+diff -ruN '--exclude=V34-to-V35_UI_LIST_DOWNLOAD_SAFETY.patch' "LunaxyMusic-V34/V35.0_UI\345\210\227\350\241\250\350\277\236\347\273\255\346\200\247\344\270\216\344\270\213\350\275\275\345\256\211\345\205\250.md" "LunaxyMusic-V35/V35.0_UI\345\210\227\350\241\250\350\277\236\347\273\255\346\200\247\344\270\216\344\270\213\350\275\275\345\256\211\345\205\250.md"
+--- "LunaxyMusic-V34/V35.0_UI\345\210\227\350\241\250\350\277\236\347\273\255\346\200\247\344\270\216\344\270\213\350\275\275\345\256\211\345\205\250.md"	1970-01-01 00:00:00.000000000 +0000
++++ "LunaxyMusic-V35/V35.0_UI\345\210\227\350\241\250\350\277\236\347\273\255\346\200\247\344\270\216\344\270\213\350\275\275\345\256\211\345\205\250.md"	2026-08-10 16:53:09.248220202 +0000
+@@ -0,0 +1,19 @@
++# Lunaxy Music V35.0
++
++## 本版目标
++在不修改稳定网络播放主链的前提下，完成播放详情、歌词手动选中态、智能列表连续播放体验，并进一步把下载功能限制到纯网易云 CACHE-ONLY。
++
++## 变更
++- 删除播放详情页来源标签旁的独立下载按钮；下载入口保留在歌曲“…”操作菜单。
++- 手动歌词停止后的 2 秒选中态取消虚线描边，改为无描边轻量半透明焦点底。
++- 最近播放 / 每日推荐 / 私人电台 / 天气电台点击歌曲时不再因 history 更新而 renderTab；页面 View 和 ScrollView 原地保留，整份列表仍作为播放队列。
++- QQ / tx 继续三层硬禁下载，含“QQ · 网易”聚合歌曲。
++- 下载改为纯网易 wy 白名单：只有无 QQ 身份且包含 wy variant 的歌曲才允许进入下载流程。
++- DownloadSourceResolver 只读取 wy 的 PlaybackUrlStore READY 缓存，不调用 Huibq/QDY，不 fresh resolve，不 invalidate。
++
++## 播放链原则
++V35 没有修改 PlaybackService、MultiSourceManager、SourceHealthStore、PlaybackUrlStore、LxSourceRuntime、AudioUrlProbe、QQMusicApi、NeteaseApi、Huibq JS 等网络播放核心。
++SourceCoordinator/Song 相比 V31 仅保留 V32 起为离线文件增加的 local/offline 旁路；QQ/网易网络路线逻辑不变。
++
++## 网易下载边界
++代码层面下载不会写 SourceHealthStore、不会调用 SourceCoordinator/Huibq/QDY、不会删除 READY URL。它仍会对已 READY 的网易最终 CDN URL 发起一次 HTTP GET，这是“下载文件”本身不可避免的外部网络行为，因此不能对第三方 CDN 的远端策略做数学意义的绝对保证；但它不再能改变 Lunaxy 的音源学习/路由/缓存状态。
+diff -ruN '--exclude=V34-to-V35_UI_LIST_DOWNLOAD_SAFETY.patch' "LunaxyMusic-V34/V35.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt" "LunaxyMusic-V35/V35.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"
+--- "LunaxyMusic-V34/V35.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"	1970-01-01 00:00:00.000000000 +0000
++++ "LunaxyMusic-V35/V35.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"	2026-08-10 16:53:09.248257908 +0000
+@@ -0,0 +1,12 @@
++Lunaxy Music V35.0 自测
++
++[PASS] 播放详情独立下载图标已移除，右上角“…”仍可进入下载菜单。
++[PASS] LyricLineView 手动选中态无 dashed stroke；2 秒恢复逻辑未改。
++[PASS] 智能详情播放歌曲时，history 更新不会在 openSmartCollection 非空时 renderTab。
++[PASS] smartCollectionSongList 仍以整份列表 playQueue，从点选行开始。
++[PASS] QQ 下载在 UI / OfflineDownloadManager / DownloadSourceResolver 三层阻断。
++[PASS] 下载白名单只允许 wy；DownloadSourceResolver 只读取 wy READY cache。
++[PASS] 下载模块未引用 SourceCoordinator/MultiSourceManager/SourceHealthStore/LxSourceRuntime/musicUrl/invalidate。
++[PASS] V34→V35 25 个播放核心保护对象 SHA-256 全部一致。
++[PASS] V31 对照：网络播放主链除 local/offline 扩展的 SourceCoordinator 与 Song 标签外，其余核心对象字节一致；差异已人工 diff，未改变 tx/wy 网络解析正文。
++[INFO] 容器缺少可用 Gradle 分发缓存且无法解析 services.gradle.org，因此未完成 Android SDK 全量编译；已做源码结构/差异/引用与 ZIP 完整性检查。
+diff -ruN '--exclude=V34-to-V35_UI_LIST_DOWNLOAD_SAFETY.patch' LunaxyMusic-V34/app/build.gradle.kts LunaxyMusic-V35/app/build.gradle.kts
+--- LunaxyMusic-V34/app/build.gradle.kts	2026-08-10 15:46:44.000000000 +0000
++++ LunaxyMusic-V35/app/build.gradle.kts	2026-08-10 16:50:48.496241239 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 37
+-        versionName = "34.0.0"
++        versionCode = 38
++        versionName = "35.0.0"
+     }
+ 
+     buildTypes {
+diff -ruN '--exclude=V34-to-V35_UI_LIST_DOWNLOAD_SAFETY.patch' LunaxyMusic-V34/app/src/main/java/com/xingyu/music/MainActivity.java LunaxyMusic-V35/app/src/main/java/com/xingyu/music/MainActivity.java
+--- LunaxyMusic-V34/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 15:46:44.000000000 +0000
++++ LunaxyMusic-V35/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 16:51:28.801291172 +0000
+@@ -96,9 +96,9 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V33.0 – cache-only downloads, isolated from the stable playback resolver chain.
++ * Lunaxy Music V35.0 – UI/list continuity polish; playback resolver chain remains frozen.
+  *
+- * V33 keeps the proven Huibq/QDY audio-resolution path frozen; downloads are CACHE-ONLY and never request Huibq/QDY. The guarded local-file branch remains only for offline playback. Tapping a normal row in a saved playlist
++ * V35 keeps the proven Huibq/QDY audio-resolution path frozen. QQ download remains hard-disabled; NetEase download is CACHE-ONLY and never fresh-resolves. The guarded local-file branch remains only for offline playback. Tapping a normal row in a saved playlist
+  * still replaces the current queue with the entire playlist and starts at that row. Tapping a result
+  * inside that playlist's search modal is a temporary pick: insert/play only that song and keep the
+  * existing queue, matching global-search behavior.
+@@ -2572,6 +2572,10 @@
+             return;
+         }
+         if ("local".equals(song.source)) { toast("这首歌已经是离线文件"); return; }
++        if (!DownloadPolicy.allowsNeteaseDownload(song)) {
++            toast(DownloadPolicy.NETEASE_ONLY);
++            return;
++        }
+         if (downloadStore.contains(song)) { toast("这首歌已经在离线歌单里"); return; }
+         if (offlineDownloads.isRunning(song)) { toast("这首歌正在下载"); return; }
+         toast("正在准备下载 · " + song.title);
+@@ -3593,7 +3597,10 @@
+                 loadLyrics(snapshot.song);
+                 boolean modalOpen = modalOverlay != null && modalOverlay.getVisibility() == View.VISIBLE;
+                 boolean playerOpen = playerOverlay != null && playerOverlay.getVisibility() == View.VISIBLE;
+-                if (tab == 0 && !modalOpen && !playerOpen && onboardingOverlay == null) renderTab();
++                // Smart collections (最近播放 / 每日推荐 / 私人电台 / 天气电台) are
++                // playlist-like detail pages. Playing a row must not rebuild the page or reset
++                // its ScrollView to the top merely because history received the newly played song.
++                if (tab == 0 && openSmartCollection == null && !modalOpen && !playerOpen && onboardingOverlay == null) renderTab();
+             }
+             if (snapshot.error != null && !snapshot.error.equals(lastErrorShown)) {
+                 lastErrorShown = snapshot.error;
+@@ -3736,16 +3743,6 @@
+         FrameLayout metaRow = new FrameLayout(this);
+         nowSource = Ui.pill(this, "", Ui.CYAN);
+         metaRow.addView(nowSource, Ui.frame(-2, Ui.dp(this, 30), Gravity.CENTER));
+-        FrameLayout downloadCurrent = Ui.iconButton(this, IconView.Type.DOWNLOAD, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
+-        downloadCurrent.setContentDescription("下载");
+-        downloadCurrent.setOnClickListener(v -> {
+-            Song song = playback == null ? null : playback.currentSong();
+-            if (song != null) startSongDownload(song);
+-        });
+-        FrameLayout.LayoutParams downloadMeta = Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.END | Gravity.CENTER_VERTICAL);
+-        downloadMeta.rightMargin = Ui.dp(this, 92);
+-        metaRow.addView(downloadCurrent, downloadMeta);
+-
+         FrameLayout addToPlaylist = Ui.iconButton(this, IconView.Type.PLUS, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
+         addToPlaylist.setContentDescription("添加到歌单");
+         addToPlaylist.setOnClickListener(v -> {
+@@ -3865,7 +3862,7 @@
+             @Override public void onMove(MotionEvent e, boolean movedBeyondSlop) {
+                 if (!lyricGestureMoved && movedBeyondSlop) {
+                     lyricGestureMoved = true;
+-                    // A previous dashed selection is only a visual/tap target. The instant
++                    // A previous manual selection is only a visual/tap target. The instant
+                     // the user drags again it is released and a brand-new scrub can begin.
+                     clearManualLyricSelection(false);
+                     if (lyricsResumeRunnable != null) main.removeCallbacks(lyricsResumeRunnable);
+@@ -4202,7 +4199,7 @@
+             setManualLyricSelection(lyricSeekCandidate);
+             lyricSeekMode = false;
+             showLyricSeekGuide(false);
+-            // Keep the dashed lyric selection briefly visible, then return to live lyrics.
++            // Keep the focused lyric selection briefly visible, then return to live lyrics.
+             lyricsManualUntil = SystemClock.uptimeMillis() + 2000L;
+             if (lyricsResumeRunnable != null) main.removeCallbacks(lyricsResumeRunnable);
+             lyricsResumeRunnable = () -> {
+diff -ruN '--exclude=V34-to-V35_UI_LIST_DOWNLOAD_SAFETY.patch' LunaxyMusic-V34/app/src/main/java/com/xingyu/music/data/DownloadPolicy.java LunaxyMusic-V35/app/src/main/java/com/xingyu/music/data/DownloadPolicy.java
+--- LunaxyMusic-V34/app/src/main/java/com/xingyu/music/data/DownloadPolicy.java	2026-08-10 15:46:44.000000000 +0000
++++ LunaxyMusic-V35/app/src/main/java/com/xingyu/music/data/DownloadPolicy.java	2026-08-10 16:53:09.247237750 +0000
+@@ -4,7 +4,7 @@
+ import com.xingyu.music.model.SourceVariant;
+ 
+ /**
+- * V34 hard download policy.
++ * V35 hard download policy.
+  *
+  * Safety invariant: if a canonical song contains ANY QQ/tx provider identity,
+  * download is forbidden before cache lookup, background scheduling, CDN access,
+@@ -15,6 +15,7 @@
+  */
+ public final class DownloadPolicy {
+     public static final String QQ_DOWNLOAD_DISABLED = "QQ 来源已禁用下载，仅支持在线播放";
++    public static final String NETEASE_ONLY = "当前仅支持网易云来源歌曲下载";
+ 
+     private DownloadPolicy() { }
+ 
+@@ -27,4 +28,14 @@
+         }
+         return false;
+     }
++    /** True only when the canonical track has a NetEase (wy) identity and no QQ identity. */
++    public static boolean allowsNeteaseDownload(Song song) {
++        if (song == null || blocksQqDownload(song)) return false;
++        if ("wy".equals(song.source) || "wy".equals(song.fallbackSource)) return true;
++        for (SourceVariant variant : song.variants()) {
++            if (variant != null && "wy".equals(variant.source)) return true;
++        }
++        return false;
++    }
++
+ }
+diff -ruN '--exclude=V34-to-V35_UI_LIST_DOWNLOAD_SAFETY.patch' LunaxyMusic-V34/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java LunaxyMusic-V35/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java
+--- LunaxyMusic-V34/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java	2026-08-10 15:46:54.000000000 +0000
++++ LunaxyMusic-V35/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java	2026-08-10 16:53:09.247537486 +0000
+@@ -9,7 +9,7 @@
+ import java.util.List;
+ 
+ /**
+- * V34 download resolver: CACHE-ONLY, with QQ/tx hard-disabled.
++ * V35 download resolver: CACHE-ONLY, with QQ/tx hard-disabled.
+  *
+  * Downloading must never ask Huibq/QDY (or any other resolver) for a fresh URL.
+  * Any song containing a QQ/tx identity is rejected before cache access.
+@@ -56,11 +56,15 @@
+     public Candidate resolve(Song song) throws Exception {
+         if (song == null) throw new Exception("歌曲为空");
+ 
+-        // V34 HARD WALL: any canonical track containing a QQ/tx identity is
++        // V35 HARD WALL: any canonical track containing a QQ/tx identity is
+         // rejected BEFORE PlaybackUrlStore is even read. This means a QQ tap
+         // cannot touch a cached QQ CDN URL, cannot schedule network I/O, and
+         // cannot indirectly disturb the normal playback chain.
+         if (DownloadPolicy.blocksQqDownload(song)) throw new Exception(QQ_UNSUPPORTED);
++        // V35 whitelist: only NetEase (wy) identities may enter the optional download path.
++        // Unknown/future providers are denied by default rather than accidentally sharing
++        // their playback CDN with a downloader.
++        if (!DownloadPolicy.allowsNeteaseDownload(song)) throw new Exception(DownloadPolicy.NETEASE_ONLY);
+ 
+         Candidate stored = cached(song);
+         if (stored != null) return stored;
+@@ -75,6 +79,8 @@
+         // Keep the song's native ordering so the download consumes the exact route
+         // the playback layer has most naturally proven for this canonical song.
+         for (SourceVariant variant : variants) {
++            // V35 hard whitelist: never read a non-NetEase playback URL for downloading.
++            if (variant == null || !"wy".equals(variant.source)) continue;
+             for (String quality : qualities(variant)) {
+                 PlaybackUrlStore.Entry e = cache.get(variant.source, variant.sourceId, quality);
+                 if (e != null && e.url != null && e.url.startsWith("http")) {
+@@ -97,6 +103,6 @@
+ 
+ 
+     public void destroy() {
+-        // Intentionally empty. V34 owns no source runtime / WebView / resolver.
++        // Intentionally empty. V35 owns no source runtime / WebView / resolver.
+     }
+ }
+diff -ruN '--exclude=V34-to-V35_UI_LIST_DOWNLOAD_SAFETY.patch' LunaxyMusic-V34/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java LunaxyMusic-V35/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java
+--- LunaxyMusic-V34/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java	2026-08-10 15:46:44.000000000 +0000
++++ LunaxyMusic-V35/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java	2026-08-10 16:53:09.247827738 +0000
+@@ -24,7 +24,7 @@
+ import java.util.concurrent.Executors;
+ 
+ /**
+- * V34 background downloader.
++ * V35 background downloader.
+  *
+  * Safety invariant: this class only downloads a URL already validated and cached
+  * by the normal Media3 playback chain. A failed download NEVER asks an audio
+@@ -60,6 +60,10 @@
+             fail(listener, DownloadPolicy.QQ_DOWNLOAD_DISABLED);
+             return;
+         }
++        if (!DownloadPolicy.allowsNeteaseDownload(song)) {
++            fail(listener, DownloadPolicy.NETEASE_ONLY);
++            return;
++        }
+         String key = song.key();
+         if (!running.add(key)) { fail(listener, "这首歌正在下载"); return; }
+         worker.submit(() -> {
+@@ -80,6 +84,9 @@
+         if (DownloadPolicy.blocksQqDownload(song)) {
+             throw new Exception(DownloadPolicy.QQ_DOWNLOAD_DISABLED);
+         }
++        if (!DownloadPolicy.allowsNeteaseDownload(song)) {
++            throw new Exception(DownloadPolicy.NETEASE_ONLY);
++        }
+         // CACHE ONLY. resolve() is deliberately incapable of calling Huibq/QDY.
+         DownloadSourceResolver.Candidate candidate = resolver.resolve(song);
+         String ext = extension(candidate.url);
+@@ -215,7 +222,7 @@
+         String msg = e == null || e.getMessage() == null ? "下载失败" : e.getMessage();
+         if (DownloadSourceResolver.QQ_UNSUPPORTED.equals(msg)) return msg;
+ 
+-        // V34: ANY QQ identity means download is disabled, including merged
++        // V35: ANY QQ identity means download is disabled, including merged
+         // QQ · 网易 canonical tracks. Keep the user-facing reason unambiguous.
+         if (DownloadPolicy.blocksQqDownload(song)) return DownloadPolicy.QQ_DOWNLOAD_DISABLED;
+ 
+diff -ruN '--exclude=V34-to-V35_UI_LIST_DOWNLOAD_SAFETY.patch' LunaxyMusic-V34/app/src/main/java/com/xingyu/music/ui/LyricLineView.java LunaxyMusic-V35/app/src/main/java/com/xingyu/music/ui/LyricLineView.java
+--- LunaxyMusic-V34/app/src/main/java/com/xingyu/music/ui/LyricLineView.java	2026-08-10 12:31:18.000000000 +0000
++++ LunaxyMusic-V35/app/src/main/java/com/xingyu/music/ui/LyricLineView.java	2026-08-10 16:53:28.271688762 +0000
+@@ -64,19 +64,19 @@
+     }
+ 
+     private void refreshState() {
+-        setTextSize(active ? 16.2f : (seekSelected ? 14.6f : 14f));
++        setTextSize(active ? 16.2f : (seekSelected ? 15.1f : 14f));
+         setTypeface(active ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+-        setAlpha(active ? 1f : (seekSelected ? .94f : .72f));
++        setAlpha(active ? 1f : (seekSelected ? .98f : .72f));
+         // The not-yet-sung portion stays visible but quieter. The gradient overlay
+         // progressively replaces it from left to right / line to line.
+-        setTextColor(active ? Color.rgb(150, 157, 170) : (seekSelected ? Ui.TEXT_2 : Ui.DIM));
++        setTextColor(active ? Color.rgb(150, 157, 170) : (seekSelected ? Ui.TEXT : Ui.DIM));
+         if (seekSelected) {
+-            GradientDrawable box = new GradientDrawable();
+-            box.setColor(Color.argb(12, 220, 229, 246));
+-            box.setCornerRadius(Ui.dp(getContext(), 14));
+-            box.setStroke(Ui.dp(getContext(), 1), Color.argb(72, 220, 229, 246),
+-                    Ui.dp(getContext(), 5), Ui.dp(getContext(), 4));
+-            setBackground(box);
++            // V35: NetEase-like lyric focus. Keep a soft translucent focus plane but
++            // remove the old dashed outer stroke, which looked like a debug selection box.
++            GradientDrawable focus = new GradientDrawable();
++            focus.setColor(Color.argb(16, 220, 229, 246));
++            focus.setCornerRadius(Ui.dp(getContext(), 10));
++            setBackground(focus);
+         } else {
+             setBackground(null);
+         }
+diff -ruN '--exclude=V34-to-V35_UI_LIST_DOWNLOAD_SAFETY.patch' LunaxyMusic-V34/changes/NETEASE_DOWNLOAD_ISOLATION_GUARD_V35.txt LunaxyMusic-V35/changes/NETEASE_DOWNLOAD_ISOLATION_GUARD_V35.txt
+--- LunaxyMusic-V34/changes/NETEASE_DOWNLOAD_ISOLATION_GUARD_V35.txt	1970-01-01 00:00:00.000000000 +0000
++++ LunaxyMusic-V35/changes/NETEASE_DOWNLOAD_ISOLATION_GUARD_V35.txt	2026-08-10 16:53:56.077151823 +0000
+@@ -0,0 +1,19 @@
++Lunaxy Music V35 · NETEASE DOWNLOAD ISOLATION GUARD
++
++Policy: optional download is a pure-NetEase (wy) whitelist and CACHE-ONLY. Any QQ identity (including merged QQ·网易) is rejected before cache lookup or worker scheduling.
++
++PASS  SourceCoordinator
++PASS  MultiSourceManager
++PASS  SourceHealthStore
++PASS  LxSourceRuntime
++PASS  musicUrl(
++PASS  invalidate(
++PASS  QQ blocked before cache lookup
++PASS  Only wy variants read from PlaybackUrlStore
++PASS  Pure-NetEase whitelist exists
++PASS  Playback page standalone download icon removed
++
++Allowed download-side playback-state access: PlaybackUrlStore.get(...) READ ONLY, for wy entries only.
++Forbidden behavior verified absent from executable download code: no SourceCoordinator, MultiSourceManager, SourceHealthStore, LxSourceRuntime/musicUrl, or PlaybackUrlStore.invalidate.
++The downloader still performs one HTTP GET to the already-READY NetEase final CDN URL to save the file. This external GET is inherently required to download audio, but it cannot write Lunaxy route health, cooldown, resolver order, or READY URL cache.
++QQ hard wall remains defense-in-depth in MainActivity, OfflineDownloadManager.download/tryDownload, and DownloadSourceResolver.resolve.
+diff -ruN '--exclude=V34-to-V35_UI_LIST_DOWNLOAD_SAFETY.patch' LunaxyMusic-V34/changes/PLAYBACK_CORE_GUARD_V35.txt LunaxyMusic-V35/changes/PLAYBACK_CORE_GUARD_V35.txt
+--- LunaxyMusic-V34/changes/PLAYBACK_CORE_GUARD_V35.txt	1970-01-01 00:00:00.000000000 +0000
++++ LunaxyMusic-V35/changes/PLAYBACK_CORE_GUARD_V35.txt	2026-08-10 16:53:56.076293956 +0000
+@@ -0,0 +1,129 @@
++Lunaxy Music V35 · PLAYBACK CORE GUARD
++Baseline A: V34 (must remain byte-identical for protected playback/network objects)
++
++PASS  app/src/main/java/com/xingyu/music/playback/PlaybackService.java
++  V34 8e1b7d154d0d51613666327b2f5d2a63aa331396d351b7ccb434f3163f0e8860
++  V35 8e1b7d154d0d51613666327b2f5d2a63aa331396d351b7ccb434f3163f0e8860
++
++PASS  app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java
++  V34 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
++  V35 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
++
++PASS  app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
++  V34 30e4ae77a4682b263bfdd7acb0799b840796ffb9f28520296987d9c6179f09e0
++  V35 30e4ae77a4682b263bfdd7acb0799b840796ffb9f28520296987d9c6179f09e0
++
++PASS  app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
++  V34 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
++  V35 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
++
++PASS  app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
++  V34 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
++  V35 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
++
++PASS  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
++  V34 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
++  V35 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
++
++PASS  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
++  V34 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
++  V35 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
++
++PASS  app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
++  V34 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
++  V35 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
++
++PASS  app/src/main/java/com/xingyu/music/data/ResolverProvider.java
++  V34 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
++  V35 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
++
++PASS  app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
++  V34 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
++  V35 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
++
++PASS  app/src/main/java/com/xingyu/music/data/QQMusicApi.java
++  V34 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
++  V35 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
++
++PASS  app/src/main/java/com/xingyu/music/data/NeteaseApi.java
++  V34 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
++  V35 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
++
++PASS  app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
++  V34 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
++  V35 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
++
++PASS  app/src/main/java/com/xingyu/music/data/PlaybackTrace.java
++  V34 24ce07eaeb3e28264dde1f0deea0c4a3aad8e7556ebb181b79cec6d88ca5366b
++  V35 24ce07eaeb3e28264dde1f0deea0c4a3aad8e7556ebb181b79cec6d88ca5366b
++
++PASS  app/src/main/java/com/xingyu/music/data/LibraryStore.java
++  V34 4b1b5438a1aabb476b097c7cf4f617884cb98360514cdd7239b0084bfc5bb60f
++  V35 4b1b5438a1aabb476b097c7cf4f617884cb98360514cdd7239b0084bfc5bb60f
++
++PASS  app/src/main/java/com/xingyu/music/model/Song.java
++  V34 82ff5941f869883f00ef3b49a27fc9a0b98db9d59d7257b9d4bcb94a04b02c13
++  V35 82ff5941f869883f00ef3b49a27fc9a0b98db9d59d7257b9d4bcb94a04b02c13
++
++PASS  app/src/main/java/com/xingyu/music/model/SourceVariant.java
++  V34 333af304393ce3eb126f6b168dbcfafb0fed7c0e30a056860db99a9d52cb18fb
++  V35 333af304393ce3eb126f6b168dbcfafb0fed7c0e30a056860db99a9d52cb18fb
++
++PASS  app/src/main/assets/source/huibq-latest.js
++  V34 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
++  V35 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
++
++PASS  app/src/main/AndroidManifest.xml
++  V34 96d959b329e0b897db94052dbdc988d2dbb44a3271354f2e6573c83bd97d9007
++  V35 96d959b329e0b897db94052dbdc988d2dbb44a3271354f2e6573c83bd97d9007
++
++PASS  app/src/main/res/drawable/ic_launcher_foreground.xml
++  V34 e9e0369458497e8ab823022aca243ec12262ff39e815273c9582927616592bc9
++  V35 e9e0369458497e8ab823022aca243ec12262ff39e815273c9582927616592bc9
++
++PASS  app/src/main/res/drawable/ic_launcher_background.xml
++  V34 1be2433e87669925dbca4c79e34cccf4cc76529e46f947a164703567dc40aa67
++  V35 1be2433e87669925dbca4c79e34cccf4cc76529e46f947a164703567dc40aa67
++
++PASS  app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
++  V34 96e457b9c18d021a276b3fad3d84248f90d2d6460f48299536fc8d3d371ca054
++  V35 96e457b9c18d021a276b3fad3d84248f90d2d6460f48299536fc8d3d371ca054
++
++PASS  app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
++  V34 96e457b9c18d021a276b3fad3d84248f90d2d6460f48299536fc8d3d371ca054
++  V35 96e457b9c18d021a276b3fad3d84248f90d2d6460f48299536fc8d3d371ca054
++
++PASS  app/src/main/res/drawable-nodpi/icon_stardust.png
++  V34 229eced19957739cee21401a22a48e6904e61517bce9d9b182d097fdd11dfb35
++  V35 229eced19957739cee21401a22a48e6904e61517bce9d9b182d097fdd11dfb35
++
++PASS  app/src/main/res/drawable-nodpi/icon_xm.png
++  V34 229eced19957739cee21401a22a48e6904e61517bce9d9b182d097fdd11dfb35
++  V35 229eced19957739cee21401a22a48e6904e61517bce9d9b182d097fdd11dfb35
++
++Exact protected-core result V34→V35: 25/25 PASS
++
++Baseline B: V31 stable network chain cross-check
++
++SAME  app/src/main/java/com/xingyu/music/playback/PlaybackService.java
++SAME  app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java
++DIFF  app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
++  NOTE: V32+ adds only local/offline direct-URI branch and guards health/cache writes for offline provider; tx/wy network route body remains the V31 code.
++SAME  app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
++SAME  app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
++SAME  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
++SAME  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
++SAME  app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
++SAME  app/src/main/java/com/xingyu/music/data/ResolverProvider.java
++SAME  app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
++SAME  app/src/main/java/com/xingyu/music/data/QQMusicApi.java
++SAME  app/src/main/java/com/xingyu/music/data/NeteaseApi.java
++SAME  app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
++SAME  app/src/main/java/com/xingyu/music/data/PlaybackTrace.java
++SAME  app/src/main/java/com/xingyu/music/data/LibraryStore.java
++DIFF  app/src/main/java/com/xingyu/music/model/Song.java
++  NOTE: only providerLabel("local") = "离线" was added for offline library display.
++SAME  app/src/main/java/com/xingyu/music/model/SourceVariant.java
++SAME  app/src/main/assets/source/huibq-latest.js
++
++Conclusion: V35 changes no protected network playback object relative to V34. Relative to V31, the only guarded Java differences are the offline/local extension in SourceCoordinator and Song; QQ/网易 network resolver, health learning, Media3 READY persistence, retry/cooldown and Huibq/QDY selection code are unchanged.

@@ -1,0 +1,8 @@
+V51 Starfield Hybrid Contract
+- Preserve V50 full quaternion 360-degree camera.
+- Preserve deterministic 360-degree world sphere.
+- Restore V49-style continuous far-to-near motion while phone is still.
+- Dynamic particles must move in world space and still be transformed by current cameraQ.
+- Dynamic particles must grow / brighten / glow as remaining depth decreases.
+- No audio provider, resolver, playback, download, offline or ringtone dependency is allowed in Starfield3DView.
+- Starfield view remains non-clickable and non-focusable.

@@ -1,0 +1,293 @@
+--- /mnt/data/V67-baseline/LunaxyMusic-V67/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-14 06:53:36.000000000 +0000
++++ /mnt/data/V68-work/LunaxyMusic-V67/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-14 07:14:09.624826549 +0000
+@@ -1282,16 +1282,18 @@
+         }
+         host.addView(filters, marginTop(12));
+ 
+-        HorizontalScrollView hs = new HorizontalScrollView(this); hs.setHorizontalScrollBarEnabled(false);
++        // V68 compact matrix: the first frame must show Provider + all four Catalog columns on
++        // phone width. Keep the information density, but use weighted columns instead of a table
++        // wider than the modal (V67 required horizontal scrolling and clipped the WY column).
+         LinearLayout table = Ui.column(this);
+         LinearLayout header = Ui.row(this);
+-        TextView empty = Ui.text(this, "Provider", 9.8f, Ui.DIM, true); empty.setGravity(Gravity.CENTER_VERTICAL);
+-        header.addView(empty, Ui.lp(Ui.dp(this, 82), Ui.dp(this, 36)));
++        TextView empty = Ui.text(this, "Provider", 9.3f, Ui.DIM, true); empty.setGravity(Gravity.CENTER_VERTICAL);
++        header.addView(empty, Ui.lp(Ui.dp(this, 54), Ui.dp(this, 36)));
+         for (String label : SOURCE_UI_PLATFORM_LABELS) {
+-            TextView h = Ui.text(this, label, 10.3f, Ui.TEXT_2, true); h.setGravity(Gravity.CENTER);
+-            header.addView(h, Ui.lp(Ui.dp(this, 64), Ui.dp(this, 36)));
++            TextView h = Ui.text(this, label, 9.8f, Ui.TEXT_2, true); h.setGravity(Gravity.CENTER);
++            header.addView(h, new LinearLayout.LayoutParams(0, Ui.dp(this, 36), 1f));
+         }
+-        table.addView(header, Ui.lp(-2, Ui.dp(this, 36)));
++        table.addView(header, Ui.lp(-1, Ui.dp(this, 36)));
+ 
+         List<String[]> providers = sourceSortedProviders(health, false);
+         int count = 0;
+@@ -1303,10 +1305,9 @@
+         }
+         if (count == 0) {
+             TextView none = Ui.text(this, sourceMatrixFilter == 2 ? "暂无低活跃 Provider" : "暂无可展示 Provider", 11.3f, Ui.DIM, false);
+-            none.setGravity(Gravity.CENTER); table.addView(none, Ui.lp(Ui.dp(this, 338), Ui.dp(this, 70)));
++            none.setGravity(Gravity.CENTER); table.addView(none, Ui.lp(-1, Ui.dp(this, 70)));
+         }
+-        hs.addView(table, new FrameLayout.LayoutParams(-2, -2));
+-        host.addView(hs, marginTop(10));
++        host.addView(table, marginTop(10));
+ 
+         TextView legend = Ui.text(this, "近期分：正值=最近更可信 · 接近0=中性/等待新证据 · 负值=近期降权。历史 READY 只在 Cell 详情里作为履历展示。", 10.2f, Ui.DIM, false);
+         legend.setLineSpacing(0f, 1.18f); host.addView(legend, marginTop(12));
+@@ -1314,22 +1315,23 @@
+ 
+     private View sourceMatrixRow(SourceHealthStore health, String providerId, String label, boolean low) {
+         LinearLayout row = Ui.row(this);
+-        TextView name = Ui.text(this, label, 10.6f, low ? Ui.DIM : Ui.TEXT_2, true);
++        TextView name = Ui.text(this, label, 9.9f, low ? Ui.DIM : Ui.TEXT_2, true);
+         name.setSingleLine(true); name.setEllipsize(TextUtils.TruncateAt.END);
+-        row.addView(name, Ui.lp(Ui.dp(this, 82), Ui.dp(this, 48)));
++        row.addView(name, Ui.lp(Ui.dp(this, 54), Ui.dp(this, 48)));
+         for (int i = 0; i < SOURCE_UI_PLATFORMS.length; i++) {
+             String platform = SOURCE_UI_PLATFORMS[i];
+             float score = health.peekPlatformLearningScore(providerId, platform);
+-            int samples = health.platformOk(providerId, platform) + health.platformFail(providerId, platform);
+             boolean cooling = health.cooling(providerId, platform, "320k") || health.cooling(providerId, platform, "128k");
+-            TextView cell = Ui.text(this, (cooling ? "◷ " : "") + sourceScore(score), 10.8f, sourceScoreColor(score), true);
++            TextView cell = Ui.text(this, (cooling ? "◷" : "") + sourceScore(score), 9.8f, sourceScoreColor(score), true);
+             cell.setGravity(Gravity.CENTER); cell.setClickable(true); cell.setFocusable(true);
++            cell.setSingleLine(true);
+             int accent = cooling ? Ui.GOLD : (score > .35f ? Ui.CYAN : (score < -.35f ? Ui.PINK : Ui.PURPLE));
+-            cell.setBackground(Ui.tintedGlass(accent, 13, this));
++            cell.setBackground(Ui.tintedGlass(accent, 12, this));
+             String pl = SOURCE_UI_PLATFORM_LABELS[i];
+             cell.setOnClickListener(v -> showSourceCellDetail(providerId, label, platform, pl));
+             Ui.applyRipple(cell, Color.TRANSPARENT);
+-            LinearLayout.LayoutParams cp = Ui.lp(Ui.dp(this, 60), Ui.dp(this, 44)); cp.leftMargin = Ui.dp(this, 4);
++            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, Ui.dp(this, 44), 1f);
++            cp.leftMargin = Ui.dp(this, 3);
+             row.addView(cell, cp);
+         }
+         return row;
+@@ -4882,7 +4884,7 @@
+     }
+ 
+     private void showPlatformImportDialog() {
+-        showGlassInput("导入平台歌单", "粘贴网易云 / QQ / 酷我 / 酷狗歌单链接或 ID", true, "开始导入", this::importPlaylist, input -> {
++        showGlassInput("导入平台歌单", "粘贴网易云 / QQ / 酷我 / 酷狗的完整分享链接", true, "开始导入", this::importPlaylist, input -> {
+             if (!contextCoachDone(COACH_IMPORT_PLAYLIST) && !deferredContextCoachThisSession.contains(COACH_IMPORT_PLAYLIST) && contextCoachOverlay == null) {
+                 input.clearFocus();
+                 try {
+@@ -4892,7 +4894,7 @@
+             }
+             maybeShowContextCoach(COACH_IMPORT_PLAYLIST, input,
+                     "复制分享链接就能导入",
+-                    "支持网易云、QQ、酷我和酷狗歌单分享链接。Lunaxy 只导入歌曲信息，不会修改原平台歌单。");
++                    "支持网易云、QQ、酷我和酷狗完整分享链接。Lunaxy 会先锁定平台身份，再只交给对应解析器；链接残缺时会直接提示重复制，不会跨平台猜测。");
+         });
+     }
+ 
+@@ -4997,30 +4999,41 @@
+ 
+     private void importPlaylist(String input) {
+         String text = input == null ? "" : input.trim();
+-        if (text.isEmpty()) { toast("请输入歌单链接或 ID"); return; }
++        if (text.isEmpty()) { toast("请粘贴完整的歌单分享链接"); return; }
++
++        // V68 platform-first import guard. Platform identity is determined before any parser runs.
++        // We never probe another platform when the chosen platform parser fails: a malformed KG/KW/
++        // QQ/WY link must fail as itself rather than being "rescued" into somebody else's playlist.
++        String platform = playlistImportPlatform(text);
++        if (platform.isEmpty()) {
++            toast(text.matches(".*\\d{5,}.*")
++                    ? "仅凭歌单 ID 无法可靠判断平台，请重新复制完整分享链接"
++                    : "无法确认歌单平台，请重新复制完整的网易云 / QQ / 酷我 / 酷狗分享链接");
++            return;
++        }
++        if ("ambiguous".equals(platform)) {
++            toast("检测到多个音乐平台链接，请只保留一个完整歌单分享链接后重试");
++            return;
++        }
++
+         showBusy(true);
+         io.submit(() -> {
+             ImportedPlaylist p = null;
+             Exception last = null;
+-            String lower = text.toLowerCase(Locale.ROOT);
+             try {
+-                if (lower.contains("kuwo.cn")) p = kuwoPlaylistImport.playlistFromInput(text);
+-                else if (lower.contains("kugou.com")) p = kugouPlaylistImport.playlistFromInput(text);
+-                else if (lower.contains("qq.com")) p = qq.playlistFromInput(text);
+-                else if (lower.contains("163.com") || lower.contains("music.163")) {
++                if ("kw".equals(platform)) p = kuwoPlaylistImport.playlistFromInput(text);
++                else if ("kg".equals(platform)) p = kugouPlaylistImport.playlistFromInput(text);
++                else if ("tx".equals(platform)) p = qq.playlistFromInput(text);
++                else if ("wy".equals(platform)) {
+                     String id = neteasePlaylistId(text);
+-                    if (id == null) throw new Exception("无法识别网易云歌单 ID");
++                    if (id == null) throw new Exception("无法识别网易云歌单 ID，请重新复制完整分享链接");
+                     p = netease.playlist(id);
+-                } else {
+-                    // A bare numeric ID is ambiguous across platforms. Try the existing two
+-                    // importers first for compatibility, then the two new catalog-only adapters.
+-                    String id = neteasePlaylistId(text);
+-                    if (id != null) { try { p = netease.playlist(id); } catch (Exception e) { last = e; } }
+-                    if (p == null) { try { p = qq.playlistFromInput(text); } catch (Exception e) { last = e; } }
+-                    if (p == null) { try { p = kuwoPlaylistImport.playlistFromInput(text); } catch (Exception e) { last = e; } }
+-                    if (p == null) { try { p = kugouPlaylistImport.playlistFromInput(text); } catch (Exception e) { last = e; } }
+                 }
+-            } catch (Exception e) { last = e; }
++                if (p != null && !platform.equals(p.source)) {
++                    throw new Exception("平台身份校验失败：识别为" + playlistPlatformLabel(platform)
++                            + "，但解析结果不是该平台；已拒绝导入以避免歌单张冠李戴");
++                }
++            } catch (Exception e) { last = e; p = null; }
+             ImportedPlaylist result = p;
+             Exception error = last;
+             main.post(() -> {
+@@ -5033,11 +5046,37 @@
+                     tab = 2;
+                     refreshNav();
+                     renderTab();
+-                } else toast("导入失败：" + (error == null ? "无法识别链接" : safeMessage(error)));
++                } else {
++                    String reason = error == null ? "链接不完整或当前格式暂无法解析" : safeMessage(error);
++                    toast(playlistPlatformLabel(platform) + "导入失败：" + reason + "。请重新复制该平台的完整分享链接");
++                }
+             });
+         });
+     }
+ 
++    private String playlistImportPlatform(String raw) {
++        String lower = raw == null ? "" : raw.toLowerCase(Locale.ROOT);
++        boolean wy = lower.contains("music.163.com") || lower.contains("163cn.tv");
++        boolean tx = lower.contains("y.qq.com") || lower.contains("qqmusic.qq.com");
++        boolean kw = lower.contains("kuwo.cn");
++        boolean kg = lower.contains("kugou.com");
++        int count = (wy ? 1 : 0) + (tx ? 1 : 0) + (kw ? 1 : 0) + (kg ? 1 : 0);
++        if (count > 1) return "ambiguous";
++        if (wy) return "wy";
++        if (tx) return "tx";
++        if (kw) return "kw";
++        if (kg) return "kg";
++        return "";
++    }
++
++    private String playlistPlatformLabel(String platform) {
++        if ("wy".equals(platform)) return "网易云";
++        if ("tx".equals(platform)) return "QQ音乐";
++        if ("kw".equals(platform)) return "酷我";
++        if ("kg".equals(platform)) return "酷狗";
++        return "歌单";
++    }
++
+     private void prefetchExactVariants(List<Song> songs) {
+         if (songs == null || songs.isEmpty() || backgroundVariantEnricher == null) return;
+         int index = 0;
+--- /mnt/data/V67-baseline/LunaxyMusic-V67/app/src/main/java/com/xingyu/music/data/KugouPlaylistImportApi.java	2026-08-14 06:07:34.000000000 +0000
++++ /mnt/data/V68-work/LunaxyMusic-V67/app/src/main/java/com/xingyu/music/data/KugouPlaylistImportApi.java	2026-08-14 07:15:36.652675746 +0000
+@@ -23,8 +23,10 @@
+ /** Metadata-only Kugou playlist importer. It never participates in search ranking or playback routing. */
+ public final class KugouPlaylistImportApi {
+     private static final Pattern SPECIAL_ID = Pattern.compile("(?:special/single/|specialid=|special_id=)(\\d{3,})", Pattern.CASE_INSENSITIVE);
+-    private static final Pattern COLLECTION_ID = Pattern.compile("collection_\\d+_(\\d{3,})_", Pattern.CASE_INSENSITIVE);
+-    private static final Pattern HTML_SPECIAL_ID = Pattern.compile("(?:specialid|specialId|special_id|global_collection_id|collection_id|list_id)[^0-9]{0,16}(\\d{3,})", Pattern.CASE_INSENSITIVE);
++    // collection_<type>_<uid>_<listId>_<...>: capture listId, never uid.
++    private static final Pattern COLLECTION_ID = Pattern.compile("collection_\\d+_\\d+_(\\d{1,})_(?:\\d+)", Pattern.CASE_INSENSITIVE);
++    private static final Pattern GCID = Pattern.compile("(?:/songlist/)?gcid_([a-z0-9]+)|[?&]src_cid=([a-z0-9]+)", Pattern.CASE_INSENSITIVE);
++    private static final Pattern HTML_SPECIAL_ID = Pattern.compile("(?:specialid|specialId|special_id|list_id)[^0-9]{0,16}(\\d{1,})", Pattern.CASE_INSENSITIVE);
+     private static final Pattern KUGOU_URL = Pattern.compile("https?://(?:[a-z0-9-]+\\.)*kugou\\.com/[^\\s]+", Pattern.CASE_INSENSITIVE);
+     private static final String SIGN_KEY = "OIlwieks28dk2k092lksi2UIkp";
+     private static final String MID = "239526275778893399526700786998289824956";
+@@ -32,6 +34,7 @@
+     public ImportedPlaylist playlistFromInput(String input) throws Exception {
+         String text = input == null ? "" : input.trim();
+         String specialId = playlistId(text);
++        String gcid = gcid(text);
+         String discoveredName = "";
+         // Kugou's share sheet usually copies prose + a t1/t2/t3.kugou.com short URL instead of a
+         // bare URL. V65 only followed redirects when the WHOLE input started with http, so normal
+@@ -49,7 +52,10 @@
+             }
+             discoveredName = htmlTitle(page.body);
+         }
+-        if (specialId.isEmpty()) throw new Exception("无法识别酷狗歌单链接或 ID");
++        if (specialId.isEmpty()) {
++            if (!gcid.isEmpty()) throw new Exception("已识别酷狗 GCID 歌单，但官方页面暂未给出可读取的集合 ID");
++            throw new Exception("无法识别酷狗歌单链接，请重新复制完整分享链接");
++        }
+ 
+         ArrayList<Song> songs = new ArrayList<>();
+         Set<String> seen = new LinkedHashSet<>();
+@@ -147,6 +153,15 @@
+         return url;
+     }
+ 
++
++    private static String gcid(String raw) {
++        String text = raw == null ? "" : raw.trim();
++        Matcher m = GCID.matcher(text);
++        if (!m.find()) return "";
++        String a = m.group(1), b = m.group(2);
++        return a != null && !a.isEmpty() ? a : (b == null ? "" : b);
++    }
++
+     private static String playlistId(String raw) {
+         String text = raw == null ? "" : raw.trim();
+         if (text.matches("\\d{3,}")) return text;
+--- /mnt/data/V67-baseline/LunaxyMusic-V67/app/src/main/java/com/xingyu/music/data/KuwoPlaylistImportApi.java	2026-08-13 12:08:44.000000000 +0000
++++ /mnt/data/V68-work/LunaxyMusic-V67/app/src/main/java/com/xingyu/music/data/KuwoPlaylistImportApi.java	2026-08-14 07:16:21.816116603 +0000
+@@ -22,19 +22,21 @@
+ public final class KuwoPlaylistImportApi {
+     private static final Pattern PLAYLIST_ID = Pattern.compile("(?:playlist_detail/|playlist/|pid=)(\\d{3,})", Pattern.CASE_INSENSITIVE);
+     private static final Pattern HTML_PLAYLIST_ID = Pattern.compile("(?:playlistId|playlist_id|pid)[\\\"'\\s:=]+(\\d{3,})", Pattern.CASE_INSENSITIVE);
++    private static final Pattern KUWO_URL = Pattern.compile("https?://(?:[a-z0-9-]+\\.)*kuwo\\.cn/[^\\s]+", Pattern.CASE_INSENSITIVE);
+ 
+     public ImportedPlaylist playlistFromInput(String input) throws Exception {
+         String text = input == null ? "" : input.trim();
+         String id = playlistId(text);
+-        if (id.isEmpty() && text.startsWith("http")) {
+-            Http.Response page = Http.get(text, pageHeaders());
++        String shareUrl = firstKuwoUrl(text);
++        if (id.isEmpty() && !shareUrl.isEmpty()) {
++            Http.Response page = Http.get(shareUrl, pageHeaders());
+             id = playlistId(page.finalUrl);
+             if (id.isEmpty()) {
+                 Matcher matcher = HTML_PLAYLIST_ID.matcher(page.body == null ? "" : page.body);
+                 if (matcher.find()) id = matcher.group(1);
+             }
+         }
+-        if (id.isEmpty()) throw new Exception("无法识别酷我歌单链接或 ID");
++        if (id.isEmpty()) throw new Exception("无法识别酷我歌单链接，请重新复制完整分享链接");
+         ArrayList<Song> songs = new ArrayList<>();
+         Set<String> seen = new LinkedHashSet<>();
+         String name = "酷我歌单";
+@@ -84,6 +86,16 @@
+         return new Song(title, artist, album, cover, duration, variants);
+     }
+ 
++
++    private static String firstKuwoUrl(String raw) {
++        String text = raw == null ? "" : raw.trim();
++        Matcher m = KUWO_URL.matcher(text);
++        if (!m.find()) return text.startsWith("http") && text.toLowerCase(java.util.Locale.ROOT).contains("kuwo.cn") ? text : "";
++        String url = m.group();
++        while (!url.isEmpty() && ",.;!?)）】》〉，。；！".indexOf(url.charAt(url.length()-1)) >= 0) url = url.substring(0, url.length()-1);
++        return url;
++    }
++
+     private static String playlistId(String raw) {
+         String text = raw == null ? "" : raw.trim();
+         if (text.matches("\\d{3,}")) return text;
+--- /mnt/data/V67-baseline/LunaxyMusic-V67/app/build.gradle.kts	2026-08-14 06:48:27.000000000 +0000
++++ /mnt/data/V68-work/LunaxyMusic-V67/app/build.gradle.kts	2026-08-14 07:14:09.625328133 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 670
+-        versionName = "67.0.0"
++        versionCode = 680
++        versionName = "68.0.0"
+     }
+ 
+     buildTypes {

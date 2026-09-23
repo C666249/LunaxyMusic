@@ -1,0 +1,103 @@
+--- /mnt/data/lunaxy_v74_baseline/LunaxyMusic-V74/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-19 10:29:41.000000000 +0000
++++ /mnt/data/lunaxy_v75_work/LunaxyMusic-V75/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-19 10:55:28.195564396 +0000
+@@ -7693,13 +7693,11 @@
+         nowArtist.setEllipsize(TextUtils.TruncateAt.END);
+         content.addView(nowArtist, Ui.lp(-1, Ui.dp(this, 28)));
+ 
+-        // V74: Now Playing is playback-first. Catalog source labels live only in Song Info;
+-        // this row is reserved for the three actions the user actually needs while listening.
+-        // Equal-width slots keep the composition geometrically balanced: lyrics / favorite / add.
+-        LinearLayout metaRow = Ui.row(this);
+-        metaRow.setGravity(Gravity.CENTER_VERTICAL);
++        // V75: keep the center favorite anchored to the exact screen/content center, while the
++        // lyrics and add actions hug the usable left/right edges. This restores the wide, airy
++        // composition from the original player instead of centering all three inside equal thirds.
++        FrameLayout metaRow = new FrameLayout(this);
+ 
+-        FrameLayout lyricSlot = new FrameLayout(this);
+         FrameLayout desktopLyricQuick = new FrameLayout(this);
+         desktopLyricQuick.setBackground(Ui.round(Color.argb(12, 255, 255, 255), 21, this));
+         ImageView desktopLyricGlyph = new ImageView(this);
+@@ -7711,12 +7709,10 @@
+         desktopLyricQuick.setClickable(true);
+         Ui.applyRipple(desktopLyricQuick, Color.TRANSPARENT);
+         desktopLyricQuick.setOnClickListener(v -> enableDesktopLyricsDirectly());
+-        lyricSlot.addView(desktopLyricQuick, Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.CENTER));
+-        metaRow.addView(lyricSlot, new LinearLayout.LayoutParams(0, Ui.dp(this, 44), 1f));
++        metaRow.addView(desktopLyricQuick, Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.START | Gravity.CENTER_VERTICAL));
+         desktopLyricQuick.postDelayed(() -> maybeShowContextCoach(COACH_DESKTOP_LYRIC, desktopLyricQuick,
+                 "桌面歌词", "点这里可以直接把当前歌词显示到桌面。"), 260L);
+ 
+-        FrameLayout favoriteSlot = new FrameLayout(this);
+         nowFavoriteButton = Ui.iconButton(this, IconView.Type.HEART, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
+         nowFavoriteIcon = (IconView) nowFavoriteButton.getChildAt(0);
+         nowFavoriteButton.setContentDescription("收藏");
+@@ -7729,18 +7725,15 @@
+                 toast(isFavorite(song) ? "已收藏" : "已取消收藏");
+             }
+         });
+-        favoriteSlot.addView(nowFavoriteButton, Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.CENTER));
+-        metaRow.addView(favoriteSlot, new LinearLayout.LayoutParams(0, Ui.dp(this, 44), 1f));
++        metaRow.addView(nowFavoriteButton, Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.CENTER));
+ 
+-        FrameLayout addSlot = new FrameLayout(this);
+         FrameLayout addToPlaylist = Ui.iconButton(this, IconView.Type.PLUS, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
+         addToPlaylist.setContentDescription("添加到歌单");
+         addToPlaylist.setOnClickListener(v -> {
+             Song song = playback == null ? null : playback.currentSong();
+             if (song != null) showAddToPlaylist(song);
+         });
+-        addSlot.addView(addToPlaylist, Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.CENTER));
+-        metaRow.addView(addSlot, new LinearLayout.LayoutParams(0, Ui.dp(this, 44), 1f));
++        metaRow.addView(addToPlaylist, Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.END | Gravity.CENTER_VERTICAL));
+ 
+         LinearLayout.LayoutParams metaP = Ui.lp(-1, Ui.dp(this, 44)); metaP.topMargin = Ui.dp(this, 5);
+         content.addView(metaRow, metaP);
+--- /mnt/data/lunaxy_v74_baseline/LunaxyMusic-V74/app/build.gradle.kts	2026-08-19 10:29:03.000000000 +0000
++++ /mnt/data/lunaxy_v75_work/LunaxyMusic-V75/app/build.gradle.kts	2026-08-19 10:55:28.848074429 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 740
+-        versionName = "74.0.0"
++        versionCode = 750
++        versionName = "75.0.0"
+     }
+ 
+     buildTypes {
+@@ -35,12 +35,12 @@
+ 
+ // Keep AGP's internal APK name intact for Android Studio install/run tasks, then export a
+ // share-ready copy with the product name after assembly. This avoids relying on deprecated
+-// internal VariantOutput APIs while ensuring the file users share is named "Lunaxy Music V74.apk".
++// internal VariantOutput APIs while ensuring the file users share is named "Lunaxy Music V75.apk".
+ tasks.matching { it.name == "assembleDebug" }.configureEach {
+     doLast {
+         val apkDir = project.layout.buildDirectory.dir("outputs/apk/debug").get().asFile
+         val source = apkDir.resolve("app-debug.apk")
+-        if (source.isFile) source.copyTo(apkDir.resolve("Lunaxy Music V74.apk"), overwrite = true)
++        if (source.isFile) source.copyTo(apkDir.resolve("Lunaxy Music V75.apk"), overwrite = true)
+     }
+ }
+ 
+@@ -49,6 +49,6 @@
+         val apkDir = project.layout.buildDirectory.dir("outputs/apk/release").get().asFile
+         val source = listOf(apkDir.resolve("app-release.apk"), apkDir.resolve("app-release-unsigned.apk"))
+             .firstOrNull { it.isFile }
+-        if (source != null) source.copyTo(apkDir.resolve("Lunaxy Music V74.apk"), overwrite = true)
++        if (source != null) source.copyTo(apkDir.resolve("Lunaxy Music V75.apk"), overwrite = true)
+     }
+ }
+--- /mnt/data/lunaxy_v74_baseline/LunaxyMusic-V74/BUILD_APK.bat	2026-08-19 10:29:03.000000000 +0000
++++ /mnt/data/lunaxy_v75_work/LunaxyMusic-V75/BUILD_APK.bat	2026-08-19 10:55:29.007305589 +0000
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\Lunaxy Music V74.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\Lunaxy Music V75.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\Lunaxy Music V74.apk
++echo [OK] APK: %CD%\dist\Lunaxy Music V75.apk
+ pause

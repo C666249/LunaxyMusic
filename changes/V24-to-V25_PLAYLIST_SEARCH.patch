@@ -1,0 +1,149 @@
+--- /mnt/data/v25work/XingyuMusic-V24/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 08:44:08.000000000 +0000
++++ /mnt/data/v25work/XingyuMusic-V25/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 08:52:56.842850366 +0000
+@@ -90,11 +90,12 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Xingyu Music V24.0 – real playlist row-to-queue behavior.
++ * Xingyu Music V25.0 – playlist detail and playlist-search semantics are intentionally different.
+  *
+- * V24 keeps the proven audio-resolution/playback core frozen. In saved playlist detail pages, tapping
+- * any song now replaces the current playback queue with the entire playlist and starts at that song,
+- * matching Daily / Private / Weather collections. Generic search-result taps remain single-song.
++ * V25 keeps the proven audio-resolution/playback core frozen. Tapping a normal row in a saved playlist
++ * still replaces the current queue with the entire playlist and starts at that row. Tapping a result
++ * inside that playlist's search modal is a temporary pick: insert/play only that song and keep the
++ * existing queue, matching global-search behavior.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(4);
+@@ -1909,8 +1910,11 @@
+                 final int queueIndex = i;
+                 View row = songRow(song, playlist.songs, queueIndex);
+                 row.setOnClickListener(v -> {
++                    // Playlist-search is a temporary pick: keep the current queue, insert this song
++                    // and play it immediately. Direct taps in the playlist detail remain whole-list
++                    // queue replacement via playlistSongList(...).
+                     dismissModalNow();
+-                    playQueue(playlist.songs, queueIndex);
++                    playPickedSong(song);
+                 });
+                 results.addView(row, marginTop(shown == 0 ? 0 : 7));
+                 shown++;
+--- /mnt/data/v25work/XingyuMusic-V24/app/build.gradle.kts	2026-08-10 08:42:54.000000000 +0000
++++ /mnt/data/v25work/XingyuMusic-V25/app/build.gradle.kts	2026-08-10 08:52:56.843113218 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 27
+-        versionName = "24.0.0"
++        versionCode = 28
++        versionName = "25.0.0"
+     }
+ 
+     buildTypes {
+--- "/mnt/data/v25work/XingyuMusic-V24/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-10 08:22:57.000000000 +0000
++++ "/mnt/data/v25work/XingyuMusic-V25/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-10 08:54:45.334396087 +0000
+@@ -80,3 +80,11 @@
+ 4. 点详情页“返回”或手机系统返回键，应回到离开前的首页纵向位置。
+ 5. 横向推荐卡片位置也应恢复，不应重新跳回最左侧。
+ 6. 播放核心保护证据见 changes/PLAYBACK_CORE_GUARD_V22.txt。
++
++[V25 歌单 / 搜索点歌语义验收]
++1. 全局搜索：点击结果仍只插入并立即播放这一首，当前播放列表不被整页搜索结果替换。
++2. 普通歌单详情：直接点击任意歌曲，整个歌单替换当前播放列表，并从所点歌曲开始播放。
++3. 普通歌单详情：点“从第一首播放”，整个歌单替换当前播放列表并从第一首开始。
++4. 歌单右上角“搜索当前歌单”：点击搜索结果只临时插入并立即播放这一首，当前播放列表保持，不切换成整个歌单。
++5. 收藏 / 下一首 / 三点更多操作保持原样。
++6. 播放核心保护证据见 changes/PLAYBACK_CORE_GUARD_V25.txt。
+--- /dev/null	2026-08-10 06:58:46.878396087 +0000
++++ "/mnt/data/v25work/XingyuMusic-V25/V25.0_\346\233\264\346\226\260\350\257\264\346\230\216.md"	2026-08-10 08:52:57.046396087 +0000
+@@ -0,0 +1,16 @@
++# XingyuMusic V25.0
++
++本版只修正“歌单详情”和“歌单内搜索”两种点歌意图的区别，不修改音源解析与实际播放核心。
++
++## 最终交互规则
++- **全局搜索结果**：点某首歌 = 只把这一首插入当前播放列表并立即播放；原播放列表不被整页搜索结果替换。
++- **歌单内搜索结果**：点某首歌 = 与全局搜索完全一致，只把这一首临时插入当前播放列表并立即播放；原播放列表保持。
++- **歌单详情直接点歌曲**：点某首歌 = 整个歌单替换当前播放列表，并从所点歌曲开始播放。
++- **歌单详情“从第一首播放”**：整个歌单替换当前播放列表，并从第一首开始播放。
++- 每日推荐 / 私人电台 / 天气电台 / 最近播放详情继续采用“真正歌单”的整表入队逻辑。
++
++## 为什么这样区分
++搜索行为代表“临时想听这一首”，不应该打断正在使用的播放队列；直接进入歌单点歌则代表“我要听这个歌单”，因此应安装整个歌单为播放队列。
++
++## 播放链保护
++Huibq、全豆要、SourceCoordinator、MultiSourceManager、PlaybackUrlStore、SourceHealthStore、Media3 PlaybackService 等核心文件均未修改。
+--- /dev/null	2026-08-10 06:58:46.878396087 +0000
++++ "/mnt/data/v25work/XingyuMusic-V25/V25.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"	2026-08-10 08:54:45.342396087 +0000
+@@ -0,0 +1,9 @@
++XingyuMusic V25.0 自测重点
++
++1. 普通歌单详情直接点中间任一首：整个歌单成为播放列表，并从该首开始。
++2. 普通歌单详情点“从第一首播放”：整个歌单成为播放列表，从第一首开始。
++3. 在同一歌单右上角搜索，搜索出一首后点击：只插入并播放这一首，不把整个歌单重新替换当前播放列表。
++4. 全局搜索点击歌曲：保持原 V24 逻辑，只插入并播放这一首。
++5. 行内收藏 / 下一首 / 三点更多按钮行为不变。
++6. 播放/音源核心 SHA-256 与 V24 基线逐项核对，见 changes/PLAYBACK_CORE_GUARD_V25.txt。
++7. 当前沙箱无法解析 services.gradle.org，Gradle wrapper 无法完成下载；本轮已完成精确行为断言、源码差异核对与 16/16 播放核心哈希保护。最终 Android SDK 编译请在本机 Android Studio 完成。
+--- /dev/null	2026-08-10 06:58:46.878396087 +0000
++++ /mnt/data/v25work/XingyuMusic-V25/changes/PLAYBACK_CORE_GUARD_V25.txt	2026-08-10 08:53:10.232919009 +0000
+@@ -0,0 +1,56 @@
++XingyuMusic V25 播放核心保护检查
++Baseline: V24-Full
++Rule: V25 只允许修改歌单内搜索点歌语义与版本号；播放/音源核心不得修改。
++
++[PASS] app/src/main/java/com/xingyu/music/playback/PlaybackService.java
++      V24 0fad6065fbb1805b18f3673178460a5d0c5e05bb87257c46f9f505bf96253dc7
++      V25 0fad6065fbb1805b18f3673178460a5d0c5e05bb87257c46f9f505bf96253dc7
++[PASS] app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java
++      V24 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
++      V25 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
++[PASS] app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
++      V24 cdcc6afe54a7a70251a64689a1fa851eda251d220ec4438bd4c607018c86b37c
++      V25 cdcc6afe54a7a70251a64689a1fa851eda251d220ec4438bd4c607018c86b37c
++[PASS] app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
++      V24 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
++      V25 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
++[PASS] app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
++      V24 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
++      V25 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
++[PASS] app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
++      V24 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
++      V25 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
++[PASS] app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
++      V24 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
++      V25 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
++[PASS] app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
++      V24 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
++      V25 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
++[PASS] app/src/main/java/com/xingyu/music/data/ResolverProvider.java
++      V24 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
++      V25 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
++[PASS] app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
++      V24 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
++      V25 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
++[PASS] app/src/main/assets/source/huibq-latest.js
++      V24 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
++      V25 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
++[PASS] app/src/main/java/com/xingyu/music/data/QQMusicApi.java
++      V24 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
++      V25 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
++[PASS] app/src/main/java/com/xingyu/music/data/NeteaseApi.java
++      V24 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
++      V25 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
++[PASS] app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
++      V24 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
++      V25 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
++[PASS] app/src/main/java/com/xingyu/music/data/LibraryStore.java
++      V24 9ebeb24cc2df5333279a996fa3f28fdecfaf6839535313ef9b26d2eceb3b3477
++      V25 9ebeb24cc2df5333279a996fa3f28fdecfaf6839535313ef9b26d2eceb3b3477
++[PASS] app/src/main/AndroidManifest.xml
++      V24 f3cc719443c16d8c8c1b3b7dc7d60d31a1882f73e6931db87b5bd454b81f7af2
++      V25 f3cc719443c16d8c8c1b3b7dc7d60d31a1882f73e6931db87b5bd454b81f7af2
++
++结论：受保护文件 16/16 完全一致。
++[INTENTIONAL] app/src/main/java/com/xingyu/music/MainActivity.java：仅歌单内搜索结果点击从 playQueue(...) 改为 playPickedSong(...)，以及 V25 顶部说明注释。
++[INTENTIONAL] app/build.gradle.kts：versionCode 27 -> 28，versionName 24.0.0 -> 25.0.0。

@@ -1,0 +1,14 @@
+Lunaxy Music V66 — Gradle Build Attempt
+
+Command:
+  ./gradlew :app:assembleDebug
+
+Result:
+  NOT COMPLETED.
+
+Observed environment failure before Android compilation:
+  [SunflowerMusic] First build: downloading Gradle 9.5.0 ...
+  curl: (6) Could not resolve host: services.gradle.org
+  repeated retry/timeouts
+
+The execution was allowed to retry until the container command timeout. Therefore V66 does NOT claim a successful real Android build. Static/synthetic checks are recorded separately in V66_STATIC_CHECK.txt.

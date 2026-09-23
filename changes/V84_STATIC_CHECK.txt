@@ -1,0 +1,20 @@
+Lunaxy Music V84 Stable 静态/回归自测
+
+[PASS] 基线范围：V83 -> V84 的 app/src/main/java 仅修改 PlaybackService.java，并新增 PlaybackSessionStore.java；其余 Java 运行时代码字节级未改。
+[PASS] PlaybackSessionStore 独立 javac（Java 17 + 最小 Android/JSON/Song stubs）通过。
+[PASS] PlaybackService javac 解析阶段未出现 illegal start / expected / unclosed / reached end / not a statement 等语法类错误；环境缺 Android/Media3 依赖，因此符号解析错误属于预期。
+[PASS] Stable 全部 Java 源码字符串/注释/括号词法平衡。
+[PASS] 会话持久化包含：完整播放队列、current index、稳定 Song key、positionMs、durationMs、updatedAt。
+[PASS] 恢复阶段不调用 player.play / resolveCurrent；启动后保持暂停，不擅自自动播放。
+[PASS] Online / Offline 两条 prepare 路径均在 Media3 prepare 前应用保存的 seek 位置。
+[PASS] 播放中 5 秒 checkpoint；暂停、seek、切歌、队列编辑、onTaskRemoved、onDestroy 均有保存路径。
+[PASS] 通知/MediaSession stop 会先同步保存最后上下文；显式删除队列最后一首会清除持久化会话。
+[PASS] 损坏 checkpoint 自动清理，不阻断启动。
+[PASS] Stable applicationId=com.xingyu.music，versionCode=840，versionName=84.0.0。
+[PASS] Stable 正式启动图标与 V83 字节级一致。
+[PASS] AndroidManifest XML 可解析。
+[PASS] 同轮 Stable/Beta 81 个 Java 运行时文件字节级一致。
+[PASS] 工作流记忆文件 LUNAXY_PROJECT_WORKFLOW_MEMORY.md 已放入 Full Source。
+[PASS] 自动关键断言总计 28/28 通过。
+
+[BUILD NOTE] 已实际尝试 ./gradlew :app:compileDebugJavaWithJavac --no-daemon；当前容器无法解析 services.gradle.org，Gradle 9.5.0 无法下载，因此不能声称完成 Android 真编译。请在 Android Studio/具备网络与 Android SDK 的环境执行最终 Build + 真机验收。

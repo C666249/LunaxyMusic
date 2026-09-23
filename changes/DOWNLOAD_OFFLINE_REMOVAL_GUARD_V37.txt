@@ -1,0 +1,18 @@
+Lunaxy Music V37 - MUSIC DOWNLOAD/OFFLINE REMOVAL AUDIT
+
+PASS removed  app/src/main/java/com/xingyu/music/data/DownloadStore.java
+PASS removed  app/src/main/java/com/xingyu/music/data/DownloadPolicy.java
+PASS removed  app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java
+PASS removed  app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java
+PASS removed  app/src/main/java/com/xingyu/music/model/DownloadedTrack.java
+
+PASS  MainActivity has no DownloadStore
+PASS  MainActivity has no OfflineDownloadManager
+PASS  MainActivity has no DownloadPolicy
+PASS  MainActivity has no download action label
+PASS  MainActivity has no offline playlist identity
+PASS  IconView has no DOWNLOAD icon
+PASS  SourceCoordinator has no offline/local playback branch
+PASS  Song has no local/offline provider label
+
+结论：V37 不再包含“歌曲下载 / 离线歌单 / 本地下载歌曲直通”产品链路。SourceScriptStore 中对 QDY 脚本文件的下载/固定属于音源脚本管理，不是歌曲下载功能，保留。

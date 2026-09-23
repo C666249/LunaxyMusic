@@ -1,0 +1,8 @@
+Lunaxy Music V47 — SEARCH RANKING LOCK GUARD
+==============================================
+Baseline: V46
+Result: PASS
+SHA-256: 4b820a8affb5f29bf61061ce2358cf45c25c58cb61c80c759ade0448236e0fc3
+File: app/src/main/java/com/xingyu/music/data/SearchRanker.java
+
+Locked behavior remains unchanged: original artist / standard recording / quality ranking.

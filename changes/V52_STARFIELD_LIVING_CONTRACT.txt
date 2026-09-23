@@ -1,0 +1,17 @@
+V52 Living 3D Starfield Contract
+================================
+PASS conditions checked in source/stub tests:
+- every 360 world star has positive radialSpeed and updateStarMotion() decreases distance every frame;
+- MOTION_ORBIT/CURVE/PULSE never set radial speed to zero;
+- long scene surge/swirl/bloom waves are time-driven and independent of sensor state;
+- foreground flight advancement is outside angularSpeed conditions;
+- foreground particles leaving the frustum during rotation reset immediately into current deep view;
+- postInvalidateOnAnimation continues whenever player starfield is running;
+- camera quaternion only changes projection/camera orientation;
+- Starfield3DView remains non-clickable/non-focusable;
+- no audio/network/download/ringtone business dependency introduced.
+
+Runtime-like stub reflection check:
+STARFIELD_V52_CONTINUOUS_MOTION_PASS world=2450/2450->2450/2450 flow=420/420->420/420
+- first animation frame: all 2450 world stars advanced;
+- targetCameraQ rotated ~95deg and angularSpeed forced high: all 2450 still advanced.

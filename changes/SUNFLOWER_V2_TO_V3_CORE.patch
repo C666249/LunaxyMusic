@@ -1,0 +1,2886 @@
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/BUILD_APK.bat SunflowerMusic-V3-work/SunflowerMusic-V2/BUILD_APK.bat
+--- SunflowerMusic-V2/BUILD_APK.bat	2026-08-11 16:02:48.253931291 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/BUILD_APK.bat	2026-08-11 18:48:11.316092524 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   Sunflower Music V2 - Debug APK Build
++echo   Sunflower Music V3 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\SunflowerMusic-V2-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\SunflowerMusic-V3-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\SunflowerMusic-V2-debug.apk
++echo [OK] APK: %CD%\dist\SunflowerMusic-V3-debug.apk
+ pause
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' "SunflowerMusic-V2/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt" "SunflowerMusic-V3-work/SunflowerMusic-V2/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"
+--- "SunflowerMusic-V2/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-11 16:13:06.812962017 +0000
++++ "SunflowerMusic-V3-work/SunflowerMusic-V2/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-11 18:48:11.316201976 +0000
+@@ -1,30 +1,42 @@
+-Sunflower Music V2.0 Test — Android Studio 验收说明
++Sunflower Music V3.0 Test — Android Studio 验收说明
+ 
+-1. 本项目 applicationId：com.xingyu.sunflowermusic
+-   - 与 Lunaxy Music V47（com.xingyu.music）可同时安装。
+-   - 与 Sunflower V1 applicationId 相同，因此安装 V2 会覆盖 V1 测试版并保留测试数据。
++1. 应用身份
++   - applicationId：com.xingyu.sunflowermusic
++   - 可与 Lunaxy Music V47（com.xingyu.music）同时安装。
++   - 与 Sunflower V1/V2 applicationId 相同，因此安装 V3 会覆盖测试分支并保留 Sunflower 测试数据。
+ 
+ 2. Android Studio
+-   - 打开本目录。
+-   - 等待 Gradle Sync。
+-   - 连接手机，直接 Run app。
+-   - 或 Windows 双击 BUILD_APK.bat，成功后 APK 会复制到 dist\SunflowerMusic-V2-debug.apk。
+-
+-3. 第一轮请先不要点“更新社区源”。
+-   - 先用 V1 已固定到本机的同一批脚本做 A/B，才能判断 V2 Host / 调度修改是否有效。
+-   - 先测试 QQ：周杰伦《七里香》《晴天》《稻香》等原版。
+-   - 再测试一首已知网易可播歌曲。
+-
+-4. 打开首页“智能音源 / Provider Hub”查看状态：
+-   - V2 应分别显示 QQ(tx) 与网易(wy) READY/fail。
+-   - 网易 READY 不应再当作 QQ READY。
+-
+-5. 如果 QQ 仍失败：
+-   - 复制完整播放诊断发回开发会话。
+-   - 然后可点一次“更新社区源”，再对同一首歌重试并复制第二份诊断，形成 pinned old source vs current source A/B。
+-
+-6. 正确性规则：
+-   - V2 不会主动把 QQ 独家歌曲模糊映射到网易翻唱来追求“能响”。
+-   - 当前仍以平台原生 ID route 为主，Media3 READY + Exact Gate 才记成功。
+-
+-7. 本交付环境没有 Android SDK，未执行真实 assembleDebug / 真机测试。请以 Android Studio 编译输出为最终构建验证。
++   - 打开本目录，等待 Gradle Sync。
++   - 连接手机后 Run app。
++   - 或 Windows 双击 BUILD_APK.bat；成功后 APK 会复制到 dist\SunflowerMusic-V3-debug.apk。
++
++3. V3 首轮重点测试
++   - 搜索“枫 周杰伦”或“止战之殇 周杰伦”。
++   - 搜索页应出现“全部 / 网易 / QQ / 酷我 / 酷狗”筛选。
++   - 同一首完全匹配的原版歌曲应合并成一条，并在来源标签显示多个 Catalog，例如“QQ · 酷我 · 酷狗”。
++   - Live、翻唱、Remix、不同歌手、明显不同时长版本不得被合并成同一 Canonical Track。
++
++4. 播放矩阵
++   - 点首页“智能音源”进入 Sunflower Route Matrix V3。
++   - 横轴为 QQ(tx) / 酷我(kw) / 酷狗(kg) / 网易(wy)，纵轴为 Huibq/QDY/Juhe/LX/... Provider。
++   - 日志 route 应显示“Provider × Catalog”，例如“Huibq × 酷我 → 320k”。
++   - 如果 TX 全部失败，但 KW/KG exact variant 可用，应自动切到 KW/KG，而不是先把 TX 整列试死。
++   - Media3 STATE_READY + 时长一致性仍是唯一实播成功标准。
++
++5. 导入歌单
++   - QQ/网易原导入格式不变，LibraryStore 未改。
++   - 导入后 V3 会在旁路 TrackVariantStore 中低并发查找 exact KW/KG（QQ anchor 还会尝试 exact WY）身份。
++   - 这些附加身份失败/清空都不应破坏原歌单、收藏和历史。
++
++6. 正确性红线
++   - 不以“能响”为目标。跨 Catalog 必须通过 Exact Track Gate。
++   - 歌手不同、Live/Cover/Remix/伴奏/明显时长不同直接拒绝。
++   - 宁可无可播放路线，也不自动播放错误版本。
++
++7. 诊断建议
++   - 若某首歌失败，复制完整播放诊断。重点看 identity / matrix / route / resolver-fail / candidate / playback-ok。
++   - 如果 KW/KG 搜索本身失败，长按对应搜索筛选可查看多 Catalog 网络详情。
++
++8. 当前交付环境限制
++   - 本环境没有 Android SDK，未执行真实 assembleDebug / 荣耀 Magic 6 Pro 真机网络播放。
++   - 已执行 Java 语法扫描、Catalog/Exact Gate/Route Matrix/SourceCoordinator/Variant Overlay stub javac、XML/PNG/ZIP/哈希检查。
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/build.gradle.kts SunflowerMusic-V3-work/SunflowerMusic-V2/app/build.gradle.kts
+--- SunflowerMusic-V2/app/build.gradle.kts	2026-08-11 15:45:59.295711818 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/build.gradle.kts	2026-08-11 18:39:04.821271432 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.sunflowermusic"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 200
+-        versionName = "2.0.0-test"
++        versionCode = 300
++        versionName = "3.0.0-test"
+     }
+ 
+     buildTypes {
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/MainActivity.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/MainActivity.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 16:02:48.253789450 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 18:50:07.000344541 +0000
+@@ -49,12 +49,17 @@
+ import android.widget.TextView;
+ 
+ import com.xingyu.music.data.LibraryStore;
++import com.xingyu.music.data.ExactTrackMatcher;
+ import com.xingyu.music.data.ResolverHttpDiagnostics;
+ import com.xingyu.music.data.LyricCacheStore;
+ import com.xingyu.music.data.LyricMatchStore;
+ import com.xingyu.music.data.LyricMatcher;
+ import com.xingyu.music.data.LyricParser;
+ import com.xingyu.music.data.NeteaseApi;
++import com.xingyu.music.data.KuwoMusicApi;
++import com.xingyu.music.data.KugouMusicApi;
++import com.xingyu.music.data.TrackVariantStore;
++import com.xingyu.music.data.TrackVariantEnricher;
+ import com.xingyu.music.data.NeteaseLyricSearchApi;
+ import com.xingyu.music.data.QQMusicApi;
+ import com.xingyu.music.data.QQLyricApi;
+@@ -89,28 +94,35 @@
+ import java.util.Map;
+ import java.util.concurrent.ExecutorService;
+ import java.util.concurrent.Executors;
++import java.util.concurrent.ScheduledExecutorService;
++import java.util.concurrent.RejectedExecutionException;
+ import java.util.concurrent.Future;
+ import java.util.concurrent.TimeUnit;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Sunflower Music 2.0 test branch, forked from the Lunaxy Music V47 golden UI/data baseline.
++ * Sunflower Music 3.0 test branch, forked from the Lunaxy Music V47 golden UI/data baseline.
+  *
+  * V47 search, playlists, lyrics, recommendation UI and queue interaction remain intentionally stable.
+- * The experimental scope is the Song -> AudioCandidate domain: replaceable Provider Hub routing,
+- * exact-track READY affinity, short circuit breakers and stronger Media3 candidate verification.
++ * V3 extends the experimental playback domain into a multi-catalog route matrix: TX/KW/KG/WY
++ * canonical identities feed replaceable providers while Exact Track Gate and Media3 READY remain mandatory.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+-    private final ExecutorService io = Executors.newFixedThreadPool(4);
++    private final ExecutorService io = Executors.newFixedThreadPool(6);
++    private final ScheduledExecutorService variantPrefetch = Executors.newSingleThreadScheduledExecutor();
+     private final Handler main = new Handler(Looper.getMainLooper());
+     private final NeteaseApi netease = new NeteaseApi();
+     private final NeteaseLyricSearchApi neteaseLyricSearch = new NeteaseLyricSearchApi();
+     private final QQMusicApi qq = new QQMusicApi();
++    private final KuwoMusicApi kuwo = new KuwoMusicApi();
++    private final KugouMusicApi kugou = new KugouMusicApi();
+     private final SearchPaginationApi searchPagination = new SearchPaginationApi();
+     private final QQLyricApi qqLyrics = new QQLyricApi();
+ 
+     private LibraryStore store;
++    private TrackVariantStore trackVariantStore;
++    private TrackVariantEnricher backgroundVariantEnricher;
+     private LyricCacheStore lyricCache;
+     private LyricMatchStore lyricMatches;
+     private RecommendationEngine recommendations;
+@@ -208,12 +220,18 @@
+     private String lastQuery = "";
+     private int lastWyCount;
+     private int lastTxCount;
++    private int lastKwCount;
++    private int lastKgCount;
+     private String lastWyError = "";
+     private String lastTxError = "";
++    private String lastKwError = "";
++    private String lastKgError = "";
+     private List<Song> lastWySearchSongs = new ArrayList<>();
+     private List<Song> lastTxSearchSongs = new ArrayList<>();
++    private List<Song> lastKwSearchSongs = new ArrayList<>();
++    private List<Song> lastKgSearchSongs = new ArrayList<>();
+     private List<LyricSearchResult> lyricSearchResults = new ArrayList<>();
+-    private String searchSourceFilter = ""; // ""=all, wy, tx
++    private String searchSourceFilter = ""; // ""=all, wy, tx, kw, kg
+     private boolean searchMetadataExpanded = true;
+     private boolean searchLyricsExpanded = true;
+     private boolean searchMetadataPending;
+@@ -221,8 +239,12 @@
+     private boolean searchMoreLoading;
+     private boolean searchWyHasMore;
+     private boolean searchTxHasMore;
++    private boolean searchKwHasMore;
++    private boolean searchKgHasMore;
+     private int searchWyNextOffset = 30;
+     private int searchTxNextPage = 2;
++    private int searchKwNextPage = 2;
++    private int searchKgNextPage = 2;
+     private static final int SEARCH_PAGE_SIZE = 30;
+     private int searchRequestToken;
+     private boolean searchAllResultsOpen;
+@@ -333,6 +355,8 @@
+         // Restore V10 routing from a clean gate state before PlaybackService is bound.
+         V14PlaybackStateMigration.runOnce(this);
+         store = new LibraryStore(this);
++        trackVariantStore = new TrackVariantStore(this);
++        backgroundVariantEnricher = new TrackVariantEnricher(trackVariantStore);
+         lyricCache = new LyricCacheStore(this);
+         lyricMatches = new LyricMatchStore(this);
+         recommendations = new RecommendationEngine(this, netease, qq);
+@@ -732,7 +756,7 @@
+ 
+     private void showSourceStatus() {
+         String status = playback == null ? "音源管理器正在启动…" : playback.sourceStatus();
+-        showGlassMessage("Sunflower Provider Hub V2", status + "\n\nV2 把 QQ(tx) 与网易(wy) 的健康状态彻底拆开，并重做 LX Mobile 2.0 Host 兼容层。当前仍以平台原生 ID 为首选，不会为了提高成功率把 QQ 独家歌曲模糊替换成网易同名翻唱；只有 Media3 READY 且通过 Exact Gate 的候选才会记成功。",
++        showGlassMessage("Sunflower Route Matrix V3", status + "\n\nV3 把歌曲身份扩展为 QQ(tx) / 酷我(kw) / 酷狗(kg) / 网易(wy) 多 Catalog，并按 Provider × Variant 二维矩阵选路。跨平台 Variant 只有通过 Exact Gate 才能加入；历史学习只认 Media3 READY，不会为了提高成功率播放翻唱、Live、Remix 或明显不同版本。",
+                 "关闭", null, "更新社区源", () -> {
+                     if (playback == null) { toast("播放器正在连接"); return; }
+                     playback.resetCommunityProviderScripts();
+@@ -966,8 +990,8 @@
+                 break;
+             case 1:
+                 target = onboardingSourceTarget;
+-                title = "Provider Hub 会自动回退";
+-                body = "QQ 与网易只负责认出歌曲，实际音频会在多个 Provider 间回退；只有 Media3 READY 后才会记住这首歌的成功线路。";
++                title = "Route Matrix 会自动选路";
++                body = "QQ、酷我、酷狗、网易只负责提供同一录音的身份；播放时会在 Provider × Catalog 矩阵里自动选路，只有 Media3 READY 后才记住成功组合。";
+                 break;
+             case 2:
+                 target = onboardingRecentTarget;
+@@ -1773,27 +1797,22 @@
+         searchAllResultsOpen = false;
+         searchAutoLoadNotBeforeMs = 0L;
+         lyricSearchResults = new ArrayList<>();
+-        // V45: section order is stable for every query. Title/artist is always first and both
+-        // sections start expanded; the user can collapse either one manually.
+         searchMetadataExpanded = true;
+         searchLyricsExpanded = true;
+         final boolean runLyrics = shouldSearchLyrics(keyword, 0);
+         lyricSearchPending = runLyrics;
+         searchMetadataPending = true;
+         searchResults = new ArrayList<>();
+-        lastWySearchSongs = new ArrayList<>();
+-        lastTxSearchSongs = new ArrayList<>();
++        lastWySearchSongs = new ArrayList<>(); lastTxSearchSongs = new ArrayList<>();
++        lastKwSearchSongs = new ArrayList<>(); lastKgSearchSongs = new ArrayList<>();
+         searchMoreLoading = false;
+-        searchWyHasMore = false;
+-        searchTxHasMore = false;
+-        searchWyNextOffset = SEARCH_PAGE_SIZE;
+-        searchTxNextPage = 2;
+-        lastWyCount = 0; lastTxCount = 0; lastWyError = ""; lastTxError = "";
++        searchWyHasMore = false; searchTxHasMore = false; searchKwHasMore = false; searchKgHasMore = false;
++        searchWyNextOffset = SEARCH_PAGE_SIZE; searchTxNextPage = 2; searchKwNextPage = 2; searchKgNextPage = 2;
++        lastWyCount = lastTxCount = lastKwCount = lastKgCount = 0;
++        lastWyError = lastTxError = lastKwError = lastKgError = "";
+         searchHistory = store.addSearchHistory(keyword);
+         showBusy(true);
+ 
+-        // Lyric discovery is independent of ordinary metadata search. It runs in parallel when the
+-        // query is long enough to be meaningful, so it cannot block title/artist results.
+         if (runLyrics) {
+             io.submit(() -> {
+                 List<NeteaseLyricSearchApi.Hit> remoteLyrics;
+@@ -1805,74 +1824,83 @@
+                     if (requestToken != searchRequestToken || isFinishing()) return;
+                     lyricSearchResults = combined;
+                     lyricSearchPending = false;
+-                    if (!searchMetadataPending && !lyricSearchResults.isEmpty()) {
+-                        lyricSearchResults = enrichAndRerankLyricResults(keyword, lyricSearchResults);
+-                    }
++                    if (!searchMetadataPending && !lyricSearchResults.isEmpty()) lyricSearchResults = enrichAndRerankLyricResults(keyword, lyricSearchResults);
+                     renderSearchResults(holder);
+                 });
+             });
+         }
+ 
+-        Future<SearchOutcome> wyFuture = io.submit(() -> {
+-            try {
+-                List<Song> songs = netease.search(keyword, SEARCH_PAGE_SIZE);
+-                return new SearchOutcome(songs, "", Math.max(songs.size(), netease.lastSearchTotal()));
+-            } catch (Exception e) { return new SearchOutcome(new ArrayList<>(), safeMessage(e), 0); }
++        final java.util.concurrent.atomic.AtomicInteger remaining = new java.util.concurrent.atomic.AtomicInteger(4);
++        submitCatalogSearch("wy", requestToken, keyword, holder, remaining, () -> {
++            try { List<Song> songs = netease.search(keyword, SEARCH_PAGE_SIZE); return new SearchOutcome(songs, "", Math.max(songs.size(), netease.lastSearchTotal())); }
++            catch (Exception e) { return new SearchOutcome(new ArrayList<>(), safeMessage(e), 0); }
+         });
+-        Future<SearchOutcome> txFuture = io.submit(() -> {
+-            try {
+-                List<Song> songs = qq.search(keyword, SEARCH_PAGE_SIZE);
+-                return new SearchOutcome(songs, "", Math.max(songs.size(), qq.lastSearchTotal()));
+-            } catch (Exception e) { return new SearchOutcome(new ArrayList<>(), safeMessage(e), 0); }
++        submitCatalogSearch("tx", requestToken, keyword, holder, remaining, () -> {
++            try { List<Song> songs = qq.search(keyword, SEARCH_PAGE_SIZE); return new SearchOutcome(songs, "", Math.max(songs.size(), qq.lastSearchTotal())); }
++            catch (Exception e) { return new SearchOutcome(new ArrayList<>(), safeMessage(e), 0); }
++        });
++        submitCatalogSearch("kw", requestToken, keyword, holder, remaining, () -> {
++            try { List<Song> songs = kuwo.search(keyword, SEARCH_PAGE_SIZE); return new SearchOutcome(songs, "", Math.max(songs.size(), kuwo.lastSearchTotal())); }
++            catch (Exception e) { return new SearchOutcome(new ArrayList<>(), safeMessage(e), 0); }
++        });
++        submitCatalogSearch("kg", requestToken, keyword, holder, remaining, () -> {
++            try { List<Song> songs = kugou.search(keyword, SEARCH_PAGE_SIZE); return new SearchOutcome(songs, "", Math.max(songs.size(), kugou.lastSearchTotal())); }
++            catch (Exception e) { return new SearchOutcome(new ArrayList<>(), safeMessage(e), 0); }
+         });
++    }
+ 
++    private void submitCatalogSearch(String source, int requestToken, String keyword, LinearLayout holder,
++                                     java.util.concurrent.atomic.AtomicInteger remaining,
++                                     java.util.concurrent.Callable<SearchOutcome> call) {
+         io.submit(() -> {
+-            SearchOutcome wy; SearchOutcome tx;
+-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(18);
+-            try {
+-                long left = Math.max(1L, deadline - System.nanoTime());
+-                wy = wyFuture.get(left, TimeUnit.NANOSECONDS);
+-            } catch (Exception e) {
+-                wyFuture.cancel(true);
+-                wy = new SearchOutcome(new ArrayList<>(), "请求超时或网络不可用", 0);
+-            }
+-            try {
+-                long left = Math.max(1L, deadline - System.nanoTime());
+-                tx = txFuture.get(left, TimeUnit.NANOSECONDS);
+-            } catch (Exception e) {
+-                txFuture.cancel(true);
+-                tx = new SearchOutcome(new ArrayList<>(), "请求超时或网络不可用", 0);
+-            }
+-            final SearchOutcome wyResult = wy;
+-            final SearchOutcome txResult = tx;
+-            final List<Song> merged = mergeSearch(keyword, wy.songs, tx.songs);
+-
++            SearchOutcome outcome;
++            try { outcome = call.call(); }
++            catch (Exception e) { outcome = new SearchOutcome(new ArrayList<>(), safeMessage(e), 0); }
++            final SearchOutcome result = outcome;
+             main.post(() -> {
+                 if (requestToken != searchRequestToken || isFinishing()) return;
++                applyCatalogOutcome(source, result);
++                // V3 incremental catalog rendering: one slow/rate-limited platform must not block
++                // already-returned KW/KG/WY/TX results behind the full-screen busy overlay.
+                 showBusy(false);
+-                searchMetadataPending = false;
+-                lastWySearchSongs = new ArrayList<>(wyResult.songs);
+-                lastTxSearchSongs = new ArrayList<>(txResult.songs);
+-                searchResults = merged;
+-                if (!lyricSearchResults.isEmpty()) {
+-                    lyricSearchResults = enrichAndRerankLyricResults(keyword, lyricSearchResults);
++                searchResults = mergeSearch(keyword);
++                if (trackVariantStore != null) for (Song song : searchResults) trackVariantStore.remember(song);
++                boolean finished = remaining.decrementAndGet() <= 0;
++                if (finished) {
++                    searchMetadataPending = false;
++                    showBusy(false);
++                    if (!lyricSearchResults.isEmpty()) lyricSearchResults = enrichAndRerankLyricResults(keyword, lyricSearchResults);
+                 }
+-                lastWyCount = wyResult.total;
+-                lastTxCount = txResult.total;
+-                lastWyError = wyResult.error;
+-                lastTxError = txResult.error;
+-                searchWyNextOffset = lastWySearchSongs.size();
+-                searchTxNextPage = 2; // initial QQ request is page 1; pagination continues at page 2
+-                searchWyHasMore = providerHasMore(lastWySearchSongs.size(), lastWyCount, SEARCH_PAGE_SIZE);
+-                searchTxHasMore = providerHasMore(lastTxSearchSongs.size(), lastTxCount, SEARCH_PAGE_SIZE);
+                 renderSearchResults(holder);
+             });
+         });
+     }
+ 
+-    private List<Song> mergeSearch(String keyword, List<Song> wy, List<Song> tx) {
+-        int count = (wy == null ? 0 : wy.size()) + (tx == null ? 0 : tx.size());
+-        return SearchRanker.mergeAndRank(keyword, wy, tx, Math.max(50, count));
++    private void applyCatalogOutcome(String source, SearchOutcome result) {
++        List<Song> songs = new ArrayList<>(result == null ? new ArrayList<>() : result.songs);
++        int total = result == null ? 0 : result.total;
++        String error = result == null ? "unknown" : result.error;
++        if ("wy".equals(source)) {
++            lastWySearchSongs = songs; lastWyCount = total; lastWyError = error;
++            searchWyNextOffset = songs.size(); searchWyHasMore = providerHasMore(songs.size(), total, SEARCH_PAGE_SIZE);
++        } else if ("tx".equals(source)) {
++            lastTxSearchSongs = songs; lastTxCount = total; lastTxError = error;
++            searchTxNextPage = 2; searchTxHasMore = providerHasMore(songs.size(), total, SEARCH_PAGE_SIZE);
++        } else if ("kw".equals(source)) {
++            lastKwSearchSongs = songs; lastKwCount = total; lastKwError = error;
++            searchKwNextPage = 2; searchKwHasMore = providerHasMore(songs.size(), total, SEARCH_PAGE_SIZE);
++        } else if ("kg".equals(source)) {
++            lastKgSearchSongs = songs; lastKgCount = total; lastKgError = error;
++            searchKgNextPage = 2; searchKgHasMore = providerHasMore(songs.size(), total, SEARCH_PAGE_SIZE);
++        }
++    }
++
++    private List<Song> mergeSearch(String keyword) {
++        Map<String,List<Song>> catalogs = new LinkedHashMap<>();
++        catalogs.put("wy", lastWySearchSongs); catalogs.put("tx", lastTxSearchSongs);
++        catalogs.put("kw", lastKwSearchSongs); catalogs.put("kg", lastKgSearchSongs);
++        int count = lastWySearchSongs.size() + lastTxSearchSongs.size() + lastKwSearchSongs.size() + lastKgSearchSongs.size();
++        return SearchRanker.mergeAndRank(keyword, catalogs, Math.max(50, count));
+     }
+ 
+     private boolean shouldSearchLyrics(String keyword, int normalResultCount) {
+@@ -1991,7 +2019,6 @@
+ 
+     private Song enrichWithKnownVariant(Song incoming) {
+         if (incoming == null) return null;
+-        String identity = normalizeSuggestion(incoming.title) + "|" + normalizeSuggestion(incoming.artist);
+         LinkedHashMap<String, Song> known = new LinkedHashMap<>();
+         for (Song song : favorites) if (song != null) known.put(song.key(), song);
+         for (ImportedPlaylist p : playlists) if (p != null && p.songs != null)
+@@ -2002,9 +2029,12 @@
+         for (Song song : searchResults) if (song != null) known.put(song.key(), song);
+         for (Song song : lastWySearchSongs) if (song != null) known.put(song.key(), song);
+         for (Song song : lastTxSearchSongs) if (song != null) known.put(song.key(), song);
++        for (Song song : lastKwSearchSongs) if (song != null) known.put(song.key(), song);
++        for (Song song : lastKgSearchSongs) if (song != null) known.put(song.key(), song);
+         for (Song song : known.values()) {
+-            String other = normalizeSuggestion(song.title) + "|" + normalizeSuggestion(song.artist);
+-            if (identity.equals(other)) return song.withVariant(incoming);
++            // A lyric hit must never bridge variants on title/artist alone. V3 uses the same
++            // conservative recording gate as multi-catalog playback.
++            if (ExactTrackMatcher.confidence(song, incoming) >= 0.98d) return song.withVariant(incoming);
+         }
+         return incoming;
+     }
+@@ -2016,23 +2046,19 @@
+     }
+ 
+     private List<Song> visibleSearchSongs() {
+-        if ("wy".equals(searchSourceFilter)) {
+-            return SearchRanker.mergeAndRank(lastQuery, lastWySearchSongs, new ArrayList<>(),
+-                    Math.max(1, lastWySearchSongs.size()));
+-        }
+-        if ("tx".equals(searchSourceFilter)) {
+-            return SearchRanker.mergeAndRank(lastQuery, new ArrayList<>(), lastTxSearchSongs,
+-                    Math.max(1, lastTxSearchSongs.size()));
+-        }
+-        return new ArrayList<>(searchResults);
++        if (searchSourceFilter == null || searchSourceFilter.isEmpty()) return new ArrayList<>(searchResults);
++        // Filter the already-canonicalized rows rather than falling back to raw provider rows,
++        // so a KW-filtered result still carries its exact TX/KG/WY sibling identities into playback.
++        ArrayList<Song> out = new ArrayList<>();
++        for (Song song : searchResults) if (song != null && song.variant(searchSourceFilter) != null) out.add(song);
++        return out;
+     }
+ 
+     private List<LyricSearchResult> visibleLyricSearchResults() {
+         ArrayList<LyricSearchResult> out = new ArrayList<>();
+         for (LyricSearchResult hit : lyricSearchResults) {
+             if (hit == null || hit.song == null) continue;
+-            if ("wy".equals(searchSourceFilter) && hit.song.variant("wy") == null) continue;
+-            if ("tx".equals(searchSourceFilter) && hit.song.variant("tx") == null) continue;
++            if (searchSourceFilter != null && !searchSourceFilter.isEmpty() && hit.song.variant(searchSourceFilter) == null) continue;
+             out.add(hit);
+         }
+         return out;
+@@ -2040,13 +2066,20 @@
+ 
+     private void renderSearchResults(LinearLayout holder) {
+         holder.removeAllViews();
++        HorizontalScrollView sourceScroll = new HorizontalScrollView(this);
++        sourceScroll.setHorizontalScrollBarEnabled(false);
+         LinearLayout health = Ui.row(this);
+-        health.addView(sourceChip("网易", "wy", lastWyCount, lastWyError, Ui.PURPLE, holder),
+-                new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
+-        Space gap = new Space(this); health.addView(gap, Ui.lp(Ui.dp(this, 8), 1));
+-        health.addView(sourceChip("QQ", "tx", lastTxCount, lastTxError, Ui.CYAN, holder),
+-                new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
+-        holder.addView(health, Ui.lp(-1, Ui.dp(this, 34)));
++        health.addView(allSourceChip(holder), Ui.lp(-2, Ui.dp(this, 34)));
++        addChipGap(health);
++        health.addView(sourceChip("网易", "wy", lastWyCount, lastWyError, Ui.PURPLE, holder), Ui.lp(-2, Ui.dp(this, 34)));
++        addChipGap(health);
++        health.addView(sourceChip("QQ", "tx", lastTxCount, lastTxError, Ui.CYAN, holder), Ui.lp(-2, Ui.dp(this, 34)));
++        addChipGap(health);
++        health.addView(sourceChip("酷我", "kw", lastKwCount, lastKwError, Ui.GREEN, holder), Ui.lp(-2, Ui.dp(this, 34)));
++        addChipGap(health);
++        health.addView(sourceChip("酷狗", "kg", lastKgCount, lastKgError, Color.rgb(232, 178, 75), holder), Ui.lp(-2, Ui.dp(this, 34)));
++        sourceScroll.addView(health);
++        holder.addView(sourceScroll, Ui.lp(-1, Ui.dp(this, 34)));
+ 
+         List<Song> visibleSongs = visibleSearchSongs();
+         List<LyricSearchResult> visibleLyrics = visibleLyricSearchResults();
+@@ -2054,36 +2087,41 @@
+             LinearLayout empty = Ui.column(this);
+             empty.setGravity(Gravity.CENTER_HORIZONTAL);
+             empty.setPadding(Ui.dp(this, 10), Ui.dp(this, 42), Ui.dp(this, 10), Ui.dp(this, 30));
+-            String sourceLabel = "wy".equals(searchSourceFilter) ? "网易云" : ("tx".equals(searchSourceFilter) ? "QQ" : "");
++            String sourceLabel = searchSourceFilter == null || searchSourceFilter.isEmpty() ? "" : Song.providerLabel(searchSourceFilter);
+             TextView title = Ui.text(this, sourceLabel.isEmpty() ? "暂时没搜到" : sourceLabel + "暂时没搜到", 18, Ui.TEXT, true);
+-            title.setGravity(Gravity.CENTER);
+-            empty.addView(title, Ui.lp(-1, Ui.dp(this, 34)));
++            title.setGravity(Gravity.CENTER); empty.addView(title, Ui.lp(-1, Ui.dp(this, 34)));
+             TextView sub = Ui.text(this, "换个关键词，或输入你记得的一句歌词。", 12.5f, Ui.TEXT_2, false);
+-            sub.setGravity(Gravity.CENTER);
+-            empty.addView(sub, Ui.lp(-1, Ui.dp(this, 34)));
+-            if (!lastWyError.isEmpty() || !lastTxError.isEmpty()) {
++            sub.setGravity(Gravity.CENTER); empty.addView(sub, Ui.lp(-1, Ui.dp(this, 34)));
++            if (hasAnyCatalogError()) {
+                 TextView detail = outlineAction("查看网络详情");
+-                LinearLayout.LayoutParams dp = Ui.lp(Ui.dp(this, 154), Ui.dp(this, 40));
+-                dp.topMargin = Ui.dp(this, 10);
+-                empty.addView(detail, dp);
+-                detail.setOnClickListener(v -> showSearchDebug());
++                LinearLayout.LayoutParams dp = Ui.lp(Ui.dp(this, 154), Ui.dp(this, 40)); dp.topMargin = Ui.dp(this, 10);
++                empty.addView(detail, dp); detail.setOnClickListener(v -> showSearchDebug());
+             }
+-            holder.addView(empty);
+-            return;
++            holder.addView(empty); return;
+         }
+-
+-        // V45 keeps a predictable hierarchy for every query: title/artist first, lyrics second.
+-        // Both sections are independently collapsible and start expanded on each new search.
+-        List<Song> summarySongs = visibleSongs.size() > 50
+-                ? new ArrayList<>(visibleSongs.subList(0, 50)) : visibleSongs;
++        List<Song> summarySongs = visibleSongs.size() > 50 ? new ArrayList<>(visibleSongs.subList(0, 50)) : visibleSongs;
+         addMetadataSearchSection(holder, summarySongs, true);
+         addLyricSearchSection(holder, visibleLyrics, true);
+     }
+ 
++    private void addChipGap(LinearLayout row) { Space gap = new Space(this); row.addView(gap, Ui.lp(Ui.dp(this, 8), 1)); }
++
++    private boolean hasAnyCatalogError() {
++        return !lastWyError.isEmpty() || !lastTxError.isEmpty() || !lastKwError.isEmpty() || !lastKgError.isEmpty();
++    }
++
++    private List<Song> searchSongsFor(String source) {
++        if ("wy".equals(source)) return lastWySearchSongs;
++        if ("tx".equals(source)) return lastTxSearchSongs;
++        if ("kw".equals(source)) return lastKwSearchSongs;
++        if ("kg".equals(source)) return lastKgSearchSongs;
++        return new ArrayList<>();
++    }
++
+     private void addMetadataSearchSection(LinearLayout holder, List<Song> songs, boolean allowEmpty) {
+         List<Song> safeSongs = songs == null ? new ArrayList<>() : songs;
+         if (safeSongs.isEmpty() && !allowEmpty) return;
+-        String suffix = "wy".equals(searchSourceFilter) ? " · 网易" : ("tx".equals(searchSourceFilter) ? " · QQ" : "");
++        String suffix = (searchSourceFilter == null || searchSourceFilter.isEmpty()) ? "" : " · " + Song.providerLabel(searchSourceFilter);
+         String status = searchMetadataPending ? "搜索中…" : safeSongs.size() + " 首" + suffix;
+         LinearLayout content = Ui.column(this);
+         if (searchMetadataPending && safeSongs.isEmpty()) {
+@@ -2122,7 +2160,9 @@
+         if (searchMoreLoading) return true;
+         if ("wy".equals(searchSourceFilter)) return searchWyHasMore;
+         if ("tx".equals(searchSourceFilter)) return searchTxHasMore;
+-        return searchWyHasMore || searchTxHasMore;
++        if ("kw".equals(searchSourceFilter)) return searchKwHasMore;
++        if ("kg".equals(searchSourceFilter)) return searchKgHasMore;
++        return searchWyHasMore || searchTxHasMore || searchKwHasMore || searchKgHasMore;
+     }
+ 
+     private void openAllSearchResults() {
+@@ -2164,15 +2204,22 @@
+         top.addView(titles, new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f));
+         root.addView(top, Ui.lp(-1, Ui.dp(this, 48)));
+ 
++        HorizontalScrollView filterScroll = new HorizontalScrollView(this);
++        filterScroll.setHorizontalScrollBarEnabled(false);
+         LinearLayout filters = Ui.row(this);
+         filters.setGravity(Gravity.CENTER_VERTICAL);
+-        filters.addView(searchAllSourceChip("网易", "wy", lastWyCount, lastWyError),
+-                new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
+-        Space filterGap = new Space(this); filters.addView(filterGap, Ui.lp(Ui.dp(this, 8), 1));
+-        filters.addView(searchAllSourceChip("QQ", "tx", lastTxCount, lastTxError),
+-                new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
++        filters.addView(searchAllAllSourceChip(), Ui.lp(-2, Ui.dp(this, 34)));
++        addChipGap(filters);
++        filters.addView(searchAllSourceChip("网易", "wy", lastWyCount, lastWyError), Ui.lp(-2, Ui.dp(this, 34)));
++        addChipGap(filters);
++        filters.addView(searchAllSourceChip("QQ", "tx", lastTxCount, lastTxError), Ui.lp(-2, Ui.dp(this, 34)));
++        addChipGap(filters);
++        filters.addView(searchAllSourceChip("酷我", "kw", lastKwCount, lastKwError), Ui.lp(-2, Ui.dp(this, 34)));
++        addChipGap(filters);
++        filters.addView(searchAllSourceChip("酷狗", "kg", lastKgCount, lastKgError), Ui.lp(-2, Ui.dp(this, 34)));
++        filterScroll.addView(filters);
+         LinearLayout.LayoutParams fp = Ui.lp(-1, Ui.dp(this, 34)); fp.topMargin = Ui.dp(this, 12);
+-        root.addView(filters, fp);
++        root.addView(filterScroll, fp);
+ 
+         TextView status = Ui.text(this, searchAllStatusText(), 10.6f, Ui.DIM, false);
+         status.setGravity(Gravity.CENTER_VERTICAL);
+@@ -2219,10 +2266,20 @@
+         return root;
+     }
+ 
++    private TextView searchAllAllSourceChip() {
++        boolean selected = searchSourceFilter == null || searchSourceFilter.isEmpty();
++        TextView chip = Ui.pill(this, selected ? "✓  全部" : "全部", Ui.TEXT_2);
++        chip.setClickable(true); chip.setFocusable(true); chip.setAlpha(selected ? 1f : .84f);
++        if (selected) chip.setBackground(Ui.tintedGlass(Ui.CYAN, 18, this));
++        Ui.applyRipple(chip, Color.TRANSPARENT);
++        chip.setOnClickListener(v -> { searchSourceFilter = ""; suppressNextPageAnimation = true; renderTab(); });
++        return chip;
++    }
++
+     private TextView searchAllSourceChip(String name, String source, int count, String error) {
+         boolean ok = count > 0;
+         boolean selected = source.equals(searchSourceFilter);
+-        int accent = "wy".equals(source) ? Ui.PURPLE : Ui.CYAN;
++        int accent = "wy".equals(source) ? Ui.PURPLE : ("tx".equals(source) ? Ui.CYAN : ("kw".equals(source) ? Ui.GREEN : Color.rgb(232, 178, 75)));
+         int tint = ok ? accent : (error == null || error.isEmpty() ? Ui.DIM : Ui.RED);
+         String label = (selected ? "✓  " : "") + (ok ? name + "  " + count
+                 : (error == null || error.isEmpty() ? name + "  0" : name + "  暂不可用"));
+@@ -2242,8 +2299,7 @@
+ 
+     private String searchAllStatusText() {
+         int loaded;
+-        if ("wy".equals(searchSourceFilter)) loaded = lastWySearchSongs.size();
+-        else if ("tx".equals(searchSourceFilter)) loaded = lastTxSearchSongs.size();
++        if (searchSourceFilter != null && !searchSourceFilter.isEmpty()) loaded = searchSongsFor(searchSourceFilter).size();
+         else loaded = visibleSearchSongs().size();
+         if (searchMoreLoading) return "已加载 " + loaded + " 首 · 正在获取更多";
+         if (searchHasMoreForCurrentFilter()) return "已加载 " + loaded + " 首 · 继续下滑会自动加载";
+@@ -2252,16 +2308,17 @@
+ 
+     private void loadMoreSearchAllResults(ListView list, SearchAllAdapter adapter, TextView footer, TextView status) {
+         if (list == null || adapter == null || searchMoreLoading || lastQuery == null || lastQuery.trim().isEmpty()) return;
+-        final boolean loadWy = !"tx".equals(searchSourceFilter) && searchWyHasMore;
+-        final boolean loadTx = !"wy".equals(searchSourceFilter) && searchTxHasMore;
+-        if (!loadWy && !loadTx) return;
++        final boolean all = searchSourceFilter == null || searchSourceFilter.isEmpty();
++        final boolean loadWy = (all || "wy".equals(searchSourceFilter)) && searchWyHasMore;
++        final boolean loadTx = (all || "tx".equals(searchSourceFilter)) && searchTxHasMore;
++        final boolean loadKw = (all || "kw".equals(searchSourceFilter)) && searchKwHasMore;
++        final boolean loadKg = (all || "kg".equals(searchSourceFilter)) && searchKgHasMore;
++        if (!loadWy && !loadTx && !loadKw && !loadKg) return;
+ 
+         final int token = searchRequestToken;
+-        final int wyOffset = searchWyNextOffset;
+-        final int txPage = searchTxNextPage;
++        final int wyOffset = searchWyNextOffset, txPage = searchTxNextPage, kwPage = searchKwNextPage, kgPage = searchKgNextPage;
+         final int firstVisible = list.getFirstVisiblePosition();
+-        final Song anchorSong = firstVisible >= 0 && firstVisible < adapter.getCount()
+-                ? (Song) adapter.getItem(firstVisible) : null;
++        final Song anchorSong = firstVisible >= 0 && firstVisible < adapter.getCount() ? (Song) adapter.getItem(firstVisible) : null;
+         final String anchorKey = anchorSong == null ? "" : anchorSong.key();
+         final View firstChild = list.getChildCount() > 0 ? list.getChildAt(0) : null;
+         final int anchorTop = firstChild == null ? 0 : firstChild.getTop();
+@@ -2270,76 +2327,33 @@
+         if (footer != null) { footer.setText("正在加载更多…"); footer.setVisibility(View.VISIBLE); }
+         if (status != null) status.setText(searchAllStatusText());
+ 
+-        final Future<SearchPaginationApi.Page> wyFuture = loadWy
+-                ? io.submit(() -> searchPagination.netease(lastQuery, wyOffset, SEARCH_PAGE_SIZE)) : null;
+-        final Future<SearchPaginationApi.Page> txFuture = loadTx
+-                ? io.submit(() -> searchPagination.qq(lastQuery, txPage, SEARCH_PAGE_SIZE)) : null;
++        final Future<SearchPaginationApi.Page> wyFuture = loadWy ? io.submit(() -> searchPagination.netease(lastQuery, wyOffset, SEARCH_PAGE_SIZE)) : null;
++        final Future<SearchPaginationApi.Page> txFuture = loadTx ? io.submit(() -> searchPagination.qq(lastQuery, txPage, SEARCH_PAGE_SIZE)) : null;
++        final Future<SearchPaginationApi.Page> kwFuture = loadKw ? io.submit(() -> searchPagination.kuwo(lastQuery, kwPage, SEARCH_PAGE_SIZE)) : null;
++        final Future<SearchPaginationApi.Page> kgFuture = loadKg ? io.submit(() -> searchPagination.kugou(lastQuery, kgPage, SEARCH_PAGE_SIZE)) : null;
+ 
+         io.submit(() -> {
+-            SearchPaginationApi.Page wyPage = null;
+-            SearchPaginationApi.Page txPageResult = null;
+-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(14);
+-            try {
+-                if (wyFuture != null) {
+-                    long left = Math.max(1L, deadline - System.nanoTime());
+-                    wyPage = wyFuture.get(left, TimeUnit.NANOSECONDS);
+-                }
+-            } catch (Exception e) {
+-                if (wyFuture != null) wyFuture.cancel(true);
+-                wyPage = new SearchPaginationApi.Page(new ArrayList<>(), lastWyCount, "请求超时或网络不可用");
+-            }
+-            try {
+-                if (txFuture != null) {
+-                    long left = Math.max(1L, deadline - System.nanoTime());
+-                    txPageResult = txFuture.get(left, TimeUnit.NANOSECONDS);
+-                }
+-            } catch (Exception e) {
+-                if (txFuture != null) txFuture.cancel(true);
+-                txPageResult = new SearchPaginationApi.Page(new ArrayList<>(), lastTxCount, "请求超时或网络不可用");
+-            }
+-            final SearchPaginationApi.Page finalWy = wyPage;
+-            final SearchPaginationApi.Page finalTx = txPageResult;
++            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(16);
++            SearchPaginationApi.Page wy = awaitSearchPage(wyFuture, lastWyCount, deadline);
++            SearchPaginationApi.Page tx = awaitSearchPage(txFuture, lastTxCount, deadline);
++            SearchPaginationApi.Page kw = awaitSearchPage(kwFuture, lastKwCount, deadline);
++            SearchPaginationApi.Page kg = awaitSearchPage(kgFuture, lastKgCount, deadline);
+             main.post(() -> {
+                 if (token != searchRequestToken || isFinishing()) return;
+                 boolean hadError = false;
+                 searchMoreLoading = false;
++                if (loadWy && wy != null) hadError |= applyPaginationPage("wy", wy);
++                if (loadTx && tx != null) hadError |= applyPaginationPage("tx", tx);
++                if (loadKw && kw != null) hadError |= applyPaginationPage("kw", kw);
++                if (loadKg && kg != null) hadError |= applyPaginationPage("kg", kg);
+ 
+-                if (loadWy && finalWy != null) {
+-                    int before = lastWySearchSongs.size();
+-                    appendUniqueProviderSongs(lastWySearchSongs, finalWy.songs, "wy");
+-                    int added = lastWySearchSongs.size() - before;
+-                    if (finalWy.total > 0) lastWyCount = Math.max(lastWyCount, finalWy.total);
+-                    if (!finalWy.error.isEmpty()) { lastWyError = finalWy.error; hadError = true; }
+-                    else if (added > 0) lastWyError = "";
+-                    if (finalWy.error.isEmpty()) searchWyNextOffset += Math.max(1, finalWy.songs.size());
+-                    searchWyHasMore = finalWy.error.isEmpty()
+-                            ? !finalWy.songs.isEmpty() && providerHasMore(searchWyNextOffset, lastWyCount, SEARCH_PAGE_SIZE)
+-                            : true;
+-                    if (finalWy.error.isEmpty() && added == 0 && finalWy.songs.size() < SEARCH_PAGE_SIZE) searchWyHasMore = false;
+-                }
+-
+-                if (loadTx && finalTx != null) {
+-                    int before = lastTxSearchSongs.size();
+-                    appendUniqueProviderSongs(lastTxSearchSongs, finalTx.songs, "tx");
+-                    int added = lastTxSearchSongs.size() - before;
+-                    if (finalTx.total > 0) lastTxCount = Math.max(lastTxCount, finalTx.total);
+-                    if (!finalTx.error.isEmpty()) { lastTxError = finalTx.error; hadError = true; }
+-                    else if (added > 0) lastTxError = "";
+-                    if (finalTx.error.isEmpty()) searchTxNextPage++;
+-                    int requestedThrough = Math.max(0, (searchTxNextPage - 1) * SEARCH_PAGE_SIZE);
+-                    searchTxHasMore = finalTx.error.isEmpty()
+-                            ? !finalTx.songs.isEmpty() && providerHasMore(requestedThrough, lastTxCount, SEARCH_PAGE_SIZE)
+-                            : true;
+-                    if (finalTx.error.isEmpty() && added == 0 && finalTx.songs.size() < SEARCH_PAGE_SIZE) searchTxHasMore = false;
+-                }
+-
+-                searchResults = mergeSearch(lastQuery, lastWySearchSongs, lastTxSearchSongs);
++                searchResults = mergeSearch(lastQuery);
++                if (trackVariantStore != null) for (Song song : searchResults) trackVariantStore.remember(song);
+                 if (!lyricSearchResults.isEmpty()) lyricSearchResults = enrichAndRerankLyricResults(lastQuery, lyricSearchResults);
+                 searchAutoLoadNotBeforeMs = SystemClock.uptimeMillis() + (hadError ? 2600L : 260L);
+ 
+                 if (searchAllResultsOpen && list.isAttachedToWindow()) {
+-                    List<Song> next = visibleSearchSongs();
+-                    adapter.replace(next);
++                    adapter.replace(visibleSearchSongs());
+                     if (!anchorKey.isEmpty()) {
+                         int anchorIndex = adapter.indexOfKey(anchorKey);
+                         if (anchorIndex >= 0) list.post(() -> list.setSelectionFromTop(anchorIndex, anchorTop));
+@@ -2347,20 +2361,49 @@
+                     if (status != null) status.setText(searchAllStatusText());
+                     if (footer != null) {
+                         if (hadError) {
+-                            footer.setText("部分来源加载失败 · 稍后继续下滑可重试");
+-                            footer.setVisibility(View.VISIBLE);
+-                            footer.postDelayed(() -> {
+-                                if (footer.isAttachedToWindow() && !searchMoreLoading) footer.setVisibility(View.GONE);
+-                            }, 1800L);
+-                        } else {
+-                            footer.setVisibility(View.GONE);
+-                        }
++                            footer.setText("部分 Catalog 加载失败 · 其他平台结果不受影响"); footer.setVisibility(View.VISIBLE);
++                            footer.postDelayed(() -> { if (footer.isAttachedToWindow() && !searchMoreLoading) footer.setVisibility(View.GONE); }, 1800L);
++                        } else footer.setVisibility(View.GONE);
+                     }
+                 }
+             });
+         });
+     }
+ 
++    private SearchPaginationApi.Page awaitSearchPage(Future<SearchPaginationApi.Page> future, int total, long deadline) {
++        if (future == null) return null;
++        try { return future.get(Math.max(1L, deadline - System.nanoTime()), TimeUnit.NANOSECONDS); }
++        catch (Exception e) { future.cancel(true); return new SearchPaginationApi.Page(new ArrayList<>(), total, "请求超时或网络不可用"); }
++    }
++
++    private boolean applyPaginationPage(String source, SearchPaginationApi.Page page) {
++        List<Song> target = searchSongsFor(source);
++        int before = target.size(); appendUniqueProviderSongs(target, page.songs, source); int added = target.size() - before;
++        boolean error = !page.error.isEmpty();
++        if ("wy".equals(source)) {
++            if (page.total > 0) lastWyCount = Math.max(lastWyCount, page.total); lastWyError = error ? page.error : (added > 0 ? "" : lastWyError);
++            if (!error) searchWyNextOffset += Math.max(1, page.songs.size());
++            searchWyHasMore = error || (!page.songs.isEmpty() && providerHasMore(searchWyNextOffset, lastWyCount, SEARCH_PAGE_SIZE));
++            if (!error && added == 0 && page.songs.size() < SEARCH_PAGE_SIZE) searchWyHasMore = false;
++        } else if ("tx".equals(source)) {
++            if (page.total > 0) lastTxCount = Math.max(lastTxCount, page.total); lastTxError = error ? page.error : (added > 0 ? "" : lastTxError);
++            if (!error) searchTxNextPage++; int through = Math.max(0, (searchTxNextPage - 1) * SEARCH_PAGE_SIZE);
++            searchTxHasMore = error || (!page.songs.isEmpty() && providerHasMore(through, lastTxCount, SEARCH_PAGE_SIZE));
++            if (!error && added == 0 && page.songs.size() < SEARCH_PAGE_SIZE) searchTxHasMore = false;
++        } else if ("kw".equals(source)) {
++            if (page.total > 0) lastKwCount = Math.max(lastKwCount, page.total); lastKwError = error ? page.error : (added > 0 ? "" : lastKwError);
++            if (!error) searchKwNextPage++; int through = Math.max(0, (searchKwNextPage - 1) * SEARCH_PAGE_SIZE);
++            searchKwHasMore = error || (!page.songs.isEmpty() && providerHasMore(through, lastKwCount, SEARCH_PAGE_SIZE));
++            if (!error && added == 0 && page.songs.size() < SEARCH_PAGE_SIZE) searchKwHasMore = false;
++        } else if ("kg".equals(source)) {
++            if (page.total > 0) lastKgCount = Math.max(lastKgCount, page.total); lastKgError = error ? page.error : (added > 0 ? "" : lastKgError);
++            if (!error) searchKgNextPage++; int through = Math.max(0, (searchKgNextPage - 1) * SEARCH_PAGE_SIZE);
++            searchKgHasMore = error || (!page.songs.isEmpty() && providerHasMore(through, lastKgCount, SEARCH_PAGE_SIZE));
++            if (!error && added == 0 && page.songs.size() < SEARCH_PAGE_SIZE) searchKgHasMore = false;
++        }
++        return error;
++    }
++
+     private static final class SearchAllHolder {
+         LinearLayout row;
+         ImageView cover;
+@@ -2500,7 +2543,7 @@
+     private void addLyricSearchSection(LinearLayout holder, List<LyricSearchResult> hits, boolean allowEmpty) {
+         List<LyricSearchResult> safeHits = hits == null ? new ArrayList<>() : hits;
+         if (safeHits.isEmpty() && !lyricSearchPending && !allowEmpty) return;
+-        String suffix = "wy".equals(searchSourceFilter) ? " · 网易" : ("tx".equals(searchSourceFilter) ? " · QQ" : "");
++        String suffix = (searchSourceFilter == null || searchSourceFilter.isEmpty()) ? "" : " · " + Song.providerLabel(searchSourceFilter);
+         String status = lyricSearchPending ? "搜索中…" : safeHits.size() + " 首" + suffix;
+         LinearLayout content = Ui.column(this);
+         if (lyricSearchPending && safeHits.isEmpty()) {
+@@ -2602,6 +2645,16 @@
+         return out;
+     }
+ 
++    private TextView allSourceChip(LinearLayout holder) {
++        boolean selected = searchSourceFilter == null || searchSourceFilter.isEmpty();
++        TextView chip = Ui.pill(this, selected ? "✓  全部" : "全部", Ui.TEXT_2);
++        chip.setClickable(true); chip.setFocusable(true); chip.setAlpha(selected ? 1f : .82f);
++        if (selected) chip.setBackground(Ui.tintedGlass(Ui.CYAN, 18, this));
++        Ui.applyRipple(chip, Color.TRANSPARENT);
++        chip.setOnClickListener(v -> { searchSourceFilter = ""; renderSearchResults(holder); });
++        return chip;
++    }
++
+     private TextView sourceChip(String name, String source, int count, String error, int color, LinearLayout holder) {
+         boolean ok = count > 0;
+         boolean selected = source.equals(searchSourceFilter);
+@@ -2622,11 +2675,17 @@
+ 
+     private void showSearchDebug() {
+         StringBuilder b = new StringBuilder();
+-        b.append("网易云：").append(lastWyCount).append(" 条");
+-        if (!lastWyError.isEmpty()) b.append("\n").append(lastWyError);
+-        b.append("\n\nQQ：").append(lastTxCount).append(" 条");
+-        if (!lastTxError.isEmpty()) b.append("\n").append(lastTxError);
+-        showGlassMessage("搜索网络详情", b.toString(), "知道了", null, "", null);
++        appendCatalogDebug(b, "网易云", lastWyCount, lastWyError);
++        appendCatalogDebug(b, "QQ", lastTxCount, lastTxError);
++        appendCatalogDebug(b, "酷我", lastKwCount, lastKwError);
++        appendCatalogDebug(b, "酷狗", lastKgCount, lastKgError);
++        showGlassMessage("多 Catalog 网络详情", b.toString(), "知道了", null, "", null);
++    }
++
++    private static void appendCatalogDebug(StringBuilder b, String name, int count, String error) {
++        if (b.length() > 0) b.append("\n\n");
++        b.append(name).append("：").append(count).append(" 条");
++        if (error != null && !error.isEmpty()) b.append("\n").append(error);
+     }
+ 
+     private View playlistsPage() {
+@@ -2868,6 +2927,9 @@
+                 showBusy(false);
+                 if (result != null) {
+                     playlists = store.savePlaylist(result);
++                    // Side-car only: enrich exact KW/KG identities slowly in the background.
++                    // LibraryStore remains untouched and playback can still enrich on demand.
++                    prefetchExactVariants(result.songs);
+                     toast("已导入《" + result.name + "》 · " + result.songs.size() + " 首");
+                     tab = 2;
+                     refreshNav();
+@@ -2877,6 +2939,22 @@
+         });
+     }
+ 
++    private void prefetchExactVariants(List<Song> songs) {
++        if (songs == null || songs.isEmpty() || backgroundVariantEnricher == null) return;
++        int index = 0;
++        for (Song song : songs) {
++            if (song == null) continue;
++            long delayMs = Math.min(10L * 60L * 1000L, 900L * index++);
++            try {
++                variantPrefetch.schedule(() -> {
++                    try { backgroundVariantEnricher.enrichIfNeeded(song, null); } catch (Exception ignored) { }
++                }, delayMs, TimeUnit.MILLISECONDS);
++            } catch (RejectedExecutionException ignored) {
++                // Activity may already be destroying while an import result is being delivered.
++            }
++        }
++    }
++
+     private String neteasePlaylistId(String text) {
+         if (text.matches("\\d{5,}")) return text;
+         Matcher m = Pattern.compile("(?:id=|playlist/)(\\d{5,})").matcher(text);
+@@ -4306,10 +4384,20 @@
+             TextView loading = Ui.text(this, "正在搜索…", 11.5f, Ui.TEXT_2, true); loading.setGravity(Gravity.CENTER);
+             resultHost.removeAllViews(); resultHost.addView(loading, Ui.frame(-1, -1, Gravity.FILL));
+             io.submit(() -> {
+-                List<Song> wy = new ArrayList<>(), tx = new ArrayList<>();
+-                try { wy = netease.search(keyword, 20); } catch (Exception ignored) { }
+-                try { tx = qq.search(keyword, 20); } catch (Exception ignored) { }
+-                List<Song> merged = SearchRanker.mergeAndRank(keyword, wy, tx, 36);
++                // Keep the picker consistent with the main V3 search without serially waiting for
++                // four remote catalogs. The enclosing worker + four futures fit inside the 6-thread pool.
++                Future<List<Song>> wyFuture = io.submit(() -> safeCatalogSearch(() -> netease.search(keyword, 20)));
++                Future<List<Song>> txFuture = io.submit(() -> safeCatalogSearch(() -> qq.search(keyword, 20)));
++                Future<List<Song>> kwFuture = io.submit(() -> safeCatalogSearch(() -> kuwo.search(keyword, 20)));
++                Future<List<Song>> kgFuture = io.submit(() -> safeCatalogSearch(() -> kugou.search(keyword, 20)));
++                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8);
++                Map<String,List<Song>> catalogs = new LinkedHashMap<>();
++                catalogs.put("wy", awaitSongs(wyFuture, deadline));
++                catalogs.put("tx", awaitSongs(txFuture, deadline));
++                catalogs.put("kw", awaitSongs(kwFuture, deadline));
++                catalogs.put("kg", awaitSongs(kgFuture, deadline));
++                List<Song> merged = SearchRanker.mergeAndRank(keyword, catalogs, 48);
++                if (trackVariantStore != null) for (Song song : merged) trackVariantStore.remember(song);
+                 main.post(() -> {
+                     if (modalOverlay.getVisibility() != View.VISIBLE) return;
+                     resultHost.removeAllViews();
+@@ -4322,6 +4410,21 @@
+         return pane;
+     }
+ 
++    private interface SongSearchCall { List<Song> run() throws Exception; }
++
++    private static List<Song> safeCatalogSearch(SongSearchCall call) {
++        try {
++            List<Song> songs = call == null ? null : call.run();
++            return songs == null ? new ArrayList<>() : songs;
++        } catch (Exception ignored) { return new ArrayList<>(); }
++    }
++
++    private static List<Song> awaitSongs(Future<List<Song>> future, long deadlineNanos) {
++        if (future == null) return new ArrayList<>();
++        try { return future.get(Math.max(1L, deadlineNanos - System.nanoTime()), TimeUnit.NANOSECONDS); }
++        catch (Exception e) { future.cancel(true); return new ArrayList<>(); }
++    }
++
+     private View pickerSongRow(Song song, ImportedPlaylist target, LinkedHashMap<String, Song> selected, SimpleAction updateFooter) {
+         boolean exists = indexByKey(target.songs, song.key()) >= 0;
+         LinearLayout row = Ui.row(this);
+@@ -5550,6 +5653,8 @@
+         suggestionRequestToken++;
+         if (bound && playback != null) playback.clearListener(this);
+         if (bound) try { unbindService(connection); } catch (Exception ignored) { }
++        variantPrefetch.shutdownNow();
++        if (backgroundVariantEnricher != null) backgroundVariantEnricher.destroy();
+         io.shutdownNow();
+         super.onDestroy();
+     }
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/AudioCandidate.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/AudioCandidate.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/AudioCandidate.java	2026-08-11 11:24:47.000000000 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/AudioCandidate.java	2026-08-11 18:31:48.328528422 +0000
+@@ -15,6 +15,7 @@
+     public final String providerId;
+     public final String providerLabel;
+     public final String providerType;
++    public final String backendGroup;
+     public final String routeKey;
+     public final SourceVariant variant;
+     public final long resolverLatencyMs;
+@@ -28,6 +29,7 @@
+                           String providerId,
+                           String providerLabel,
+                           String providerType,
++                          String backendGroup,
+                           String routeKey,
+                           SourceVariant variant,
+                           long resolverLatencyMs,
+@@ -40,6 +42,7 @@
+         this.providerId = safe(providerId);
+         this.providerLabel = safe(providerLabel);
+         this.providerType = safe(providerType);
++        this.backendGroup = safe(backendGroup);
+         this.routeKey = safe(routeKey);
+         this.variant = variant;
+         this.resolverLatencyMs = Math.max(1L, resolverLatencyMs);
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/AudioProvider.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/AudioProvider.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/AudioProvider.java	2026-08-11 16:02:48.251962110 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/AudioProvider.java	2026-08-11 18:31:48.328391379 +0000
+@@ -11,6 +11,8 @@
+     String id();
+     String label();
+     String type();
++    /** Logical infrastructure group for diagnostics/backoff de-duplication. */
++    default String backendGroup() { return id(); }
+     int basePriority(String platform);
+     boolean aggregate();
+ 
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/AudioProviderHub.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/AudioProviderHub.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/AudioProviderHub.java	2026-08-11 16:10:19.350708919 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/AudioProviderHub.java	2026-08-11 18:43:36.258705531 +0000
+@@ -8,17 +8,17 @@
+ import java.util.ArrayList;
+ import java.util.Collections;
+ import java.util.Comparator;
++import java.util.HashSet;
+ import java.util.List;
+ import java.util.Set;
+ import java.util.concurrent.ConcurrentHashMap;
+ 
+ /**
+- * Sunflower Audio Provider Hub.
++ * Sunflower V3 route matrix.
+  *
+- * QQ / Netease are catalog identities, not hard-coded transport engines.  Every
+- * provider is replaceable and may support one or more platform identities.  The
+- * only durable promotion is an exact-track Media3 READY affinity; global health
+- * uses short circuit breakers and never permanently "learns to hate" a source.
++ * Catalog variant and audio provider are independent axes.  The scheduler ranks
++ * Provider x Variant cells globally, so a broken TX route does not need to die
++ * through every provider before an exact KW/KG variant can win.
+  */
+ public final class AudioProviderHub {
+     private static final long RATE_COOLDOWN = 20L * 60L * 1000L;
+@@ -27,6 +27,10 @@
+     private static final long INIT_COOLDOWN = 60L * 1000L;
+     private static final long SERVICE_COOLDOWN = 60L * 1000L;
+     private static final long RECENT_READY_WINDOW = 10L * 60L * 1000L;
++    private static final long MATRIX_BUDGET_MS = 20_000L;
++    private static final int MATRIX_MAX_VISITED_CELLS = 18;
++    private static final int MATRIX_MAX_RESOLVE_ATTEMPTS = 14;
++    private static final String[] MATRIX_PLATFORMS = {"tx", "kw", "kg", "wy"};
+ 
+     private final SourceHealthStore health;
+     private final TrackRouteStore trackRoutes;
+@@ -37,74 +41,66 @@
+         Context app = context.getApplicationContext();
+         health = new SourceHealthStore(app);
+         trackRoutes = new TrackRouteStore(app);
+-
+-        // Existing proven paths are retained, but no longer own QQ/Netease.
+-        add(app, new ResolverProvider(
+-                "qdy", "全豆要 QDY",
+-                jsdelivr("qdy"), "",
+-                108, true));
+-        add(app, new ResolverProvider(
+-                "huibq", "Huibq",
+-                "", "source/huibq-latest.js",
+-                102, false));
+-
+-        // Community LX provider pool.  Each script is lazy: it is fetched/pinned
+-        // only if earlier routes cannot serve the requested platform/quality.
+-        add(app, new ResolverProvider(
+-                "juhe", "Juhe 聚合",
+-                jsdelivr("juhe"), "",
+-                116, true));
+-        add(app, new ResolverProvider(
+-                "lx", "LX Source",
+-                jsdelivr("lx"), "",
+-                112, true));
+-        add(app, new ResolverProvider(
+-                "flower", "Flower 野花",
+-                jsdelivr("flower"), "",
+-                106, false));
+-        add(app, new ResolverProvider(
+-                "grass", "Grass",
+-                jsdelivr("grass"), "",
+-                100, false));
+-        add(app, new ResolverProvider(
+-                "sixyin", "SixYin 六音",
+-                jsdelivr("sixyin"), "",
+-                96, false));
+-        add(app, new ResolverProvider(
+-                "ikun", "ikun",
+-                jsdelivr("ikun"), "",
+-                92, false));
++        add(app, new ResolverProvider("qdy", "全豆要 QDY", jsdelivr("qdy"), "", 108, true));
++        add(app, new ResolverProvider("huibq", "Huibq", "", "source/huibq-latest.js", 102, false));
++        add(app, new ResolverProvider("juhe", "Juhe 聚合", jsdelivr("juhe"), "", 116, true));
++        add(app, new ResolverProvider("lx", "LX Source", jsdelivr("lx"), "", 112, true));
++        add(app, new ResolverProvider("flower", "Flower 野花", jsdelivr("flower"), "", 106, false));
++        add(app, new ResolverProvider("grass", "Grass", jsdelivr("grass"), "", 100, false));
++        add(app, new ResolverProvider("sixyin", "SixYin 六音", jsdelivr("sixyin"), "", 96, false));
++        add(app, new ResolverProvider("ikun", "ikun", jsdelivr("ikun"), "", 92, false));
+     }
+ 
+-    public AudioCandidate resolve(SourceVariant variant,
+-                                  Song song,
+-                                  String quality,
+-                                  Set<String> excludedRoutes,
+-                                  Set<String> excludedProvidersAcrossQuality,
+-                                  PlaybackTrace trace) throws Exception {
+-        if (variant == null) throw new ResolverFailure(ResolverFailure.Kind.UNKNOWN, "歌曲平台信息为空", false);
++    public AudioCandidate resolveMatrix(Song song,
++                                        String quality,
++                                        Set<String> excludedRoutes,
++                                        Set<String> qualityIndependentProviderPlatforms,
++                                        PlaybackTrace trace) throws Exception {
+         if (song == null) throw new ResolverFailure(ResolverFailure.Kind.UNKNOWN, "Canonical Track 为空", false);
++        List<SourceVariant> variants = song.variants();
++        if (variants.isEmpty()) throw new ResolverFailure(ResolverFailure.Kind.TRACK_UNAVAILABLE, "歌曲没有可用平台 ID", false);
+         Set<String> excluded = excludedRoutes == null ? Collections.emptySet() : excludedRoutes;
+-        Set<String> qualityIndependentSkips = excludedProvidersAcrossQuality == null
+-                ? java.util.concurrent.ConcurrentHashMap.newKeySet() : excludedProvidersAcrossQuality;
+-        List<AudioProvider> ranked = ranked(song, variant.source, quality);
++        Set<String> crossQualitySkips = qualityIndependentProviderPlatforms == null
++                ? ConcurrentHashMap.newKeySet() : qualityIndependentProviderPlatforms;
++        List<RouteCell> cells = rankedCells(song, quality);
+         ResolverFailure last = null;
+         boolean lowerQualityMayHelp = false;
+-        int attempted = 0;
++        int attempted = 0, visited = 0;
++        long matrixStartedAt = System.currentTimeMillis();
++        Set<String> deadBackends = new HashSet<>();
++
++        trace.add("matrix", "quality=" + quality + " · variants=" + variantLabels(song) + " · cells=" + cells.size());
++        for (RouteCell cell : cells) {
++            if (visited++ >= MATRIX_MAX_VISITED_CELLS || attempted >= MATRIX_MAX_RESOLVE_ATTEMPTS
++                    || System.currentTimeMillis() - matrixStartedAt >= MATRIX_BUDGET_MS) {
++                trace.add("matrix-budget", "停止继续轰炸 · visited=" + visited + " · attempted=" + attempted
++                        + " · elapsed=" + (System.currentTimeMillis() - matrixStartedAt) + "ms");
++                break;
++            }
++            AudioProvider provider = cell.provider;
++            SourceVariant variant = cell.variant;
++            String pp = provider.id() + "|" + variant.source;
++            String route = SourceHealthStore.routeKey(provider.id(), variant.source, quality);
+ 
+-        for (AudioProvider provider : ranked) {
+-            if (qualityIndependentSkips.contains(provider.id())) {
+-                trace.add("resolver-skip", provider.label() + " · 上一档音质已证明失败与码率无关");
++            if (deadBackends.contains(provider.backendGroup())) {
++                trace.add("matrix-skip", provider.label() + " · backend " + provider.backendGroup() + " 本轮已熔断");
++                continue;
++            }
++            if (crossQualitySkips.contains(pp)) {
++                trace.add("matrix-skip", provider.label() + " × " + Song.providerLabel(variant.source) + " · 上一档已证明与码率无关");
+                 continue;
+             }
+-            String route = SourceHealthStore.routeKey(provider.id(), variant.source, quality);
+             if (excluded.contains(route)) {
+-                trace.add("route-skip", provider.label() + " / " + variant.source + "/" + quality + " · 本轮已失败");
++                trace.add("route-skip", provider.label() + " × " + Song.providerLabel(variant.source) + " / " + quality + " · 本轮已失败");
++                continue;
++            }
++            if (!variant.supports(quality)) {
++                if (!"128k".equalsIgnoreCase(quality)) lowerQualityMayHelp = true;
+                 continue;
+             }
+             if (health.cooling(provider.id(), variant.source, quality)) {
+                 long seconds = Math.max(1L, health.cooldownRemaining(provider.id(), variant.source, quality) / 1000L);
+-                trace.add("resolver-skip", provider.label() + " 保护冷却中 · " + seconds + "s");
++                trace.add("matrix-skip", provider.label() + " × " + Song.providerLabel(variant.source) + " · 冷却 " + seconds + "s");
+                 continue;
+             }
+ 
+@@ -113,259 +109,181 @@
+                 long start = System.currentTimeMillis();
+                 try {
+                     if (!provider.supportsPlatform(variant)) {
+-                        trace.add("resolver-skip", provider.label() + " 不支持平台 " + variant.source);
+-                        qualityIndependentSkips.add(provider.id());
++                        trace.add("matrix-skip", provider.label() + " × " + Song.providerLabel(variant.source) + " · 平台不支持");
++                        crossQualitySkips.add(pp);
+                         break;
+                     }
+                     if (!provider.supports(variant, quality)) {
+-                        trace.add("resolver-skip", provider.label() + " 平台可用但不支持音质 " + variant.source + "/" + quality);
++                        trace.add("matrix-skip", provider.label() + " × " + Song.providerLabel(variant.source) + " · 不支持 " + quality);
+                         if (!"128k".equalsIgnoreCase(quality)) lowerQualityMayHelp = true;
+                         break;
+                     }
+                     attempted++;
+-                    trace.add("provider", provider.label() + " · " + provider.type() + " → "
+-                            + variant.source + "/" + quality
+-                            + (tryIndex > 0 ? " · Runtime 重建重试" : ""));
+-
++                    trace.add("route", provider.label() + " × " + Song.providerLabel(variant.source) + " → " + quality
++                            + " · score=" + cell.score + (tryIndex > 0 ? " · Runtime重建" : ""));
+                     AudioCandidate candidate = provider.resolve(variant, song, quality, trace);
+-                    if (candidate == null || !candidate.valid())
+-                        throw new ResolverFailure(ResolverFailure.Kind.INVALID_CANDIDATE, provider.label() + " 返回无效音频候选", false);
+-                    // Exact Track Gate: Sunflower never trades correctness for a higher play rate.
+-                    // Current platform-native routes are confidence=1.0. Future cross-catalog adapters
+-                    // must prove an exact recording (>=0.98) or they are rejected before Media3.
+-                    if (candidate.matchConfidence < 0.98d) {
+-                        trace.add("exact-gate", provider.label() + " / confidence "
+-                                + Math.round(candidate.matchConfidence * 100d) + "% · REJECT");
+-                        throw new ResolverFailure(ResolverFailure.Kind.INVALID_CANDIDATE,
+-                                "Exact Track Gate 拒绝低置信候选", false);
+-                    }
++                    if (candidate == null || !candidate.valid()) throw new ResolverFailure(ResolverFailure.Kind.INVALID_CANDIDATE, provider.label() + " 返回无效音频候选", false);
++                    if (candidate.matchConfidence < 0.98d) throw new ResolverFailure(ResolverFailure.Kind.INVALID_CANDIDATE, "Exact Track Gate 拒绝低置信候选", false);
+ 
+                     if (provider.aggregate()) {
+                         AudioUrlProbe.Result probe = AudioUrlProbe.check(candidate.url);
+                         if (probe.checked && !probe.playable) {
+                             ResolverFailure failure = ResolverFailure.http(probe.statusCode, "HTTP " + probe.statusCode + " · " + probe.reason);
+-                            // Probe failures belong to the returned audio candidate, not automatically
+-                            // to the provider service itself.  A signed/CDN URL can be 403/5xx for one song
+-                            // while the same provider still works for another song or another platform.
+-                            // Only an explicit 429 from the candidate is promoted to provider-wide cooling.
+-                            if ((probe.statusCode >= 500 && probe.statusCode <= 599)
+-                                    || probe.statusCode == 401 || probe.statusCode == 403)
++                            if ((probe.statusCode >= 500 && probe.statusCode <= 599) || probe.statusCode == 401 || probe.statusCode == 403)
+                                 failure = new ResolverFailure(ResolverFailure.Kind.TRACK_UNAVAILABLE, failure.getMessage(), false);
+-                            trace.add("candidate-reject", provider.label() + " / " + failure.getMessage());
++                            trace.add("candidate-reject", provider.label() + " × " + Song.providerLabel(variant.source) + " / " + failure.getMessage());
+                             health.routeFailure(provider.id(), variant.source, quality, failure.getMessage(), 0L);
+                             if (probe.statusCode == 429) applyFailureScope(provider, variant.source, quality, failure);
+-                            if (!failure.lowerQualityMayHelp) qualityIndependentSkips.add(provider.id());
++                            if (!failure.lowerQualityMayHelp) crossQualitySkips.add(pp);
+                             last = failure;
+-                            if (tryIndex == 0 && (probe.statusCode == 404 || probe.statusCode == 410)) {
+-                                provider.recycle();
+-                                continue;
+-                            }
++                            if (tryIndex == 0 && (probe.statusCode == 404 || probe.statusCode == 410)) { provider.recycle(); continue; }
+                             break;
+                         }
+-                        if (probe.checked) trace.add("candidate-probe", provider.label() + " / HTTP " + probe.statusCode + " · 通过");
++                        if (probe.checked) trace.add("candidate-probe", provider.label() + " × " + Song.providerLabel(variant.source) + " / HTTP " + probe.statusCode + " · 通过");
+                     }
+ 
+                     long latency = Math.max(1L, System.currentTimeMillis() - start);
+                     health.resolverCandidate(provider.id(), variant.source, quality, latency);
+-                    trace.add("audio-candidate", provider.label() + " / confidence "
+-                            + Math.round(candidate.matchConfidence * 100d) + "% / "
++                    trace.add("audio-candidate", provider.label() + " × " + Song.providerLabel(variant.source)
++                            + " / confidence " + Math.round(candidate.matchConfidence * 100d) + "% / "
+                             + candidate.protocol + " / " + latency + "ms · 等待 Media3 READY");
+                     return candidate;
+                 } catch (Exception e) {
+-                    String raw = safe(e);
+-                    ResolverFailure failure = e instanceof ResolverFailure
+-                            ? (ResolverFailure) e : ResolverFailure.classify(raw);
+-                    last = failure;
+-                    lowerQualityMayHelp |= failure.lowerQualityMayHelp;
++                    ResolverFailure failure = e instanceof ResolverFailure ? (ResolverFailure) e : ResolverFailure.classify(safe(e));
++                    last = failure; lowerQualityMayHelp |= failure.lowerQualityMayHelp;
+                     String friendly = friendlyReason(failure.getMessage());
+-
+                     if ("huibq".equals(provider.id())) {
+                         int http = ResolverHttpDiagnostics.huibqHttpCodeSince(start);
+                         if (http >= 500 && http <= 599) {
+                             failure = ResolverFailure.http(http, "HTTP " + http + " · Huibq 服务暂不可用，短休后再探");
+-                            last = failure;
+-                            friendly = failure.getMessage();
++                            last = failure; friendly = failure.getMessage();
+                         }
+                     }
+-
+                     health.routeFailure(provider.id(), variant.source, quality, friendly, 0L);
+                     applyFailureScope(provider, variant.source, quality, failure);
+-                    if (!failure.lowerQualityMayHelp) qualityIndependentSkips.add(provider.id());
+-                    trace.add("resolver-fail", provider.label() + " / " + friendly);
++                    if (failure.kind == ResolverFailure.Kind.PROVIDER_INIT_FAILED
++                            || failure.kind == ResolverFailure.Kind.PROVIDER_UNAVAILABLE
++                            || failure.kind == ResolverFailure.Kind.RATE_LIMITED) deadBackends.add(provider.backendGroup());
++                    if (!failure.lowerQualityMayHelp) crossQualitySkips.add(pp);
++                    trace.add("resolver-fail", provider.label() + " × " + Song.providerLabel(variant.source) + " / " + friendly);
+                     break;
+                 }
+             }
+         }
+ 
+-        String platformLabel = Song.providerLabel(variant.source);
+-        String message = attempted == 0
+-                ? platformLabel + " 当前没有 Provider 声明支持 " + quality
+-                : platformLabel + " 原生线路暂时没有可靠音频候选";
+-        if (last != null && last.kind == ResolverFailure.Kind.AUTH_OR_FORBIDDEN)
+-            message += "（存在权限/403拒绝）";
+-        throw new ResolverFailure(last == null ? ResolverFailure.Kind.TRACK_UNAVAILABLE : last.kind,
+-                message, lowerQualityMayHelp);
++        String message = attempted == 0 ? "当前矩阵没有 Provider × Catalog 声明支持 " + quality : "当前矩阵暂时没有可靠音频候选";
++        throw new ResolverFailure(last == null ? ResolverFailure.Kind.TRACK_UNAVAILABLE : last.kind, message, lowerQualityMayHelp);
+     }
+ 
+     public void markPlaybackSuccess(AudioCandidate candidate, Song song, long totalLatencyMs) {
+-        if (candidate == null || candidate.variant == null || song == null) return;
+-        if (candidate.providerId.isEmpty() || "cache".equals(candidate.providerId)) return;
+-        health.playbackSuccess(candidate.providerId, candidate.variant.source, candidate.quality,
+-                Math.max(1L, totalLatencyMs));
+-        trackRoutes.markReady(song.key(), candidate.variant.source, candidate.quality,
+-                candidate.providerId, candidate.providerLabel);
++        if (candidate == null || candidate.variant == null || song == null || candidate.providerId.isEmpty() || "cache".equals(candidate.providerId)) return;
++        health.playbackSuccess(candidate.providerId, candidate.variant.source, candidate.quality, Math.max(1L, totalLatencyMs));
++        trackRoutes.markReady(song.key(), candidate.variant.source, candidate.quality, candidate.providerId, candidate.providerLabel);
+         recentReady.put(candidate.providerId + "|" + candidate.variant.source, System.currentTimeMillis());
+     }
+ 
+     public void markPlaybackFailure(AudioCandidate candidate, Song song, String reason) {
+-        if (candidate == null || candidate.variant == null || song == null) return;
+-        if (candidate.providerId.isEmpty() || "cache".equals(candidate.providerId)) return;
++        if (candidate == null || candidate.variant == null || song == null || candidate.providerId.isEmpty() || "cache".equals(candidate.providerId)) return;
+         String lower = reason == null ? "" : reason.toLowerCase(java.util.Locale.ROOT);
+-
+         health.routeFailure(candidate.providerId, candidate.variant.source, candidate.quality, reason, 0L);
+         trackRoutes.markFreshFailure(song.key(), candidate.variant.source, candidate.quality, candidate.providerId);
+-
+-        // Candidate HTTP failures are song-local.  Only explicit global rate/IP signals
+-        // are allowed to cool a provider across songs.
+-        if (lower.contains("429") || lower.contains("too many") || lower.contains("请求过于频繁") || lower.contains("rate")) {
++        if (lower.contains("429") || lower.contains("too many") || lower.contains("请求过于频繁") || lower.contains("rate"))
+             health.globalFailure(candidate.providerId, reason, RATE_COOLDOWN);
+-        } else if (lower.contains("block ip") || lower.contains("ip 被限制") || lower.contains("当前网络被该音源限制")) {
++        else if (lower.contains("block ip") || lower.contains("ip 被限制") || lower.contains("当前网络被该音源限制"))
+             health.globalFailure(candidate.providerId, reason, BLOCK_COOLDOWN);
+-        }
+     }
+ 
+-    /**
+-     * Explicit test/maintenance action.  Community scripts are pinned for reproducibility,
+-     * so they change only when the user asks to refresh them.  Huibq remains the V47 bundled snapshot.
+-     */
++    public String preferredRoute(Song song, String quality) { return song == null ? "" : trackRoutes.preferredRoute(song.key(), quality); }
++
+     public void resetCommunityScripts() {
+-        for (AudioProvider p : providers) {
+-            try { p.resetPinnedSource(); } catch (Exception ignored) { }
+-        }
++        for (AudioProvider p : providers) try { p.resetPinnedSource(); } catch (Exception ignored) { }
+         recentReady.clear();
+     }
+ 
+     public String statusText() {
+         StringBuilder b = new StringBuilder();
+-        b.append("Sunflower Audio Provider Hub V2\n")
+-                .append("统计已拆成平台维度：QQ=tx，网易=wy。某 Provider 的网易 READY 不再伪装成 QQ 可用。\n")
+-                .append("只有 Media3 READY + Exact Gate 才记成功；候选 URL 的 403/5xx 保持歌曲级；解析接口明确 403 才冷却当前平台，503/初始化失败才按 Provider 级处理。\n")
+-                .append("失败类型与音质无关时，不再把 320k 的失败完整重复到 128k。\n\n");
++        b.append("Sunflower Route Matrix V3\n")
++                .append("横轴 Catalog：QQ(tx) / 酷我(kw) / 酷狗(kg) / 网易(wy)；纵轴 Provider。只有 Exact Variant + Media3 READY 才学习路线。\n")
++                .append("READY 学习对象是‘歌曲 × Catalog × Provider × 音质’，一个平台失败不会污染同 Provider 的其他平台。\n\n");
+         for (AudioProvider p : providers) {
+-            int txOk = health.platformOk(p.id(), "tx");
+-            int txFail = health.platformFail(p.id(), "tx");
+-            int wyOk = health.platformOk(p.id(), "wy");
+-            int wyFail = health.platformFail(p.id(), "wy");
+-            int ok = health.totalOk(p.id());
+-            int fail = health.totalFail(p.id());
+-            b.append(ok > 0 ? "● " : "○ ").append(p.label()).append(" · ").append(p.type()).append('\n');
+-            b.append("   QQ(tx)   ").append(txOk > 0 ? "READY " + txOk : "未验证");
+-            if (txFail > 0) b.append(" · fail ").append(txFail);
+-            b.append('\n');
+-            b.append("   网易(wy) ").append(wyOk > 0 ? "READY " + wyOk : "未验证");
+-            if (wyFail > 0) b.append(" · fail ").append(wyFail);
+-            b.append('\n');
+-            String caps = p.capabilityHint();
+-            if (caps != null && !caps.isEmpty()) b.append("   声明：").append(caps).append('\n');
+-            String last = health.lastReason(p.id());
+-            if (last != null && !last.isEmpty()) b.append("   最近：").append(last).append('\n');
++            int ok = health.totalOk(p.id()), fail = health.totalFail(p.id());
++            b.append(ok > 0 ? "● " : "○ ").append(p.label()).append(" · ").append(p.type()).append(" · backend=").append(p.backendGroup()).append('\n');
++            for (String platform : MATRIX_PLATFORMS) {
++                int po = health.platformOk(p.id(), platform), pf = health.platformFail(p.id(), platform);
++                b.append("   ").append(String.format(java.util.Locale.ROOT, "%-5s", Song.providerLabel(platform) + "(" + platform + ")"))
++                        .append(" ").append(po > 0 ? "READY " + po : "未验证");
++                if (pf > 0) b.append(" · fail ").append(pf);
++                b.append('\n');
++            }
++            String caps = p.capabilityHint(); if (caps != null && !caps.isEmpty()) b.append("   声明：").append(caps).append('\n');
++            String last = health.lastReason(p.id()); if (last != null && !last.isEmpty()) b.append("   最近：").append(last).append('\n');
+             if (ok == 0 && fail == 0) b.append("   尚无实播样本\n");
+         }
+-        b.append("\nLX Host V2 对齐官方 mobile 2.0 行为：Promise on/send、脚本信息、Uint8Array Buffer/Crypto、二进制 HTTP、AES-ECB/RSA NoPadding 等。\n")
+-                .append("Community scripts 仍按显式‘更新社区源’才换版本；Huibq 保留 APK 内置历史快照。");
++        b.append("\nV3 会先使用历史 READY Matrix Route；若该路线失效，再在其他 Catalog × Provider 单元间继续，不再先把 TX 整列试死。\n")
++                .append("TrackVariantStore 是旁路身份缓存，不改 LibraryStore 原歌单/收藏格式。");
+         return b.toString();
+     }
+ 
+     public String compactStatus() {
+-        int txReady = 0, wyReady = 0, totalReady = 0;
+-        for (AudioProvider p : providers) {
+-            txReady += health.platformOk(p.id(), "tx");
+-            wyReady += health.platformOk(p.id(), "wy");
+-            totalReady += health.totalOk(p.id());
++        int healthyPlatforms = 0, readyRoutes = 0;
++        for (String platform : MATRIX_PLATFORMS) {
++            int sum = 0; for (AudioProvider p : providers) sum += health.platformOk(p.id(), platform);
++            if (sum > 0) healthyPlatforms++; readyRoutes += sum;
+         }
+-        if (totalReady == 0) return "Provider Hub V2 · QQ/网易等待首次 READY";
+-        return "Provider Hub V2 · QQ READY " + txReady + " · 网易 READY " + wyReady;
++        if (readyRoutes == 0) return "矩阵 V3 · 4 个平台等待首次 READY";
++        return "矩阵 V3 · " + healthyPlatforms + "/4 平台有 READY · " + readyRoutes + " 次实播";
+     }
+ 
+-    public void destroy() {
+-        for (AudioProvider p : providers) {
+-            try { p.destroy(); } catch (Exception ignored) { }
+-        }
+-        providers.clear();
+-        recentReady.clear();
+-    }
++    public void destroy() { for (AudioProvider p : providers) try { p.destroy(); } catch (Exception ignored) { } providers.clear(); recentReady.clear(); }
+ 
+-    private List<AudioProvider> ranked(Song song, String platform, String quality) {
+-        String preferred = trackRoutes.preferred(song.key(), platform, quality);
++    private List<RouteCell> rankedCells(Song song, String quality) {
++        String globalPreferred = trackRoutes.preferredRoute(song.key(), quality);
+         long now = System.currentTimeMillis();
+-        List<AudioProvider> list = new ArrayList<>(providers);
+-        list.sort(Comparator.comparingInt((AudioProvider p) -> rankScore(p, preferred, platform, now)).reversed());
+-        return list;
+-    }
+-
+-    private int rankScore(AudioProvider p, String preferred, String platform, long now) {
+-        int score = p.basePriority(platform);
+-        if (!preferred.isEmpty() && preferred.equals(p.id())) score += 100_000;
+-        Long lastReady = recentReady.get(p.id() + "|" + platform);
+-        if (lastReady != null && now - lastReady >= 0L && now - lastReady <= RECENT_READY_WINDOW) score += 1_000;
+-        return score;
++        List<RouteCell> out = new ArrayList<>();
++        for (SourceVariant variant : song.variants()) {
++            if (variant == null || variant.source.isEmpty() || variant.sourceId.isEmpty()) continue;
++            String preferredProvider = trackRoutes.preferred(song.key(), variant.source, quality);
++            for (AudioProvider provider : providers) {
++                int score = provider.basePriority(variant.source);
++                if ((variant.source + "|" + provider.id()).equals(globalPreferred)) score += 200_000;
++                if (!preferredProvider.isEmpty() && preferredProvider.equals(provider.id())) score += 100_000;
++                Long ready = recentReady.get(provider.id() + "|" + variant.source);
++                if (ready != null && now - ready >= 0L && now - ready <= RECENT_READY_WINDOW) score += 3_000;
++                int ok = health.ok(provider.id(), variant.source, quality), fail = health.fail(provider.id(), variant.source, quality);
++                score += Math.min(10_000, ok * 280); score -= Math.min(3_000, fail * 45);
++                long latency = health.latency(provider.id(), variant.source, quality); if (latency > 0) score -= (int) Math.min(700, latency / 20L);
++                out.add(new RouteCell(provider, variant, score));
++            }
++        }
++        out.sort(Comparator.comparingInt((RouteCell c) -> c.score).reversed());
++        return out;
+     }
+ 
+     private void applyFailureScope(AudioProvider provider, String platform, String quality, ResolverFailure failure) {
+         if (failure == null) return;
+         String reason = friendlyReason(failure.getMessage());
+         switch (failure.kind) {
+-            case RATE_LIMITED:
+-                health.globalFailure(provider.id(), reason, RATE_COOLDOWN);
+-                break;
+-            case PROVIDER_INIT_FAILED:
+-                health.globalFailure(provider.id(), reason, INIT_COOLDOWN);
+-                break;
+-            case PROVIDER_UNAVAILABLE:
+-                health.globalFailure(provider.id(), reason, SERVICE_COOLDOWN);
+-                break;
+-            case AUTH_OR_FORBIDDEN:
+-                // QDY tx=403 must not suppress QDY wy. Scope authorization rejection to platform.
+-                health.platformFailure(provider.id(), platform, reason, 5L * 60L * 1000L);
+-                break;
+-            case PLATFORM_UNSUPPORTED:
+-                health.platformFailure(provider.id(), platform, reason, 10L * 60L * 1000L);
+-                break;
+-            case NETWORK:
+-                health.routeCooldown(provider.id(), platform, quality, reason, SOFT_NETWORK_COOLDOWN);
+-                break;
+-            default:
+-                break;
++            case RATE_LIMITED: health.globalFailure(provider.id(), reason, RATE_COOLDOWN); break;
++            case PROVIDER_INIT_FAILED: health.globalFailure(provider.id(), reason, INIT_COOLDOWN); break;
++            case PROVIDER_UNAVAILABLE: health.globalFailure(provider.id(), reason, SERVICE_COOLDOWN); break;
++            case AUTH_OR_FORBIDDEN: health.platformFailure(provider.id(), platform, reason, 5L * 60L * 1000L); break;
++            case PLATFORM_UNSUPPORTED: health.platformFailure(provider.id(), platform, reason, 10L * 60L * 1000L); break;
++            case NETWORK: health.routeCooldown(provider.id(), platform, quality, reason, SOFT_NETWORK_COOLDOWN); break;
++            default: break;
+         }
+     }
+ 
+     private void add(Context app, ResolverProvider spec) { providers.add(new LxAudioProvider(app, spec)); }
+-
+-    private static String jsdelivr(String folder) {
+-        return "https://fastly.jsdelivr.net/gh/pdone/lx-music-source@main/" + folder + "/latest.js";
+-    }
+-
++    private static String jsdelivr(String folder) { return "https://fastly.jsdelivr.net/gh/pdone/lx-music-source@main/" + folder + "/latest.js"; }
++    private static String variantLabels(Song song) { StringBuilder b = new StringBuilder(); for (SourceVariant v : song.variants()) { if (b.length() > 0) b.append('/'); b.append(v.source); } return b.toString(); }
+     private static String friendlyReason(String m) {
+-        String s = m == null ? "" : m.trim();
+-        String first = s.replace('\r', '\n').split("\n", 2)[0].trim();
+-        String lower = first.toLowerCase(java.util.Locale.ROOT);
++        String s = m == null ? "" : m.trim(); String first = s.replace('\r','\n').split("\n",2)[0].trim(); String lower = first.toLowerCase(java.util.Locale.ROOT);
+         if (lower.contains("block ip") || lower.contains("ip 被限制")) return "当前网络被该 Provider 限制，已进入保护冷却";
+         if (lower.contains("too many") || first.contains("请求过于频繁") || lower.contains("429")) return "请求频率受限，已进入保护冷却";
+-        if (first.contains("初始化")) {
+-            String compact = "Provider 初始化失败" + suffix(first);
+-            return compact.length() > 110 ? compact.substring(0, 110) + "…" : compact;
+-        }
+-        if (first.length() > 130) return first.substring(0, 130) + "…";
+-        return first.isEmpty() ? "暂时不可用" : first;
+-    }
+-
+-    private static String suffix(String s) {
+-        int i = s.indexOf('：');
+-        if (i >= 0 && i + 1 < s.length()) return "：" + s.substring(i + 1);
+-        return "";
+-    }
+-
+-    private static String safe(Exception e) {
+-        return e == null || e.getMessage() == null ? "unknown" : e.getMessage();
++        if (first.contains("初始化")) { String compact = "Provider 初始化失败" + suffix(first); return compact.length() > 110 ? compact.substring(0,110) + "…" : compact; }
++        if (first.length() > 130) return first.substring(0,130) + "…"; return first.isEmpty() ? "暂时不可用" : first;
+     }
++    private static String suffix(String s) { int i=s.indexOf('：'); return i>=0 && i+1<s.length() ? "："+s.substring(i+1) : ""; }
++    private static String safe(Exception e) { return e == null || e.getMessage() == null ? "unknown" : e.getMessage(); }
++    private static final class RouteCell { final AudioProvider provider; final SourceVariant variant; final int score; RouteCell(AudioProvider p, SourceVariant v, int s) { provider=p; variant=v; score=s; } }
+ }
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/ExactTrackMatcher.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/ExactTrackMatcher.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/ExactTrackMatcher.java	1970-01-01 00:00:00.000000000 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/ExactTrackMatcher.java	2026-08-11 18:42:27.403173379 +0000
+@@ -0,0 +1,218 @@
++package com.xingyu.music.data;
++
++import com.xingyu.music.model.Song;
++import com.xingyu.music.model.SourceVariant;
++
++import org.json.JSONObject;
++
++import java.text.Normalizer;
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Locale;
++import java.util.Set;
++
++/**
++ * Conservative recording identity gate for cross-catalog variants.
++ *
++ * A route may come from another catalog, but it is admitted only when title,
++ * artist and duration describe the same recording.  Obvious Live/Cover/Remix
++ * version markers are treated as identity, not decoration.
++ */
++public final class ExactTrackMatcher {
++    private ExactTrackMatcher() { }
++
++    private static final String[] VERSION_MARKERS = {
++            "live", "现场", "現場", "翻唱", "cover", "remix", "dj", "伴奏", "纯音乐", "純音樂",
++            "instrumental", "karaoke", "demo", "acoustic", "sped up", "spedup", "slowed",
++            "女声版", "女聲版", "男声版", "男聲版", "抖音版", "片段", "铃声", "鈴聲", "加速版",
++            "慢速版", "说唱版", "說唱版", "钢琴版", "鋼琴版", "remastered", "重制", "重製"
++    };
++
++    public static double confidence(Song anchor, Song candidate) {
++        if (anchor == null || candidate == null) return 0d;
++        String at = normalizeTitle(anchor.title);
++        String bt = normalizeTitle(candidate.title);
++        if (at.isEmpty() || !at.equals(bt)) return 0d;
++        if (!versionSignature(anchor.title).equals(versionSignature(candidate.title))) return 0d;
++
++        Set<String> aa = artistTokens(anchor.artist);
++        Set<String> ba = artistTokens(candidate.artist);
++        if (aa.isEmpty() || ba.isEmpty()) return 0d;
++        if (!aa.equals(ba)) return 0d;
++
++        long ad = anchor.durationMs;
++        long bd = candidate.durationMs;
++        if (ad > 0 && bd > 0) {
++            long diff = Math.abs(ad - bd);
++            if (diff <= 4_000L) return albumCompatible(anchor, candidate) ? 1.0d : 0.995d;
++            if (diff <= 8_000L) return albumCompatible(anchor, candidate) ? 0.995d : 0.99d;
++            if (diff <= 12_000L) return albumCompatible(anchor, candidate) ? 0.985d : 0.98d;
++            return 0d;
++        }
++
++        // Cross-catalog identity without duration is too weak for auto playback.
++        if (albumCompatible(anchor, candidate) && !safe(anchor.album).isEmpty() && !safe(candidate.album).isEmpty()) return 0.97d;
++        return 0.90d;
++    }
++
++    public static boolean isExact(Song anchor, Song candidate) { return confidence(anchor, candidate) >= 0.98d; }
++
++    /** Stable overlay key. Version signature is intentionally included. */
++    public static String identityKey(Song s) {
++        if (s == null) return "";
++        return normalizeTitle(s.title) + "|" + String.join("/", artistTokens(s.artist)) + "|" + versionSignature(s.title);
++    }
++
++    public static boolean hasAlternateVersionMarker(String title) { return !versionSignature(title).isEmpty(); }
++
++    /**
++     * Validate one provider-native identity against the canonical anchor using the
++     * variant's own raw catalog metadata. This is also a migration guard for old
++     * V47/V1/V2 songs whose fallback variants may have been merged under looser rules.
++     */
++    public static double variantConfidence(Song anchor, SourceVariant variant) {
++        if (anchor == null || variant == null) return 0d;
++        if (variant.source.equals(anchor.source) && variant.sourceId.equals(anchor.sourceId)) return 1d;
++        String raw = variant.rawMusicInfoJson();
++        if (raw == null || raw.trim().isEmpty()) return 0d;
++        try {
++            JSONObject o = new JSONObject(raw);
++            String title = firstNonEmpty(o.optString("name", ""), o.optString("title", ""),
++                    o.optString("songname", ""), o.optString("SongName", ""));
++            String artist = rawArtist(o);
++            if (title.isEmpty() || artist.isEmpty()) return 0d;
++            String album = rawAlbum(o);
++            long duration = rawDurationMs(o);
++            Song candidate = new Song(title, artist, album, "", duration,
++                    java.util.Collections.singletonList(variant));
++            return confidence(anchor, candidate);
++        } catch (Exception ignored) { return 0d; }
++    }
++
++    /** Keep the anchor identity and only cross-catalog variants that pass the exact gate. */
++    public static Song sanitizeVariants(Song song) {
++        if (song == null) return null;
++        List<SourceVariant> trusted = new ArrayList<>();
++        for (SourceVariant v : song.variants()) {
++            if (v == null) continue;
++            if ((v.source.equals(song.source) && v.sourceId.equals(song.sourceId)) || variantConfidence(song, v) >= 0.98d)
++                trusted.add(v);
++        }
++        return new Song(song.title, song.artist, song.album, song.coverUrl, song.durationMs, trusted);
++    }
++
++    private static long rawDurationMs(JSONObject o) {
++        long v = 0L;
++        if (o.has("durationMs")) v = o.optLong("durationMs", 0L);
++        if (v <= 0 && o.has("dt")) v = o.optLong("dt", 0L);
++        if (v <= 0 && o.has("duration")) v = o.optLong("duration", 0L);
++        if (v <= 0 && o.has("DURATION")) v = o.optLong("DURATION", 0L);
++        if (v <= 0 && o.has("Duration")) v = o.optLong("Duration", 0L);
++        if (v <= 0 && o.has("_interval")) v = o.optLong("_interval", 0L);
++        if (v <= 0 && o.has("interval")) {
++            Object rawInterval = o.opt("interval");
++            if (rawInterval instanceof Number) v = ((Number) rawInterval).longValue();
++            else { try { v = Long.parseLong(String.valueOf(rawInterval)); } catch (Exception ignored) { } }
++        }
++        if (v > 0 && v < 20_000L) v *= 1000L;
++        if (v <= 0) {
++            String interval = firstNonEmpty(o.optString("interval", ""), o.optString("time", ""));
++            String[] parts = interval.split(":");
++            try {
++                if (parts.length == 2) v = (Long.parseLong(parts[0]) * 60L + Long.parseLong(parts[1])) * 1000L;
++            } catch (Exception ignored) { }
++        }
++        return Math.max(0L, v);
++    }
++
++    private static String rawArtist(JSONObject o) {
++        if (o == null) return "";
++        String direct = firstNonEmpty(o.optString("artist", ""), o.optString("SingerName", ""), o.optString("ARTIST", ""));
++        Object singerValue = o.opt("singer");
++        if (singerValue instanceof org.json.JSONArray) {
++            String joined = joinArtistArray((org.json.JSONArray) singerValue);
++            if (!joined.isEmpty()) return joined;
++        } else if (singerValue != null) {
++            String s = String.valueOf(singerValue).trim();
++            if (!s.isEmpty() && !s.startsWith("[")) return s;
++        }
++        org.json.JSONArray ar = o.optJSONArray("ar");
++        if (ar == null) ar = o.optJSONArray("artists");
++        String joined = joinArtistArray(ar);
++        return !joined.isEmpty() ? joined : direct;
++    }
++
++    private static String joinArtistArray(org.json.JSONArray a) {
++        if (a == null) return "";
++        StringBuilder b = new StringBuilder();
++        for (int i = 0; i < a.length(); i++) {
++            JSONObject item = a.optJSONObject(i);
++            String name = item == null ? "" : firstNonEmpty(item.optString("name", ""), item.optString("Name", ""));
++            if (name.isEmpty()) continue;
++            if (b.length() > 0) b.append(" / ");
++            b.append(name);
++        }
++        return b.toString();
++    }
++
++    private static String rawAlbum(JSONObject o) {
++        if (o == null) return "";
++        String direct = firstNonEmpty(o.optString("albumName", ""), o.optString("ALBUM", ""));
++        Object album = o.opt("album");
++        if (album instanceof JSONObject) {
++            String name = ((JSONObject) album).optString("name", "");
++            if (!name.trim().isEmpty()) return name.trim();
++        }
++        JSONObject al = o.optJSONObject("al");
++        if (al != null && !al.optString("name", "").trim().isEmpty()) return al.optString("name", "").trim();
++        return direct;
++    }
++
++    private static String firstNonEmpty(String... values) {
++        if (values != null) for (String v : values) if (v != null && !v.trim().isEmpty()) return v.trim();
++        return "";
++    }
++
++    private static boolean albumCompatible(Song a, Song b) {
++        String x = normalize(a == null ? "" : a.album);
++        String y = normalize(b == null ? "" : b.album);
++        if (x.isEmpty() || y.isEmpty()) return true;
++        return x.equals(y) || x.contains(y) || y.contains(x);
++    }
++
++    private static Set<String> artistTokens(String value) {
++        String raw = safe(value).replace('、', '/').replace('&', '/').replace('，', '/').replace(',', '/');
++        List<String> parts = new ArrayList<>(Arrays.asList(raw.split("[/;|]+")));
++        Set<String> out = new java.util.TreeSet<>();
++        for (String p : parts) {
++            String n = normalize(p);
++            if (!n.isEmpty() && !"未知歌手".equals(n) && !"群星".equals(n)) out.add(n);
++        }
++        return out;
++    }
++
++    private static String normalizeTitle(String value) {
++        return normalize(safe(value));
++    }
++
++    private static String versionSignature(String title) {
++        String n = normalize(safe(title));
++        List<String> hits = new ArrayList<>();
++        for (String marker : VERSION_MARKERS) {
++            String m = normalize(marker);
++            if (!m.isEmpty() && n.contains(m)) hits.add(m);
++        }
++        java.util.Collections.sort(hits);
++        return String.join("+", hits);
++    }
++
++    private static String normalize(String value) {
++        String v = safe(value).toLowerCase(Locale.ROOT);
++        v = Normalizer.normalize(v, Normalizer.Form.NFKC).replace("·", "").replace("•", "");
++        return v.replaceAll("[\\s\\p{Punct}，。！？：；、“”‘’《》【】（）()]+", "");
++    }
++
++    private static String safe(String s) { return s == null ? "" : s.trim(); }
++}
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/KugouMusicApi.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/KugouMusicApi.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/KugouMusicApi.java	1970-01-01 00:00:00.000000000 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/KugouMusicApi.java	2026-08-11 18:31:08.217917394 +0000
+@@ -0,0 +1,125 @@
++package com.xingyu.music.data;
++
++import com.xingyu.music.model.Song;
++import com.xingyu.music.model.SourceVariant;
++
++import org.json.JSONArray;
++import org.json.JSONObject;
++
++import java.net.URLEncoder;
++import java.nio.charset.StandardCharsets;
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.LinkedHashSet;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++
++/** Search-only Kugou catalog adapter, using the same public search shape LX consumes. */
++public final class KugouMusicApi {
++    private volatile int lastSearchTotal;
++    public int lastSearchTotal() { return lastSearchTotal; }
++
++    public List<Song> search(String keyword, int limit) throws Exception {
++        Page p = searchPage(keyword, 1, limit);
++        lastSearchTotal = p.total;
++        return p.songs;
++    }
++
++    public Page searchPage(String keyword, int page, int limit) throws Exception {
++        String q = keyword == null ? "" : keyword.trim();
++        if (q.isEmpty()) return new Page(new ArrayList<>(), 0);
++        int p = Math.max(1, page);
++        int n = Math.max(1, Math.min(limit, 50));
++        String url = "https://songsearch.kugou.com/song_search_v2?keyword="
++                + URLEncoder.encode(q, StandardCharsets.UTF_8.name())
++                + "&page=" + p + "&pagesize=" + n
++                + "&userid=0&clientver=&platform=WebFilter&filter=2&iscorrection=1&privilege_filter=0&area_code=1";
++        Http.Response r = Http.get(url, headers());
++        if (r.code < 200 || r.code >= 300) throw new Exception("酷狗 HTTP " + r.code);
++        JSONObject root = new JSONObject(r.body);
++        if (root.optInt("error_code", -1) != 0) throw new Exception("酷狗 code=" + root.optInt("error_code", -1));
++        JSONObject data = root.optJSONObject("data");
++        JSONArray list = data == null ? null : data.optJSONArray("lists");
++        List<Song> songs = parse(list);
++        int total = data == null ? songs.size() : Math.max(songs.size(), data.optInt("total", songs.size()));
++        lastSearchTotal = total;
++        return new Page(songs, total);
++    }
++
++    public static final class Page {
++        public final List<Song> songs; public final int total;
++        Page(List<Song> songs, int total) { this.songs = songs; this.total = Math.max(0, total); }
++    }
++
++    private List<Song> parse(JSONArray list) {
++        List<Song> out = new ArrayList<>();
++        if (list == null) return out;
++        Set<String> seen = new LinkedHashSet<>();
++        for (int i = 0; i < list.length(); i++) {
++            JSONObject item = list.optJSONObject(i);
++            add(item, out, seen);
++            JSONArray group = item == null ? null : item.optJSONArray("Grp");
++            if (group != null) for (int j = 0; j < group.length(); j++) add(group.optJSONObject(j), out, seen);
++        }
++        return out;
++    }
++
++    private void add(JSONObject o, List<Song> out, Set<String> seen) {
++        if (o == null) return;
++        String audioId = String.valueOf(o.optLong("Audioid", o.optLong("AudioID", 0L)));
++        String fileHash = firstNonEmpty(o.optString("FileHash", ""), o.optString("Hash", ""));
++        if (("0".equals(audioId) || audioId.isEmpty()) && fileHash.isEmpty()) return;
++        String unique = audioId + "|" + fileHash;
++        if (!seen.add(unique)) return;
++        String title = decode(firstNonEmpty(o.optString("SongName", ""), o.optString("SongNameOri", ""), "未知歌曲"));
++        String artist = parseSingers(o.optJSONArray("Singers"), o.optString("SingerName", ""));
++        String album = decode(o.optString("AlbumName", ""));
++        long duration = o.optLong("Duration", 0L) * 1000L;
++        boolean q128 = o.optLong("FileSize", 0L) > 0L || !fileHash.isEmpty();
++        boolean q320 = o.optLong("HQFileSize", 0L) > 0L || o.optLong("SQFileSize", 0L) > 0L || o.optLong("ResFileSize", 0L) > 0L;
++        if (!q128 && !q320) { q128 = true; q320 = true; }
++
++        JSONArray types = new JSONArray();
++        JSONObject typeMap = new JSONObject();
++        addType(types, typeMap, "128k", o.optLong("FileSize", 0L), fileHash);
++        addType(types, typeMap, "320k", o.optLong("HQFileSize", 0L), o.optString("HQFileHash", ""));
++        addType(types, typeMap, "flac", o.optLong("SQFileSize", 0L), o.optString("SQFileHash", ""));
++        addType(types, typeMap, "flac24bit", o.optLong("ResFileSize", 0L), o.optString("ResFileHash", ""));
++
++        JSONObject lx = new JSONObject();
++        try {
++            lx.put("name", title); lx.put("singer", artist); lx.put("source", "kg");
++            lx.put("songmid", audioId); lx.put("songId", audioId); lx.put("audioId", audioId);
++            lx.put("albumName", album); lx.put("albumId", o.optLong("AlbumID", 0L));
++            lx.put("interval", formatDuration(duration)); lx.put("_interval", Math.max(0L, duration / 1000L));
++            lx.put("hash", fileHash); lx.put("types", types); lx.put("_types", typeMap); lx.put("typeUrl", new JSONObject());
++        } catch (Exception ignored) { }
++        List<SourceVariant> variants = new ArrayList<>();
++        variants.add(new SourceVariant("kg", audioId, q128, q320, lx));
++        out.add(new Song(title, artist, album, "", duration, variants));
++    }
++
++    private static void addType(JSONArray types, JSONObject map, String type, long size, String hash) {
++        if (size <= 0 && (hash == null || hash.isEmpty())) return;
++        try {
++            JSONObject t = new JSONObject(); t.put("type", type); t.put("size", String.valueOf(size)); if (hash != null && !hash.isEmpty()) t.put("hash", hash); types.put(t);
++            JSONObject m = new JSONObject(); m.put("size", String.valueOf(size)); if (hash != null && !hash.isEmpty()) m.put("hash", hash); map.put(type, m);
++        } catch (Exception ignored) { }
++    }
++
++    private static String parseSingers(JSONArray singers, String fallback) {
++        StringBuilder b = new StringBuilder();
++        if (singers != null) for (int i = 0; i < singers.length(); i++) {
++            JSONObject s = singers.optJSONObject(i); if (s == null) continue;
++            String name = decode(firstNonEmpty(s.optString("name", ""), s.optString("Name", "")));
++            if (name.isEmpty()) continue; if (b.length() > 0) b.append(" / "); b.append(name);
++        }
++        if (b.length() == 0) return decode(fallback).replace("、", " / ");
++        return b.toString();
++    }
++    private static Map<String,String> headers() { Map<String,String> h = new LinkedHashMap<>(); h.put("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/125 Safari/537.36"); h.put("Referer", "https://www.kugou.com/"); h.put("Accept", "application/json,text/plain,*/*"); return h; }
++    private static String decode(String s) { return s == null ? "" : s.replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'").trim(); }
++    private static String formatDuration(long ms) { long sec = Math.max(0, ms / 1000L); return String.format(java.util.Locale.ROOT, "%02d:%02d", sec / 60L, sec % 60L); }
++    private static String firstNonEmpty(String... a) { for (String s : a) if (s != null && !s.trim().isEmpty()) return s.trim(); return ""; }
++}
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/KuwoMusicApi.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/KuwoMusicApi.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/KuwoMusicApi.java	1970-01-01 00:00:00.000000000 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/KuwoMusicApi.java	2026-08-11 18:31:08.217016974 +0000
+@@ -0,0 +1,117 @@
++package com.xingyu.music.data;
++
++import com.xingyu.music.model.Song;
++import com.xingyu.music.model.SourceVariant;
++
++import org.json.JSONArray;
++import org.json.JSONObject;
++
++import java.net.URLEncoder;
++import java.nio.charset.StandardCharsets;
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
++/** Search-only Kuwo catalog adapter, modelled after LX Music's current kw search shape. */
++public final class KuwoMusicApi {
++    private static final Pattern MINFO = Pattern.compile("level:(\\w+),bitrate:(\\d+),format:(\\w+),size:([\\w.]+)");
++    private volatile int lastSearchTotal;
++    public int lastSearchTotal() { return lastSearchTotal; }
++
++    public List<Song> search(String keyword, int limit) throws Exception {
++        Page p = searchPage(keyword, 1, limit);
++        lastSearchTotal = p.total;
++        return p.songs;
++    }
++
++    public Page searchPage(String keyword, int page, int limit) throws Exception {
++        String q = keyword == null ? "" : keyword.trim();
++        if (q.isEmpty()) return new Page(new ArrayList<>(), 0);
++        int p = Math.max(1, page);
++        int n = Math.max(1, Math.min(limit, 50));
++        String url = "http://search.kuwo.cn/r.s?client=kt&all="
++                + URLEncoder.encode(q, StandardCharsets.UTF_8.name())
++                + "&pn=" + (p - 1) + "&rn=" + n
++                + "&uid=794762570&ver=kwplayer_ar_9.2.2.1&vipver=1&show_copyright_off=1"
++                + "&newver=1&ft=music&cluster=0&strategy=2012&encoding=utf8&rformat=json&vermerge=1&mobi=1&issubtitle=1";
++        Http.Response r = Http.get(url, headers());
++        if (r.code < 200 || r.code >= 300) throw new Exception("酷我 HTTP " + r.code);
++        JSONObject root = new JSONObject(r.body);
++        JSONArray list = root.optJSONArray("abslist");
++        List<Song> songs = parse(list);
++        int total = parseInt(root.opt("TOTAL"), songs.size());
++        lastSearchTotal = total;
++        return new Page(songs, total);
++    }
++
++    public static final class Page {
++        public final List<Song> songs; public final int total;
++        Page(List<Song> songs, int total) { this.songs = songs; this.total = Math.max(0, total); }
++    }
++
++    private List<Song> parse(JSONArray list) {
++        List<Song> out = new ArrayList<>();
++        if (list == null) return out;
++        for (int i = 0; i < list.length(); i++) {
++            JSONObject o = list.optJSONObject(i);
++            if (o == null) continue;
++            String rid = firstNonEmpty(o.optString("MUSICRID", ""), o.optString("musicrid", ""));
++            if (rid.startsWith("MUSIC_")) rid = rid.substring(6);
++            if (rid.isEmpty()) continue;
++            String title = decode(firstNonEmpty(o.optString("SONGNAME", ""), o.optString("NAME", ""), "未知歌曲"));
++            String artist = decode(firstNonEmpty(o.optString("ARTIST", ""), "未知歌手")).replace("&", " / ");
++            String album = decode(o.optString("ALBUM", ""));
++            long duration = parseLong(o.opt("DURATION"), 0L) * 1000L;
++            String minfo = o.optString("N_MINFO", "");
++            boolean q128 = false, q320 = false;
++            JSONArray types = new JSONArray();
++            JSONObject typeMap = new JSONObject();
++            if (!minfo.isEmpty()) {
++                for (String part : minfo.split(";")) {
++                    Matcher m = MINFO.matcher(part);
++                    if (!m.find()) continue;
++                    String bitrate = m.group(2);
++                    String type = "";
++                    if ("128".equals(bitrate)) { type = "128k"; q128 = true; }
++                    else if ("320".equals(bitrate)) { type = "320k"; q128 = true; q320 = true; }
++                    else if ("2000".equals(bitrate)) { type = "flac"; q128 = true; q320 = true; }
++                    else if ("4000".equals(bitrate)) { type = "flac24bit"; q128 = true; q320 = true; }
++                    if (!type.isEmpty()) {
++                        JSONObject t = new JSONObject();
++                        try { t.put("type", type); t.put("size", m.group(4)); types.put(t); JSONObject mm = new JSONObject(); mm.put("size", m.group(4)); typeMap.put(type, mm); }
++                        catch (Exception ignored) { }
++                    }
++                }
++            }
++            if (minfo.isEmpty()) { q128 = true; q320 = true; }
++
++            JSONObject lx = new JSONObject();
++            try {
++                lx.put("name", title); lx.put("singer", artist); lx.put("source", "kw");
++                lx.put("songmid", rid); lx.put("albumId", decode(o.optString("ALBUMID", "")));
++                lx.put("albumName", album); lx.put("interval", formatDuration(duration));
++                lx.put("types", types); lx.put("_types", typeMap); lx.put("typeUrl", new JSONObject());
++            } catch (Exception ignored) { }
++            List<SourceVariant> variants = new ArrayList<>();
++            variants.add(new SourceVariant("kw", rid, q128, q320, lx));
++            out.add(new Song(title, artist, album, "", duration, variants));
++        }
++        return out;
++    }
++
++    private static Map<String,String> headers() {
++        Map<String,String> h = new LinkedHashMap<>();
++        h.put("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/125 Safari/537.36");
++        h.put("Referer", "http://www.kuwo.cn/");
++        h.put("Accept", "application/json,text/plain,*/*");
++        return h;
++    }
++    private static String decode(String s) { return s == null ? "" : s.replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'").trim(); }
++    private static String formatDuration(long ms) { long sec = Math.max(0, ms / 1000L); return String.format(java.util.Locale.ROOT, "%02d:%02d", sec / 60L, sec % 60L); }
++    private static int parseInt(Object o, int fallback) { try { return Integer.parseInt(String.valueOf(o)); } catch (Exception e) { return fallback; } }
++    private static long parseLong(Object o, long fallback) { try { return Long.parseLong(String.valueOf(o)); } catch (Exception e) { return fallback; } }
++    private static String firstNonEmpty(String... a) { for (String s : a) if (s != null && !s.trim().isEmpty()) return s.trim(); return ""; }
++}
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/LxAudioProvider.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/LxAudioProvider.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/LxAudioProvider.java	2026-08-11 16:02:48.252351397 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/LxAudioProvider.java	2026-08-11 18:31:48.328594019 +0000
+@@ -21,6 +21,7 @@
+     @Override public String id() { return spec.id; }
+     @Override public String label() { return spec.label; }
+     @Override public String type() { return "lx-script"; }
++    @Override public String backendGroup() { return "lx:" + spec.id; }
+     @Override public boolean aggregate() { return spec.aggregateFallback; }
+ 
+     @Override public int basePriority(String platform) {
+@@ -61,6 +62,7 @@
+                 spec.id,
+                 spec.label,
+                 type(),
++                backendGroup(),
+                 SourceHealthStore.routeKey(spec.id, variant.source, result.quality),
+                 variant,
+                 latency,
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/SearchPaginationApi.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/SearchPaginationApi.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/SearchPaginationApi.java	2026-08-11 08:51:29.000000000 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/SearchPaginationApi.java	2026-08-11 18:33:38.607039773 +0000
+@@ -25,6 +25,8 @@
+  * SourceHealthStore, and never reads/writes PlaybackUrlStore.
+  */
+ public final class SearchPaginationApi {
++    private final KuwoMusicApi kuwoApi = new KuwoMusicApi();
++    private final KugouMusicApi kugouApi = new KugouMusicApi();
+     private static final String WEB_UA = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/125 Safari/537.36";
+     private static final String QQ_APP_UA = "QQMusic 14090508(android 12)";
+     private static final int[] PART_1 = {23, 14, 6, 36, 16, 40, 7, 19};
+@@ -43,6 +45,16 @@
+         }
+     }
+ 
++    public Page kuwo(String keyword, int page, int limit) {
++        try { KuwoMusicApi.Page p = kuwoApi.searchPage(keyword, page, limit); return new Page(p.songs, p.total, ""); }
++        catch (Exception e) { return new Page(new ArrayList<>(), 0, message(e)); }
++    }
++
++    public Page kugou(String keyword, int page, int limit) {
++        try { KugouMusicApi.Page p = kugouApi.searchPage(keyword, page, limit); return new Page(p.songs, p.total, ""); }
++        catch (Exception e) { return new Page(new ArrayList<>(), 0, message(e)); }
++    }
++
+     public Page netease(String keyword, int offset, int limit) {
+         String q = keyword == null ? "" : keyword.trim();
+         if (q.isEmpty()) return new Page(new ArrayList<>(), 0, "");
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/SearchRanker.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/SearchRanker.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/SearchRanker.java	2026-08-11 07:50:43.000000000 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/SearchRanker.java	2026-08-11 18:45:03.687268491 +0000
+@@ -7,13 +7,17 @@
+ import java.util.ArrayList;
+ import java.util.HashMap;
+ import java.util.LinkedHashMap;
++import java.util.LinkedHashSet;
+ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
++import java.util.Set;
+ 
+ /**
+- * Canonical search ranking: identify the intended recording first, provider second.
+- * Provider names never receive a relevance bonus.
++ * N-catalog canonical search ranking.
++ *
++ * TX/KW/KG/WY are catalog identities only. Exact recordings are merged into
++ * one UI row; different versions are intentionally kept separate.
+  */
+ public final class SearchRanker {
+     private SearchRanker() { }
+@@ -24,17 +28,9 @@
+             "男声版", "男聲版", "抖音版", "片段", "铃声", "鈴聲", "加速版", "慢速版",
+             "说唱版", "說唱版", "完整版伴奏", "钢琴版", "鋼琴版"
+     };
+-
+     private static final String[] SUSPICIOUS_ALBUM_MARKERS = {
+-            "翻唱", "cover", "抖音", "热歌", "熱歌", "网络", "網絡", "合集", "精选", "精選",
+-            "dj", "伴奏", "铃声", "鈴聲"
++            "翻唱", "cover", "抖音", "热歌", "熱歌", "网络", "網絡", "合集", "精选", "精選", "dj", "伴奏", "铃声", "鈴聲"
+     };
+-
+-    /**
+-     * Tiny ambiguity overrides only for titles explicitly used as acceptance tests.
+-     * The general ranker works without this map; it simply prevents a cover with
+-     * identical upstream rank from beating the historically intended recording.
+-     */
+     private static final Map<String, String[]> AMBIGUITY_HINTS = new HashMap<>();
+     static {
+         AMBIGUITY_HINTS.put(normalize("晴天"), new String[]{"周杰伦", "周杰倫"});
+@@ -44,174 +40,118 @@
+ 
+     private static final class Candidate {
+         Song song;
+-        int wyRank = 999;
+-        int txRank = 999;
+-        boolean seenWy;
+-        boolean seenTx;
++        final Map<String,Integer> ranks = new LinkedHashMap<>();
++        final Set<String> sources = new LinkedHashSet<>();
+         int insertion;
+         int score;
+-
+-        int bestRank() { return Math.min(wyRank, txRank); }
+-        boolean crossProvider() { return seenWy && seenTx; }
++        int bestRank() { int best = 9999; for (int r : ranks.values()) best = Math.min(best, r); return best; }
+     }
+ 
++    /** Backward-compatible two-catalog entry point. */
+     public static List<Song> mergeAndRank(String query, List<Song> wy, List<Song> tx, int limit) {
+-        LinkedHashMap<String, Candidate> canonical = new LinkedHashMap<>();
+-        int insertion = addProvider(canonical, wy, "wy", 0);
+-        addProvider(canonical, tx, "tx", insertion);
++        LinkedHashMap<String,List<Song>> all = new LinkedHashMap<>();
++        all.put("wy", wy == null ? new ArrayList<>() : wy);
++        all.put("tx", tx == null ? new ArrayList<>() : tx);
++        return mergeAndRank(query, all, limit);
++    }
++
++    public static List<Song> mergeAndRank(String query, Map<String,List<Song>> catalogs, int limit) {
++        List<Candidate> canonical = new ArrayList<>();
++        int insertion = 0;
++        if (catalogs != null) {
++            for (Map.Entry<String,List<Song>> entry : catalogs.entrySet()) {
++                String source = entry.getKey() == null ? "" : entry.getKey();
++                List<Song> songs = entry.getValue();
++                if (songs == null) continue;
++                for (int i = 0; i < songs.size(); i++) {
++                    Song s = songs.get(i);
++                    if (s == null || s.variants().isEmpty()) continue;
++                    Candidate c = findExact(canonical, s);
++                    if (c == null) {
++                        c = new Candidate(); c.song = s; c.insertion = insertion++; canonical.add(c);
++                    } else {
++                        Song merged = c.song.withVariant(s);
++                        if ((merged.coverUrl.isEmpty() && !s.coverUrl.isEmpty()) || (merged.album.isEmpty() && !s.album.isEmpty())) merged = s.withVariant(merged);
++                        c.song = merged;
++                    }
++                    c.sources.add(source);
++                    c.ranks.put(source, Math.min(c.ranks.getOrDefault(source, 9999), i));
++                }
++            }
++        }
+ 
+         String normalizedQuery = normalize(query);
+-        List<Candidate> all = new ArrayList<>(canonical.values());
+-        for (Candidate c : all) c.score = score(normalizedQuery, c);
+-        all.sort((a, b) -> {
+-            int x = Integer.compare(b.score, a.score);
+-            if (x != 0) return x;
+-            x = Integer.compare(a.bestRank(), b.bestRank());
+-            if (x != 0) return x;
+-            // No provider preference. Stable insertion order is the final tie-breaker.
++        for (Candidate c : canonical) c.score = score(normalizedQuery, query, c);
++        canonical.sort((a,b) -> {
++            int x = Integer.compare(b.score, a.score); if (x != 0) return x;
++            x = Integer.compare(a.bestRank(), b.bestRank()); if (x != 0) return x;
+             return Integer.compare(a.insertion, b.insertion);
+         });
+-
+         List<Song> out = new ArrayList<>();
+         int max = Math.max(1, limit);
+-        for (Candidate c : all) {
+-            out.add(c.song);
+-            if (out.size() >= max) break;
+-        }
++        for (Candidate c : canonical) { out.add(c.song); if (out.size() >= max) break; }
+         return out;
+     }
+ 
+-    private static int addProvider(LinkedHashMap<String, Candidate> map, List<Song> songs,
+-                                   String provider, int insertion) {
+-        if (songs == null) return insertion;
+-        for (int i = 0; i < songs.size(); i++) {
+-            Song s = songs.get(i);
+-            if (s == null || s.sourceId.isEmpty()) continue;
+-            String id = identity(s);
+-            Candidate c = map.get(id);
+-            if (c == null) {
+-                c = new Candidate();
+-                c.song = s;
+-                c.insertion = insertion++;
+-                map.put(id, c);
+-            } else {
+-                // Same canonical recording: retain every provider's native id.
+-                c.song = c.song.withVariant(s);
+-                // Prefer richer metadata as the visible canonical fields where possible.
+-                if ((c.song.coverUrl.isEmpty() && !s.coverUrl.isEmpty())
+-                        || (c.song.album.isEmpty() && !s.album.isEmpty())) {
+-                    c.song = s.withVariant(c.song);
+-                }
+-            }
+-            if ("wy".equals(provider)) { c.seenWy = true; c.wyRank = Math.min(c.wyRank, i); }
+-            if ("tx".equals(provider)) { c.seenTx = true; c.txRank = Math.min(c.txRank, i); }
+-        }
+-        return insertion;
++    private static Candidate findExact(List<Candidate> candidates, Song s) {
++        for (Candidate c : candidates) if (ExactTrackMatcher.confidence(c.song, s) >= 0.98d) return c;
++        return null;
+     }
+ 
+-    private static int score(String query, Candidate c) {
++    private static int score(String normalizedQuery, String originalQuery, Candidate c) {
+         Song s = c.song;
+         String rawTitle = normalize(s.title);
+-        String baseTitle = normalize(stripVersionSuffix(s.title));
+         String artist = normalize(s.artist);
+-        String album = normalize(s.album);
+         int score = 0;
+-
+-        String queryTitle = query;
++        String queryTitle = normalizedQuery;
+         String queryArtist = "";
+-        // If the user types "歌名 歌手", use the trailing token as an artist signal.
+-        String originalQuery = query == null ? "" : query;
+-        String[] tokens = originalQuery.trim().split("\\s+");
++        String[] tokens = originalQuery == null ? new String[0] : originalQuery.trim().split("\\s+");
+         if (tokens.length >= 2) {
+-            String last = normalize(tokens[tokens.length - 1]);
+-            StringBuilder titlePart = new StringBuilder();
+-            for (int i = 0; i < tokens.length - 1; i++) titlePart.append(tokens[i]);
+-            String possibleTitle = normalize(titlePart.toString());
+-            if (!possibleTitle.isEmpty()) { queryTitle = possibleTitle; queryArtist = last; }
++            queryArtist = normalize(tokens[tokens.length - 1]);
++            StringBuilder titlePart = new StringBuilder(); for (int i=0;i<tokens.length-1;i++) titlePart.append(tokens[i]);
++            String possible = normalize(titlePart.toString()); if (!possible.isEmpty()) queryTitle = possible;
+         }
+-
+         if (!queryTitle.isEmpty()) {
+-            if (baseTitle.equals(queryTitle)) score += 7000;
+-            else if (rawTitle.equals(queryTitle)) score += 6600;
+-            else if (baseTitle.startsWith(queryTitle)) score += 4300;
+-            else if (baseTitle.contains(queryTitle)) score += 2800;
++            if (rawTitle.equals(queryTitle)) score += 7000;
++            else if (rawTitle.startsWith(queryTitle)) score += 4300;
++            else if (rawTitle.contains(queryTitle)) score += 2800;
+         }
+         if (!queryArtist.isEmpty()) {
+             if (artist.equals(queryArtist)) score += 5200;
+             else if (artist.contains(queryArtist)) score += 3600;
+             else score -= 1800;
+         }
+-
+-        // Upstream relevance is still valuable, but it is platform-neutral.
+         score += Math.max(0, 2100 - c.bestRank() * 80);
+-        if (c.crossProvider()) score += 120;
++        // V3: the same title + exact artist + exact duration independently appearing in several
++        // catalogs is strong evidence for the canonical commercial recording. The first source
++        // gets no bonus; corroborating catalogs do. ExactTrackMatcher already prevents different
++        // artists/Live/cover versions from pooling this score.
++        score += Math.max(0, Math.min(4, c.sources.size()) - 1) * 800;
+         if (!s.album.isEmpty()) score += 330;
+         if (s.durationMs >= 90_000L && s.durationMs <= 8 * 60_000L) score += 180;
+         if (s.durationMs > 0 && s.durationMs < 55_000L) score -= 900;
+-
+         score += recordingQualityBias(s);
+-
+         String[] preferred = AMBIGUITY_HINTS.get(queryTitle);
+-        if (preferred != null) for (String a : preferred) {
+-            if (artist.contains(normalize(a))) { score += 5400; break; }
+-        }
++        if (preferred != null) for (String a : preferred) if (artist.contains(normalize(a))) { score += 5400; break; }
+         return score;
+     }
+ 
+-    /**
+-     * Provider-neutral preference shared by title search and lyric search. Original/standard
+-     * recordings outrank obvious live/cover/remix variants; among otherwise similar recordings,
+-     * a real 320k-capable provider identity receives a small quality bonus. The bonus is
+-     * intentionally much smaller than the alternate-version penalty, so quality can never make
+-     * a cover beat the likely original merely because it advertises a higher bitrate.
+-     */
+     public static int recordingQualityBias(Song s) {
+         if (s == null) return 0;
+-        String rawTitle = normalize(s.title);
+-        String artist = normalize(s.artist);
+-        String album = normalize(s.album);
++        String rawTitle = normalize(s.title), artist = normalize(s.artist), album = normalize(s.album);
+         String all = rawTitle + "|" + artist + "|" + album;
+         int score = 0;
+         for (String marker : BAD_VERSION_MARKERS) if (all.contains(normalize(marker))) score -= 2300;
+         for (String marker : SUSPICIOUS_ALBUM_MARKERS) if (album.contains(normalize(marker))) score -= 700;
+         if (artist.contains(normalize("未知歌手")) || artist.contains(normalize("群星"))) score -= 800;
+-
+-        boolean q320 = false;
+-        boolean q128 = false;
+-        for (SourceVariant v : s.variants()) {
+-            if (v == null) continue;
+-            q320 |= v.quality320;
+-            q128 |= v.quality128;
+-        }
+-        if (q320) score += 360;
+-        else if (q128) score += 90;
+-
+-        // A tiny title-level canonical hint is used only for historically ambiguous acceptance
+-        // cases; it complements, rather than replaces, the generic live/cover/remix penalties.
+-        String[] canonicalArtists = AMBIGUITY_HINTS.get(normalize(stripVersionSuffix(s.title)));
+-        if (canonicalArtists != null) {
+-            for (String a : canonicalArtists) {
+-                if (artist.contains(normalize(a))) { score += 2700; break; }
+-            }
+-        }
++        boolean q320 = false, q128 = false;
++        for (SourceVariant v : s.variants()) { if (v == null) continue; q320 |= v.quality320; q128 |= v.quality128; }
++        if (q320) score += 360; else if (q128) score += 90;
++        String[] canonicalArtists = AMBIGUITY_HINTS.get(normalize(s.title));
++        if (canonicalArtists != null) for (String a : canonicalArtists) if (artist.contains(normalize(a))) { score += 2700; break; }
+         return score;
+     }
+ 
+-    private static String identity(Song s) {
+-        // Two records are considered the same recording only when title + artist
+-        // agree. Duration is used as a coarse guard when both sides provide it.
+-        String durationBucket = s.durationMs <= 0 ? "" : String.valueOf(Math.round(s.durationMs / 3000.0));
+-        return normalize(stripVersionSuffix(s.title)) + "|" + normalize(s.artist) + "|" + durationBucket;
+-    }
+-
+-    private static String stripVersionSuffix(String title) {
+-        if (title == null) return "";
+-        String t = title.trim();
+-        t = t.replaceAll("(?i)\\s*[（(\\[]\\s*(live|现场|現場|翻唱|cover|remix|dj|伴奏|纯音乐|純音樂|instrumental|demo|acoustic)[^）)\\]]*[）)\\]]\\s*$", "");
+-        t = t.replaceAll("(?i)\\s*[-–—]\\s*(live|现场|現場|翻唱|cover|remix|dj|伴奏|instrumental|demo|acoustic).*$", "");
+-        return t.trim();
+-    }
+-
+     private static String normalize(String value) {
+         String v = value == null ? "" : value.toLowerCase(Locale.ROOT).trim();
+         v = Normalizer.normalize(v, Normalizer.Form.NFKC).replace("·", "").replace("•", "");
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/SourceCoordinator.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/SourceCoordinator.java	2026-08-11 15:59:59.823340993 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/SourceCoordinator.java	2026-08-11 18:43:15.214980681 +0000
+@@ -7,21 +7,15 @@
+ 
+ import java.util.ArrayList;
+ import java.util.Collections;
++import java.util.HashSet;
+ import java.util.List;
+ import java.util.Set;
+-import java.util.HashSet;
+ import java.util.concurrent.CompletableFuture;
+ import java.util.concurrent.ConcurrentHashMap;
+ import java.util.concurrent.ExecutionException;
+ import java.util.concurrent.TimeUnit;
+ 
+-/**
+- * Sunflower coordinator: Canonical Song -> Audio Provider Hub -> Media3 candidate.
+- *
+- * A returned Resolution is still only a candidate.  PlaybackService reports the
+- * final STATE_READY / failure so the READY cache and exact-track route affinity
+- * are based on real playback rather than URL generation.
+- */
++/** Canonical Track -> exact catalog variants -> Provider x Variant matrix -> Media3 candidate. */
+ public final class SourceCoordinator {
+     public static final class Resolution {
+         public final String url, quality, resolverLabel, providerId, routeKey;
+@@ -29,169 +23,147 @@
+         public final boolean fromCache;
+         public final long resolverLatencyMs;
+         public final double matchConfidence;
+-        public final String providerType;
++        public final String providerType, backendGroup;
+         final AudioCandidate candidate;
+         final Song song;
+ 
+         Resolution(AudioCandidate candidate, Song song, boolean fromCache) {
+-            this.candidate = candidate;
+-            this.song = song;
+-            this.url = candidate.url;
+-            this.quality = candidate.quality;
+-            this.variant = candidate.variant;
+-            this.fromCache = fromCache;
+-            this.resolverLabel = candidate.providerLabel;
+-            this.providerId = candidate.providerId;
+-            this.routeKey = candidate.routeKey;
+-            this.resolverLatencyMs = candidate.resolverLatencyMs;
+-            this.matchConfidence = candidate.matchConfidence;
+-            this.providerType = candidate.providerType;
++            this.candidate = candidate; this.song = song; this.url = candidate.url; this.quality = candidate.quality;
++            this.variant = candidate.variant; this.fromCache = fromCache; this.resolverLabel = candidate.providerLabel;
++            this.providerId = candidate.providerId; this.routeKey = candidate.routeKey; this.resolverLatencyMs = candidate.resolverLatencyMs;
++            this.matchConfidence = candidate.matchConfidence; this.providerType = candidate.providerType; this.backendGroup = candidate.backendGroup;
+         }
+     }
+ 
+     private final AudioProviderHub providerHub;
+     private final PlaybackUrlStore cache;
++    private final TrackVariantStore variantStore;
++    private final TrackVariantEnricher enricher;
+     private final ConcurrentHashMap<String, CompletableFuture<Resolution>> inFlight = new ConcurrentHashMap<>();
+ 
+     public SourceCoordinator(Context context) {
+         providerHub = new AudioProviderHub(context);
+         cache = new PlaybackUrlStore(context);
++        variantStore = new TrackVariantStore(context);
++        enricher = new TrackVariantEnricher(variantStore);
+     }
+ 
+     public Resolution resolve(Song song, PlaybackTrace trace, Set<String> excludedRoutes) throws Exception {
+         if (song == null) throw new Exception("歌曲为空");
+-        List<SourceVariant> variants = song.variants();
++        // V3 migration guard: old fallback variants created before the exact matrix are not
++        // automatically trusted. Keep the anchor and revalidate every cross-catalog identity
++        // from its own raw metadata before it may enter Provider × Variant routing.
++        Song enriched = ExactTrackMatcher.sanitizeVariants(song);
++        enriched = ExactTrackMatcher.sanitizeVariants(variantStore.enrich(enriched));
++        // Never put the known-stable NetEase path behind extra catalog network calls.
++        // On-demand enrichment is reserved for TX-anchored tracks; imported playlists are also
++        // pre-enriched slowly in the background by MainActivity.
++        if ("tx".equals(song.source) && variantStore.shouldEnrich(enriched)) enriched = enricher.enrichIfNeeded(enriched, trace);
++        enriched = ExactTrackMatcher.sanitizeVariants(enriched);
++        variantStore.remember(enriched);
++        List<SourceVariant> variants = enriched.variants();
+         if (variants.isEmpty()) throw new Exception("歌曲没有可用平台 ID");
+-        Set<String> excluded = excludedRoutes == null ? Collections.emptySet() : excludedRoutes;
++        trace.add("identity", "Catalog variants=" + variantSummary(enriched) + " · anchor=" + Song.providerLabel(song.source));
+ 
++        Set<String> excluded = excludedRoutes == null ? Collections.emptySet() : excludedRoutes;
++        Set<String> crossQualitySkips = new HashSet<>(); // provider|platform, not whole provider
+         Exception last = null;
+-        for (SourceVariant variant : variants) {
+-            // Shared only across quality attempts for this exact catalog variant.  A provider
+-            // that failed for a quality-independent reason (403/init/source mismatch/etc.) is
+-            // not hammered again merely because another provider needs a 128k fallback.
+-            Set<String> qualityIndependentProviderSkips = new HashSet<>();
+-            trace.add("catalog", Song.providerLabel(variant.source) + " / " + variant.sourceId
+-                    + (variant.rawMusicInfoJson().isEmpty() ? " / compact metadata" : " / native metadata"));
+-            List<String> qualities = qualities(variant);
+-            for (String quality : qualities) {
+-                try {
+-                    Resolution r = resolveVariant(song, variant, quality, excluded, qualityIndependentProviderSkips, trace);
+-                    if (r != null) return r;
+-                } catch (Exception e) {
+-                    last = e;
+-                    trace.add("quality-fail", Song.providerLabel(variant.source) + "/" + quality + " / " + safe(e));
+-                    if (e instanceof ResolverFailure && !((ResolverFailure) e).lowerQualityMayHelp) {
+-                        trace.add("quality-stop", Song.providerLabel(variant.source) + " / " + quality
+-                                + " · 失败类型与音质无关，不重复降码率轰炸 Provider");
+-                        break;
+-                    }
++        for (String quality : qualities(enriched)) {
++            try {
++                Resolution cached = cachedRoute(enriched, quality, excluded, trace);
++                if (cached != null) return cached;
++                return resolveFresh(enriched, quality, excluded, crossQualitySkips, trace);
++            } catch (Exception e) {
++                last = e;
++                trace.add("quality-fail", "MATRIX/" + quality + " / " + safe(e));
++                if (e instanceof ResolverFailure && !((ResolverFailure) e).lowerQualityMayHelp) {
++                    trace.add("quality-stop", "MATRIX/" + quality + " · 所有已尝试失败均与码率无关");
++                    break;
+                 }
+             }
+         }
+         throw last == null ? new Exception("没有匹配到可播放线路") : last;
+     }
+ 
+-    private Resolution resolveVariant(Song song, SourceVariant variant, String quality,
+-                                      Set<String> excluded, Set<String> qualityIndependentProviderSkips,
+-                                      PlaybackTrace trace) throws Exception {
+-        PlaybackUrlStore.Entry stored = cache.get(variant.source, variant.sourceId, quality);
+-        if (stored != null) {
+-            String route = stored.providerId.isEmpty()
+-                    ? "cache|" + variant.source + "|" + quality
++    private Resolution cachedRoute(Song song, String quality, Set<String> excluded, PlaybackTrace trace) {
++        String preferred = providerHub.preferredRoute(song, quality); // platform|provider
++        List<SourceVariant> variants = new ArrayList<>(song.variants());
++        if (!preferred.isEmpty()) {
++            String platform = preferred.split("\\|", 2)[0];
++            variants.sort((a,b) -> Boolean.compare(platform.equals(b.source), platform.equals(a.source)));
++        }
++        for (SourceVariant variant : variants) {
++            if (!variant.supports(quality)) continue;
++            PlaybackUrlStore.Entry stored = cache.get(variant.source, variant.sourceId, quality);
++            if (stored == null) continue;
++            String route = stored.providerId.isEmpty() ? "cache|" + variant.source + "|" + quality
+                     : SourceHealthStore.routeKey(stored.providerId, variant.source, quality);
+-            if (!excluded.contains(route)) {
+-                trace.add("ready-cache", "hit " + variant.source + "/" + quality + " / "
+-                        + (stored.providerLabel.isEmpty() ? "历史 READY" : stored.providerLabel));
+-                AudioCandidate cached = new AudioCandidate(
+-                        stored.url,
+-                        quality,
+-                        stored.providerId.isEmpty() ? "cache" : stored.providerId,
+-                        stored.providerLabel.isEmpty() ? "READY Cache" : stored.providerLabel,
+-                        "ready-cache",
+-                        route,
+-                        variant,
+-                        1L,
+-                        1.0d,
+-                        "PROGRESSIVE",
+-                        "",
+-                        0L);
+-                return new Resolution(cached, song, true);
+-            }
+-            trace.add("cache-skip", "cached route already failed / " + route);
++            if (excluded.contains(route)) { trace.add("cache-skip", "cached route already failed / " + route); continue; }
++            if (!preferred.isEmpty() && !preferred.equals(variant.source + "|" + stored.providerId)) continue;
++            trace.add("ready-cache", "hit " + Song.providerLabel(variant.source) + "/" + quality + " / "
++                    + (stored.providerLabel.isEmpty() ? "历史 READY" : stored.providerLabel));
++            AudioCandidate candidate = new AudioCandidate(stored.url, quality,
++                    stored.providerId.isEmpty() ? "cache" : stored.providerId,
++                    stored.providerLabel.isEmpty() ? "READY Cache" : stored.providerLabel,
++                    "ready-cache", "ready-cache", route, variant, 1L, 1.0d, "PROGRESSIVE", "", 0L);
++            return new Resolution(candidate, song, true);
++        }
++        // If preferred cache is missing/expired, allow any other proven READY cache.
++        for (SourceVariant variant : variants) {
++            if (!variant.supports(quality)) continue;
++            PlaybackUrlStore.Entry stored = cache.get(variant.source, variant.sourceId, quality);
++            if (stored == null) continue;
++            String route = stored.providerId.isEmpty() ? "cache|" + variant.source + "|" + quality
++                    : SourceHealthStore.routeKey(stored.providerId, variant.source, quality);
++            if (excluded.contains(route)) continue;
++            trace.add("ready-cache", "fallback hit " + Song.providerLabel(variant.source) + "/" + quality + " / " + stored.providerLabel);
++            AudioCandidate candidate = new AudioCandidate(stored.url, quality,
++                    stored.providerId.isEmpty() ? "cache" : stored.providerId,
++                    stored.providerLabel.isEmpty() ? "READY Cache" : stored.providerLabel,
++                    "ready-cache", "ready-cache", route, variant, 1L, 1.0d, "PROGRESSIVE", "", 0L);
++            return new Resolution(candidate, song, true);
+         }
+-        trace.add("ready-cache", "miss " + variant.source + "/" + quality);
+-        return resolveFresh(song, variant, quality, excluded, qualityIndependentProviderSkips, trace);
++        trace.add("ready-cache", "miss MATRIX/" + quality);
++        return null;
+     }
+ 
+-    private Resolution resolveFresh(Song song, SourceVariant variant, String quality,
+-                                    Set<String> excluded, Set<String> qualityIndependentProviderSkips,
+-                                    PlaybackTrace trace) throws Exception {
+-        String key = song.key() + ":" + variant.key() + ":" + quality + ":" + excluded.hashCode()
+-                + ":" + qualityIndependentProviderSkips.hashCode();
++    private Resolution resolveFresh(Song song, String quality, Set<String> excluded,
++                                    Set<String> crossQualitySkips, PlaybackTrace trace) throws Exception {
++        String key = song.key() + ":matrix:" + quality + ":" + excluded.hashCode() + ":" + crossQualitySkips.hashCode();
+         CompletableFuture<Resolution> mine = new CompletableFuture<>();
+         CompletableFuture<Resolution> existing = inFlight.putIfAbsent(key, mine);
+         if (existing != null) {
+-            trace.add("dedupe", "join " + variant.key() + "/" + quality);
+-            try { return existing.get(55, TimeUnit.SECONDS); }
+-            catch (ExecutionException e) { throw unwrap(e); }
++            trace.add("dedupe", "join MATRIX/" + quality);
++            try { return existing.get(55, TimeUnit.SECONDS); } catch (ExecutionException e) { throw unwrap(e); }
+         }
+-
+         try {
+-            AudioCandidate candidate = providerHub.resolve(variant, song, quality, excluded,
+-                    qualityIndependentProviderSkips, trace);
++            AudioCandidate candidate = providerHub.resolveMatrix(song, quality, excluded, crossQualitySkips, trace);
+             Resolution resolved = new Resolution(candidate, song, false);
+-            trace.add("url", candidate.providerLabel + " / AudioCandidate obtained / waiting Media3");
+-            mine.complete(resolved);
+-            return resolved;
+-        } catch (Exception e) {
+-            mine.completeExceptionally(e);
+-            throw e;
+-        } finally {
+-            inFlight.remove(key, mine);
+-        }
++            trace.add("url", candidate.providerLabel + " × " + Song.providerLabel(candidate.variant.source) + " / AudioCandidate obtained / waiting Media3");
++            mine.complete(resolved); return resolved;
++        } catch (Exception e) { mine.completeExceptionally(e); throw e; }
++        finally { inFlight.remove(key, mine); }
+     }
+ 
+     public void markPlaybackSuccess(Resolution r, long timeToReadyMs) {
+         if (r == null || r.variant == null || r.song == null) return;
+-        providerHub.markPlaybackSuccess(r.candidate, r.song,
+-                r.resolverLatencyMs + Math.max(1L, timeToReadyMs));
+-        // Persist only URLs that Media3 has actually proven playable.
+-        if (!r.fromCache) cache.put(r.variant.source, r.variant.sourceId, r.quality,
+-                r.url, r.providerId, r.resolverLabel);
++        providerHub.markPlaybackSuccess(r.candidate, r.song, r.resolverLatencyMs + Math.max(1L, timeToReadyMs));
++        variantStore.remember(r.song);
++        if (!r.fromCache) cache.put(r.variant.source, r.variant.sourceId, r.quality, r.url, r.providerId, r.resolverLabel);
+     }
+-
+-    public void markPlaybackFailure(Resolution r, String reason, long cooldownMs) {
+-        if (r == null || r.variant == null || r.song == null) return;
+-        providerHub.markPlaybackFailure(r.candidate, r.song, reason);
+-    }
+-
+-    public void invalidate(Resolution r) {
+-        if (r != null && r.variant != null) cache.invalidate(r.variant.source, r.variant.sourceId, r.quality);
+-    }
+-
++    public void markPlaybackFailure(Resolution r, String reason, long cooldownMs) { if (r != null && r.variant != null && r.song != null) providerHub.markPlaybackFailure(r.candidate, r.song, reason); }
++    public void invalidate(Resolution r) { if (r != null && r.variant != null) cache.invalidate(r.variant.source, r.variant.sourceId, r.quality); }
+     public void resetCommunityScripts() { providerHub.resetCommunityScripts(); }
+-
+-    public String runtimeInfo() { return "Sunflower Provider Hub 2.0 · LX Host Compat 2.0.0"; }
++    public String runtimeInfo() { return "Sunflower Route Matrix 3.0 · Multi-Catalog TX/KW/KG/WY · LX Host Compat 2.0.0"; }
+     public String sourceStatus() { return providerHub.statusText(); }
+     public String compactSourceStatus() { return providerHub.compactStatus(); }
+-    public void destroy() { providerHub.destroy(); }
+-
+-    private static List<String> qualities(SourceVariant variant) {
+-        List<String> q = new ArrayList<>();
+-        if (variant.quality320) q.add("320k");
+-        if (variant.quality128) q.add("128k");
+-        if (q.isEmpty()) q.add("128k");
+-        return q;
+-    }
++    public void destroy() { providerHub.destroy(); enricher.destroy(); }
+ 
+-    private static Exception unwrap(ExecutionException e) {
+-        Throwable c = e.getCause();
+-        if (c instanceof ResolverFailure) return (ResolverFailure) c;
+-        if (c instanceof Exception) return (Exception) c;
+-        return new Exception(c == null || c.getMessage() == null ? "source failed" : c.getMessage());
+-    }
+-
+-    private static String safe(Exception e) {
+-        return e == null || e.getMessage() == null ? "unknown" : e.getMessage();
+-    }
++    private static List<String> qualities(Song song) {
++        boolean q320=false,q128=false; for (SourceVariant v : song.variants()) { q320 |= v.quality320; q128 |= v.quality128; }
++        List<String> q = new ArrayList<>(); if (q320) q.add("320k"); if (q128 || !q320) q.add("128k"); return q;
++    }
++    private static String variantSummary(Song s) { StringBuilder b=new StringBuilder(); for (SourceVariant v:s.variants()) { if (b.length()>0)b.append(" · "); b.append(Song.providerLabel(v.source)).append('(').append(v.source).append(')'); } return b.toString(); }
++    private static Exception unwrap(ExecutionException e) { Throwable c=e.getCause(); if(c instanceof ResolverFailure)return(ResolverFailure)c; if(c instanceof Exception)return(Exception)c; return new Exception(c==null||c.getMessage()==null?"source failed":c.getMessage()); }
++    private static String safe(Exception e) { return e == null || e.getMessage() == null ? "unknown" : e.getMessage(); }
+ }
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/TrackRouteStore.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/TrackRouteStore.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/TrackRouteStore.java	2026-08-11 11:24:47.000000000 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/TrackRouteStore.java	2026-08-11 18:32:02.495348682 +0000
+@@ -9,30 +9,30 @@
+ import java.security.MessageDigest;
+ 
+ /**
+- * Deterministic READY affinity.
+- *
+- * This is deliberately not the old "fail until the app learns" system.  Only a
+- * provider that actually reached Media3 READY for this exact canonical track is
+- * remembered.  Fresh failures erase a stale affinity quickly.
++ * Deterministic READY affinity for the Provider x Catalog route matrix.
++ * Only Media3 READY writes affinity. Fresh failures erase stale affinities fast.
+  */
+ public final class TrackRouteStore {
+     private static final long MAX_AGE = 45L * 24L * 60L * 60L * 1000L;
+     private final SharedPreferences prefs;
+ 
+     public TrackRouteStore(Context context) {
++        // Keep the same preference file so V2 per-platform READY history remains useful.
+         prefs = context.getSharedPreferences("sunflower_track_routes_v1", Context.MODE_PRIVATE);
+     }
+ 
++    /** V2-compatible provider preference inside one platform. */
+     public String preferred(String canonicalKey, String platform, String quality) {
+-        String raw = prefs.getString(key(canonicalKey, platform, quality), "");
+-        if (raw == null || raw.isEmpty()) return "";
+-        try {
+-            JSONObject o = new JSONObject(raw);
+-            long at = o.optLong("readyAt", 0L);
+-            if (at <= 0L || System.currentTimeMillis() - at > MAX_AGE) return "";
+-            if (o.optInt("freshFail", 0) >= 2) return "";
+-            return o.optString("providerId", "");
+-        } catch (Exception ignored) { return ""; }
++        JSONObject o = read(key(canonicalKey, platform, quality));
++        return valid(o) ? o.optString("providerId", "") : "";
++    }
++
++    /** V3 global route affinity: platform + provider for this exact canonical track/quality. */
++    public String preferredRoute(String canonicalKey, String quality) {
++        JSONObject o = read(globalKey(canonicalKey, quality));
++        if (!valid(o)) return "";
++        String p = o.optString("platform", ""), provider = o.optString("providerId", "");
++        return p.isEmpty() || provider.isEmpty() ? "" : p + "|" + provider;
+     }
+ 
+     public void markReady(String canonicalKey, String platform, String quality,
+@@ -40,43 +40,57 @@
+         if (providerId == null || providerId.isEmpty()) return;
+         try {
+             JSONObject o = new JSONObject();
+-            o.put("providerId", providerId);
+-            o.put("providerLabel", providerLabel == null ? "" : providerLabel);
+-            o.put("readyAt", System.currentTimeMillis());
+-            o.put("freshFail", 0);
+-            prefs.edit().putString(key(canonicalKey, platform, quality), o.toString()).apply();
++            o.put("providerId", providerId); o.put("providerLabel", providerLabel == null ? "" : providerLabel);
++            o.put("platform", platform == null ? "" : platform); o.put("readyAt", System.currentTimeMillis()); o.put("freshFail", 0);
++            prefs.edit()
++                    .putString(key(canonicalKey, platform, quality), o.toString())
++                    .putString(globalKey(canonicalKey, quality), o.toString())
++                    .apply();
+         } catch (Exception ignored) { }
+     }
+ 
+     public void markFreshFailure(String canonicalKey, String platform, String quality, String providerId) {
+-        String k = key(canonicalKey, platform, quality);
+-        String raw = prefs.getString(k, "");
+-        if (raw == null || raw.isEmpty()) return;
+-        try {
+-            JSONObject o = new JSONObject(raw);
+-            if (!providerId.equals(o.optString("providerId", ""))) return;
+-            int fail = o.optInt("freshFail", 0) + 1;
+-            if (fail >= 2) prefs.edit().remove(k).apply();
+-            else {
+-                o.put("freshFail", fail);
+-                prefs.edit().putString(k, o.toString()).apply();
+-            }
+-        } catch (Exception ignored) { prefs.edit().remove(k).apply(); }
++        markFailureAt(key(canonicalKey, platform, quality), providerId, platform);
++        markFailureAt(globalKey(canonicalKey, quality), providerId, platform);
++    }
++
++    private void markFailureAt(String k, String providerId, String platform) {
++        JSONObject o = read(k);
++        if (o == null) return;
++        if (!safe(providerId).equals(o.optString("providerId", ""))) return;
++        String storedPlatform = o.optString("platform", "");
++        if (!storedPlatform.isEmpty() && !safe(platform).equals(storedPlatform)) return;
++        int fail = o.optInt("freshFail", 0) + 1;
++        if (fail >= 2) prefs.edit().remove(k).apply();
++        else {
++            try { o.put("freshFail", fail); prefs.edit().putString(k, o.toString()).apply(); }
++            catch (Exception ignored) { prefs.edit().remove(k).apply(); }
++        }
++    }
++
++    private JSONObject read(String key) {
++        String raw = prefs.getString(key, "");
++        if (raw == null || raw.isEmpty()) return null;
++        try { return new JSONObject(raw); } catch (Exception ignored) { return null; }
++    }
++
++    private static boolean valid(JSONObject o) {
++        if (o == null) return false;
++        long at = o.optLong("readyAt", 0L);
++        return at > 0L && System.currentTimeMillis() - at <= MAX_AGE && o.optInt("freshFail", 0) < 2;
+     }
+ 
+     private static String key(String canonicalKey, String platform, String quality) {
+         return "r." + sha256(canonicalKey) + "." + safe(platform) + "." + safe(quality);
+     }
+-
++    private static String globalKey(String canonicalKey, String quality) {
++        return "g." + sha256(canonicalKey) + "." + safe(quality);
++    }
+     private static String sha256(String value) {
+         try {
+-            byte[] d = MessageDigest.getInstance("SHA-256")
+-                    .digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
+-            StringBuilder b = new StringBuilder();
+-            for (byte x : d) b.append(String.format(java.util.Locale.ROOT, "%02x", x & 0xff));
+-            return b.toString();
++            byte[] d = MessageDigest.getInstance("SHA-256").digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
++            StringBuilder b = new StringBuilder(); for (byte x : d) b.append(String.format(java.util.Locale.ROOT, "%02x", x & 0xff)); return b.toString();
+         } catch (Exception e) { return Integer.toHexString((value == null ? "" : value).hashCode()); }
+     }
+-
+     private static String safe(String s) { return s == null ? "" : s; }
+ }
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/TrackVariantEnricher.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/TrackVariantEnricher.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/TrackVariantEnricher.java	1970-01-01 00:00:00.000000000 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/TrackVariantEnricher.java	2026-08-11 18:43:56.291999426 +0000
+@@ -0,0 +1,71 @@
++package com.xingyu.music.data;
++
++import com.xingyu.music.model.Song;
++
++import java.util.ArrayList;
++import java.util.List;
++import java.util.concurrent.Callable;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++import java.util.concurrent.Future;
++import java.util.concurrent.TimeUnit;
++
++/** Low-concurrency exact identity discovery for imported/library tracks. */
++public final class TrackVariantEnricher {
++    private final KuwoMusicApi kuwo = new KuwoMusicApi();
++    private final KugouMusicApi kugou = new KugouMusicApi();
++    private final NeteaseApi netease = new NeteaseApi();
++    private final TrackVariantStore store;
++    private final ExecutorService pool = Executors.newFixedThreadPool(2);
++
++    public TrackVariantEnricher(TrackVariantStore store) { this.store = store; }
++
++    public Song enrichIfNeeded(Song song, PlaybackTrace trace) {
++        if (song == null) return null;
++        Song current = store.enrich(song);
++        if (!store.shouldEnrich(current)) return current;
++        store.markEnrichAttempt(current);
++        String query = query(current);
++        List<Callable<List<Song>>> jobs = new ArrayList<>();
++        if (current.variant("kw") == null) jobs.add(() -> kuwo.search(query, 12));
++        if (current.variant("kg") == null) jobs.add(() -> kugou.search(query, 12));
++        // For QQ anchors, exact NetEase identity is useful because QDY/wy is the most proven
++        // route on the user's V47/V2 tests. ExactTrackMatcher still rejects covers/Live/remixes.
++        if ("tx".equals(current.source) && current.variant("wy") == null) jobs.add(() -> netease.search(query, 12));
++        if (jobs.isEmpty()) return current;
++
++        try {
++            List<Future<List<Song>>> futures = pool.invokeAll(jobs, 7, TimeUnit.SECONDS);
++            for (Future<List<Song>> f : futures) {
++                if (f == null || f.isCancelled()) continue;
++                try { current = mergeBestExact(current, f.get()); } catch (Exception ignored) { }
++            }
++        } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
++        store.remember(current);
++        if (trace != null) trace.add("identity", variantSummary(current));
++        return current;
++    }
++
++    private static Song mergeBestExact(Song anchor, List<Song> candidates) {
++        Song best = null; double bestScore = 0d;
++        if (candidates != null) for (Song s : candidates) {
++            double c = ExactTrackMatcher.confidence(anchor, s);
++            if (c >= 0.98d && c > bestScore) { bestScore = c; best = s; }
++        }
++        return best == null ? anchor : anchor.withVariant(best);
++    }
++
++    private static String query(Song s) {
++        String artist = s == null ? "" : s.artist;
++        if (artist.contains(" / ")) artist = artist.substring(0, artist.indexOf(" / "));
++        return (s == null ? "" : s.title) + (artist.trim().isEmpty() ? "" : " " + artist.trim());
++    }
++
++    private static String variantSummary(Song s) {
++        StringBuilder b = new StringBuilder("exact variants ");
++        if (s != null) for (com.xingyu.music.model.SourceVariant v : s.variants()) { if (b.charAt(b.length()-1) != ' ') b.append(','); b.append(v.source); }
++        return b.toString();
++    }
++
++    public void destroy() { pool.shutdownNow(); }
++}
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/TrackVariantStore.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/TrackVariantStore.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/TrackVariantStore.java	1970-01-01 00:00:00.000000000 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/data/TrackVariantStore.java	2026-08-11 18:43:56.292140565 +0000
+@@ -0,0 +1,73 @@
++package com.xingyu.music.data;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++
++import com.xingyu.music.model.Song;
++
++import org.json.JSONObject;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++
++/**
++ * Side-car identity cache. LibraryStore remains byte-compatible with V47.
++ * Cross-catalog IDs are overlaid at playback/search time and can be discarded
++ * without risking favorites, playlists or history.
++ */
++public final class TrackVariantStore {
++    private static final long MAX_AGE = 120L * 24L * 60L * 60L * 1000L;
++    private static final long ENRICH_RETRY = 8L * 60L * 60L * 1000L;
++    private final SharedPreferences prefs;
++
++    public TrackVariantStore(Context context) {
++        prefs = context.getSharedPreferences("sunflower_track_variants_v1", Context.MODE_PRIVATE);
++    }
++
++    public synchronized Song enrich(Song song) {
++        if (song == null) return null;
++        String raw = prefs.getString(key(song), "");
++        if (raw == null || raw.isEmpty()) return song;
++        try {
++            JSONObject wrapper = new JSONObject(raw);
++            long at = wrapper.optLong("at", 0L);
++            if (at <= 0L || System.currentTimeMillis() - at > MAX_AGE) return song;
++            Song saved = Song.fromJson(wrapper.optJSONObject("song"));
++            if (ExactTrackMatcher.confidence(song, saved) < 0.98d) return song;
++            return song.withVariant(saved);
++        } catch (Exception ignored) { return song; }
++    }
++
++    public synchronized void remember(Song song) {
++        if (song == null || song.variants().isEmpty()) return;
++        Song merged = enrich(song);
++        if (merged == null) merged = song;
++        try {
++            JSONObject wrapper = new JSONObject(); wrapper.put("at", System.currentTimeMillis()); wrapper.put("song", merged.toJson());
++            prefs.edit().putString(key(song), wrapper.toString()).apply();
++        } catch (Exception ignored) { }
++    }
++
++    public boolean shouldEnrich(Song song) {
++        if (song == null) return false;
++        Song enriched = enrich(song);
++        boolean lacksKw = enriched.variant("kw") == null;
++        boolean lacksKg = enriched.variant("kg") == null;
++        boolean lacksWyForTx = "tx".equals(enriched.source) && enriched.variant("wy") == null;
++        if (!lacksKw && !lacksKg && !lacksWyForTx) return false;
++        long last = prefs.getLong(key(song) + ".attempt", 0L);
++        return last <= 0L || System.currentTimeMillis() - last >= ENRICH_RETRY;
++    }
++
++    public void markEnrichAttempt(Song song) {
++        if (song != null) prefs.edit().putLong(key(song) + ".attempt", System.currentTimeMillis()).apply();
++    }
++
++    private static String key(Song song) { return "v." + sha256(ExactTrackMatcher.identityKey(song)); }
++    private static String sha256(String value) {
++        try {
++            byte[] d = MessageDigest.getInstance("SHA-256").digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
++            StringBuilder b = new StringBuilder(); for (byte x : d) b.append(String.format(java.util.Locale.ROOT, "%02x", x & 0xff)); return b.toString();
++        } catch (Exception e) { return Integer.toHexString((value == null ? "" : value).hashCode()); }
++    }
++}
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/model/Song.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/model/Song.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/model/Song.java	2026-08-09 18:50:44.000000000 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/model/Song.java	2026-08-11 18:41:26.123669229 +0000
+@@ -136,7 +136,10 @@
+         if ("kw".equals(s)) return "酷我";
+         if ("kg".equals(s)) return "酷狗";
+         if ("mg".equals(s)) return "咪咕";
+-        return "网易";
++        if ("wy".equals(s)) return "网易";
++        if ("ytm".equals(s)) return "YouTube Music";
++        if ("local".equals(s)) return "本地";
++        return s == null || s.trim().isEmpty() ? "未知来源" : s.trim().toUpperCase(java.util.Locale.ROOT);
+     }
+ 
+     public JSONObject toJson() {
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=SUNFLOWER_V3_自测结果.txt' '--exclude=SUNFLOWER_V3_架构与变更说明.md' '--exclude=SUNFLOWER_V2_TO_V3_CORE.patch' '--exclude=SUNFLOWER_V2_TO_V3_DIFF_INVENTORY.txt' '--exclude=SUNFLOWER_V3_GOLDEN_BASELINE_GUARD.txt' SunflowerMusic-V2/app/src/main/java/com/xingyu/music/playback/PlaybackService.java SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+--- SunflowerMusic-V2/app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-11 15:45:59.296041046 +0000
++++ SunflowerMusic-V3-work/SunflowerMusic-V2/app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-11 18:39:04.240204801 +0000
+@@ -153,6 +153,7 @@
+                         trace.add("playback-ok", currentResolution.resolverLabel + " / "
+                                 + currentResolution.providerType + " / "
+                                 + Song.providerLabel(currentResolution.variant.source) + "/" + currentResolution.quality
++                                + " / backend=" + currentResolution.backendGroup
+                                 + " / confidence " + Math.round(currentResolution.matchConfidence * 100d) + "%"
+                                 + " / Media3 READY / " + readyMs + "ms");
+                         routeProven = true;
+@@ -493,6 +494,7 @@
+         trace.add("candidate", (resolution.fromCache ? "cache" : "fresh") + " / "
+                 + resolution.resolverLabel + " / " + resolution.providerType + " / "
+                 + Song.providerLabel(resolution.variant.source) + "/" + resolution.quality
++                + " / backend=" + resolution.backendGroup
+                 + " / confidence=" + Math.round(resolution.matchConfidence * 100d) + "%"
+                 + " / route=" + resolution.routeKey);
+         try {

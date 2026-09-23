@@ -1,0 +1,10 @@
+Sunflower V4.2 -> V4.3 Runtime Diff Inventory
+
+Files /tmp/tmp.hmiy9e60SL/SunflowerMusic-V4.2/app/build.gradle.kts and /mnt/data/SunflowerMusic-V4.3/SunflowerMusic-V4.2/app/build.gradle.kts differ
+Files /tmp/tmp.hmiy9e60SL/SunflowerMusic-V4.2/app/src/main/java/com/xingyu/music/MainActivity.java and /mnt/data/SunflowerMusic-V4.3/SunflowerMusic-V4.2/app/src/main/java/com/xingyu/music/MainActivity.java differ
+Files /tmp/tmp.hmiy9e60SL/SunflowerMusic-V4.2/app/src/main/java/com/xingyu/music/ui/RingtoneLyricSelectorView.java and /mnt/data/SunflowerMusic-V4.3/SunflowerMusic-V4.2/app/src/main/java/com/xingyu/music/ui/RingtoneLyricSelectorView.java differ
+
+Expected runtime changes only:
+- app/build.gradle.kts
+- app/src/main/java/com/xingyu/music/MainActivity.java
+- app/src/main/java/com/xingyu/music/ui/RingtoneLyricSelectorView.java

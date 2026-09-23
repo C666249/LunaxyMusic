@@ -1,0 +1,5 @@
+V92.8.9
+Baseline: user-provided V92.8.3 Stable.
+Functional change only: the song title in Now Playing is clickable and routes to Search using the current song title.
+Artist click-to-search remains unchanged and both routes share the same navigation method.
+No other runtime feature source is intentionally changed.

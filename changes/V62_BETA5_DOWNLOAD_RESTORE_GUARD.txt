@@ -1,0 +1,18 @@
+Lunaxy Music V62 — Beta 1 V5 Download Restore Guard
+
+Goal:
+- Keep V61 UI / merged features unchanged.
+- Restore Beta 1 V5 download behavior after V61 real-device regression (slower downloads / many failures).
+
+Runtime diff V61 -> V62:
+- download/OfflineDownloadService.java
+- download/DownloadDiscoveryResolver.java
+ONLY.
+
+Behavioral equivalence to Beta 1 V5:
+- DownloadDiscoveryResolver differs from Beta 1 V5 only in class comment branding.
+- OfflineDownloadService differs from Beta 1 V5 only in class comment, User-Agent branding, and notification title branding.
+- Provider pool / Huibq idle behavior / attempt budgets / cooldowns / playback preemption / 5s recovery hold / single-thread transfer / online 160 KB/s throttle are Beta 1 V5 behavior.
+
+V61 playback/search/UI files are unchanged by V62.
+V60 Golden Recovery remains preserved separately.

@@ -1,0 +1,37 @@
+Sunflower V1 vs Lunaxy V47 diff inventory
+SHA256SUMS.txt is intentionally excluded because Sunflower regenerates its own integrity manifest.
+
+CHANGED (19)
+BUILD_APK.bat
+README_验收说明.txt
+SOURCE_PROVIDERS.md
+app/build.gradle.kts
+app/src/main/AndroidManifest.xml
+app/src/main/java/com/xingyu/music/MainActivity.java
+app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
+app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
+app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
+app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
+app/src/main/java/com/xingyu/music/data/WeatherMoodProvider.java
+app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+app/src/main/java/com/xingyu/music/ui/ImageLoader.java
+app/src/main/java/com/xingyu/music/ui/LauncherIconManager.java
+app/src/main/java/com/xingyu/music/ui/OnboardingOverlay.java
+app/src/main/res/values/strings.xml
+gradlew
+gradlew.bat
+settings.gradle.kts
+
+ADDED (10)
+SUNFLOWER_V1_架构与变更说明.md
+SUNFLOWER_V1_自测结果.txt
+app/src/main/java/com/xingyu/music/data/AudioCandidate.java
+app/src/main/java/com/xingyu/music/data/AudioProvider.java
+app/src/main/java/com/xingyu/music/data/AudioProviderHub.java
+app/src/main/java/com/xingyu/music/data/LxAudioProvider.java
+app/src/main/java/com/xingyu/music/data/TrackRouteStore.java
+app/src/main/res/drawable-nodpi/icon_sunflower.png
+changes/SUNFLOWER_V1_DIFF_INVENTORY.txt
+changes/SUNFLOWER_V1_GOLDEN_BASELINE_GUARD.txt
+
+REMOVED (0)

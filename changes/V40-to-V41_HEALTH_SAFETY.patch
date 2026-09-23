@@ -1,0 +1,111 @@
+--- /mnt/data/v41guards/v40/LunaxyMusic-V40/app/src/main/java/com/xingyu/music/data/MultiSourceManager.java	2026-08-11 06:13:57.000000000 +0000
++++ app/src/main/java/com/xingyu/music/data/MultiSourceManager.java	2026-08-11 06:52:52.199585907 +0000
+@@ -43,9 +43,9 @@
+     private static final long BLOCK_COOLDOWN = 60L * 60L * 1000L;
+     private static final long SOFT_NETWORK_COOLDOWN = 15L * 1000L;
+     private static final long INIT_COOLDOWN = 60L * 1000L;
+-    // V40 short circuit breakers. They do not affect long-term provider order.
++    // V41 short circuit breakers. They do not affect long-term provider order.
+     private static final long HUIBQ_SERVICE_COOLDOWN = 60L * 1000L;
+-    private static final long QDY_QQ_ACCESS_COOLDOWN = 2L * 60L * 1000L;
++    private static final long QDY_QQ_ACCESS_COOLDOWN = 30L * 1000L;
+     private static final long QDY_QQ_SERVER_COOLDOWN = 30L * 1000L;
+ 
+     private final android.content.Context context;
+@@ -113,6 +113,7 @@
+                         if (probe.checked && !probe.playable) {
+                             trace.add("candidate-reject", provider.label + " / " + probe.reason
+                                     + " · 音频 URL 在进入播放器前已失效");
++                            trace.add("failure-class", candidateFailureClass(provider.id, variant.source, probe.statusCode));
+                             String candidateReason = "候选音频地址失效：" + probe.reason;
+                             health.routeFailure(provider.id, variant.source, quality, candidateReason, 0L);
+                             // QDY's QQ candidate may be broadly forbidden even while its Netease route is healthy.
+@@ -159,6 +160,7 @@
+                             friendly = "HTTP " + http + " · Huibq 服务暂不可用，60 秒后再探";
+                             cooldown = HUIBQ_SERVICE_COOLDOWN;
+                             global = true;
++                            trace.add("failure-class", "SOURCE_UNAVAILABLE / Huibq HTTP " + http);
+                         }
+                     }
+ 
+@@ -242,7 +244,7 @@
+             b.append('\n');
+         }
+         b.append("\n只有 Media3 READY 才计成功并缓存 URL。Huibq HTTP 5xx 会短休 60 秒后自动再探；明确 block ip / 429 仍使用长保护冷却。\n")
+-                .append("QDY 的 QQ 候选若 401/403/409，只暂停 QDY-QQ 备用，不影响 QDY 播放网易；404/410 仍只影响当前候选。\n")
++                .append("QDY 的 QQ 候选若 401/403/409，仅短休 30 秒且只影响 QDY-QQ 备用；404/410 仍只影响当前候选，绝不牵连 QDY-网易。\n")
+                 .append("QDY 脚本首次获取后固定保存；Huibq 永远使用 APK 内置快照。");
+         return b.toString();
+     }
+@@ -292,6 +294,17 @@
+                 || lower.contains("http 509") || lower.contains("http 510") || lower.contains("http 511");
+     }
+ 
++    private static String candidateFailureClass(String providerId, String platform, int statusCode) {
++        if (statusCode == 401 || statusCode == 403 || statusCode == 404 || statusCode == 409 || statusCode == 410) {
++            return "CANDIDATE_INVALID / " + providerId + "/" + platform + " HTTP " + statusCode;
++        }
++        if (statusCode >= 500 && statusCode <= 599) {
++            return "SOURCE_UNAVAILABLE / " + providerId + "/" + platform + " HTTP " + statusCode;
++        }
++        if (statusCode > 0) return "CANDIDATE_REJECT / " + providerId + "/" + platform + " HTTP " + statusCode;
++        return "CANDIDATE_REJECT / " + providerId + "/" + platform;
++    }
++
+     private static String friendlyReason(String m) {
+         String s = m == null ? "" : m;
+         String lower = s.toLowerCase(java.util.Locale.ROOT);
+--- /mnt/data/v41guards/v40/LunaxyMusic-V40/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 06:11:40.000000000 +0000
++++ app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 06:53:24.074281125 +0000
+@@ -694,7 +694,7 @@
+ 
+     private void showSourceStatus() {
+         String status = playback == null ? "音源管理器正在启动…" : playback.sourceStatus();
+-        showGlassMessage("智能音源", status + "\n\nV40 只调整健康状态层：QQ 固定 Huibq 主源、QDY 备用；网易固定 QDY 主源、Huibq 备用。历史 READY/FAIL 仅统计，不再改变顺序；短暂 503/403/429 只做短期保护。READY URL 缓存和 Media3 验证逻辑保持原样。",
++        showGlassMessage("智能音源", status + "\n\nV41 继续只优化健康状态层：QQ 固定 Huibq 主源、QDY 低频备用；网易固定 QDY 主源、Huibq 备用。历史 READY/FAIL 只统计，不参与长期排序；Huibq 5xx 服务故障短休，QDY-QQ 的 401/403/409 仅短休 30 秒且绝不影响 QDY-网易。READY URL 缓存和 Media3 验证逻辑保持原样。",
+                 "知道了", null, "", null);
+     }
+ 
+@@ -921,7 +921,7 @@
+                 break;
+             case 1:
+                 target = onboardingSourceTarget;
+-                title = "智能音源会自己选路";
++                title = "固定主路由会自动避让故障";
+                 body = "Lunaxy 会优先走已经验证过、成功率更高的线路；只有真正播放成功后才会记住这条路径。";
+                 break;
+             case 2:
+--- /mnt/data/v41guards/v40/LunaxyMusic-V40/app/build.gradle.kts	2026-08-11 06:11:40.000000000 +0000
++++ app/build.gradle.kts	2026-08-11 06:53:24.074656925 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 43
+-        versionName = "40.0.0"
++        versionCode = 44
++        versionName = "41.0.0"
+     }
+ 
+     buildTypes {
+--- /mnt/data/v41guards/v40/LunaxyMusic-V40/BUILD_APK.bat	2026-08-11 06:11:40.000000000 +0000
++++ BUILD_APK.bat	2026-08-11 06:53:24.074818135 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   LunaxyMusic V40 - Debug APK Build
++echo   LunaxyMusic V41 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V40-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V41-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\LunaxyMusic-V40-debug.apk
++echo [OK] APK: %CD%\dist\LunaxyMusic-V41-debug.apk
+ pause

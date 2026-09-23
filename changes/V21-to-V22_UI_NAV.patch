@@ -1,0 +1,307 @@
+diff -ruN '--exclude=V21-to-V22_UI_NAV.patch' "/mnt/data/v22baseline/XingyuMusic-V21/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt" "/mnt/data/v22work/XingyuMusic-V21/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"
+--- "/mnt/data/v22baseline/XingyuMusic-V21/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-10 08:00:54.000000000 +0000
++++ "/mnt/data/v22work/XingyuMusic-V21/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-10 08:22:57.486396087 +0000
+@@ -72,3 +72,11 @@
+ 4. 第一次点天气电台：仅请求前台粗略位置；允许后读取当前位置天气并打开天气电台详情，不应直接播放。
+ 5. 拒绝定位权限：应提示，不影响其它推荐和播放功能。
+ 6. 播放核心保护证据见 changes/PLAYBACK_CORE_GUARD_V21.txt。
++
++[V22 首页推荐卡片 / 返回位置记忆验收]
++1. 首页“为你推荐”三张卡片只显示图标 + 标题，不再显示第二行说明。
++2. 将首页下滑到“为你推荐”，并把横向卡片滑到天气电台附近。
++3. 点每日推荐/私人电台/天气电台任一项进入详情。
++4. 点详情页“返回”或手机系统返回键，应回到离开前的首页纵向位置。
++5. 横向推荐卡片位置也应恢复，不应重新跳回最左侧。
++6. 播放核心保护证据见 changes/PLAYBACK_CORE_GUARD_V22.txt。
+diff -ruN '--exclude=V21-to-V22_UI_NAV.patch' "/mnt/data/v22baseline/XingyuMusic-V21/V22.0_UI\344\270\216\351\246\226\351\241\265\344\275\215\347\275\256\350\256\260\345\277\206.md" "/mnt/data/v22work/XingyuMusic-V21/V22.0_UI\344\270\216\351\246\226\351\241\265\344\275\215\347\275\256\350\256\260\345\277\206.md"
+--- "/mnt/data/v22baseline/XingyuMusic-V21/V22.0_UI\344\270\216\351\246\226\351\241\265\344\275\215\347\275\256\350\256\260\345\277\206.md"	1970-01-01 00:00:00.000000000 +0000
++++ "/mnt/data/v22work/XingyuMusic-V21/V22.0_UI\344\270\216\351\246\226\351\241\265\344\275\215\347\275\256\350\256\260\345\277\206.md"	2026-08-10 08:22:57.470396087 +0000
+@@ -0,0 +1,18 @@
++# XingyuMusic V22.0
++
++本版只处理首页推荐卡片和从推荐详情返回首页的导航体验，不修改播放解析链。
++
++## UI
++- 每日推荐 / 私人电台 / 天气电台卡片删除第二行说明文字。
++- 卡片仅保留图标和标题，整体高度从 108dp 收到 100dp，避免说明行被底部播放器/导航区域视觉截断。
++
++## 首页位置记忆
++- 点击三个推荐入口前记录首页纵向 ScrollView 的 scrollY。
++- 同时记录“为你推荐”横向卡片栏的 scrollX。
++- 从推荐详情页点“返回”或系统返回键后，重新构建首页但自动恢复上述两个位置。
++- 因此从每日推荐返回后可直接继续进入私人电台/天气电台，不再跳回首页顶部。
++
++## 播放核心
++- SourceCoordinator / MultiSourceManager / PlaybackUrlStore / PlaybackService / Huibq / QDY 等播放核心未修改。
++- 保护结果见 `changes/PLAYBACK_CORE_GUARD_V22.txt`。
++- 完整 V21→V22 差异见 `changes/V21-to-V22_UI_NAV.patch`。
+diff -ruN '--exclude=V21-to-V22_UI_NAV.patch' "/mnt/data/v22baseline/XingyuMusic-V21/V22.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt" "/mnt/data/v22work/XingyuMusic-V21/V22.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"
+--- "/mnt/data/v22baseline/XingyuMusic-V21/V22.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"	1970-01-01 00:00:00.000000000 +0000
++++ "/mnt/data/v22work/XingyuMusic-V21/V22.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"	2026-08-10 08:22:57.478396087 +0000
+@@ -0,0 +1,12 @@
++XingyuMusic V22.0 自测
++
++[PASS] 推荐卡片不再创建第二行副标题 TextView。
++[PASS] 三张卡片仍可横向滑动并分别进入每日推荐/私人电台/天气电台。
++[PASS] 进入推荐详情前保存首页纵向 scrollY。
++[PASS] 同时保存推荐卡片 HorizontalScrollView 的 scrollX。
++[PASS] 推荐详情顶部“返回”使用统一 closeSmartCollectionToHome() 恢复首页位置。
++[PASS] Android 系统返回键同样走 closeSmartCollectionToHome()。
++[PASS] 播放核心 15/15 SHA-256 与 V21 完全一致。
++[PASS] AndroidManifest.xml 未修改。
++
++说明：当前运行环境没有可用的 Android SDK/Gradle 9.5 本地发行包，因此未冒充完成 Android assemble。修改仅位于 MainActivity UI/导航状态及版本号，已做源码 diff 和核心哈希保护检查。
+diff -ruN '--exclude=V21-to-V22_UI_NAV.patch' /mnt/data/v22baseline/XingyuMusic-V21/app/build.gradle.kts /mnt/data/v22work/XingyuMusic-V21/app/build.gradle.kts
+--- /mnt/data/v22baseline/XingyuMusic-V21/app/build.gradle.kts	2026-08-10 07:57:02.000000000 +0000
++++ /mnt/data/v22work/XingyuMusic-V21/app/build.gradle.kts	2026-08-10 08:21:52.833212016 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 24
+-        versionName = "21.0.0"
++        versionCode = 25
++        versionName = "22.0.0"
+     }
+ 
+     buildTypes {
+diff -ruN '--exclude=V21-to-V22_UI_NAV.patch' /mnt/data/v22baseline/XingyuMusic-V21/app/src/main/java/com/xingyu/music/MainActivity.java /mnt/data/v22work/XingyuMusic-V21/app/src/main/java/com/xingyu/music/MainActivity.java
+--- /mnt/data/v22baseline/XingyuMusic-V21/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 07:58:50.000000000 +0000
++++ /mnt/data/v22work/XingyuMusic-V21/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 08:21:52.832574160 +0000
+@@ -90,11 +90,11 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Xingyu Music V21.0 – recommendation collection pages + weather station.
++ * Xingyu Music V22.0 – recommendation card cleanup + Home position memory.
+  *
+- * V21 keeps the proven audio-resolution/playback core frozen. Recommendation cards now open
+- * collection-style detail pages instead of autoplaying, and Weather Radio uses foreground
+- * coarse location + free weather metadata only; none of these paths resolve audio URLs.
++ * V22 keeps the proven audio-resolution/playback core frozen. Recommendation cards are
++ * visually simplified, and returning from a recommendation collection restores the exact Home
++ * vertical position plus recommendation-carousel horizontal position. No audio URL logic changes.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(4);
+@@ -141,6 +141,10 @@
+     private List<ImportedPlaylist> playlists = new ArrayList<>();
+     private ImportedPlaylist openPlaylist;
+     private SmartCollection openSmartCollection;
++    private int homeScrollY;
++    private int homeRecommendationScrollX;
++    private boolean restoreHomePosition;
++    private HorizontalScrollView homeRecommendationCarousel;
+     private int playlistVisibleCount = 40;
+     private Song lastHistorySong;
+     private String lastErrorShown;
+@@ -665,7 +669,7 @@
+ 
+     private void showSourceStatus() {
+         String status = playback == null ? "音源管理器正在启动…" : playback.sourceStatus();
+-        showGlassMessage("智能音源", status + "\n\nV21 继续冻结 V14/V15 稳定主链：只保留 Huibq 与全豆要聚合参与日常播放；QQ 默认优先 Huibq，网易默认优先全豆要。只有 Media3 READY 才记为真实成功，普通单曲 404 不会污染下一首。",
++        showGlassMessage("智能音源", status + "\n\nV22 继续冻结 V14/V15 稳定主链：只保留 Huibq 与全豆要聚合参与日常播放；QQ 默认优先 Huibq，网易默认优先全豆要。只有 Media3 READY 才记为真实成功，普通单曲 404 不会污染下一首。",
+                 "知道了", null, "", null);
+     }
+ 
+@@ -689,6 +693,7 @@
+         activeSearchSuggestions = null;
+         pageHost.animate().cancel();
+         pageHost.removeAllViews();
++        final boolean renderingHomeRoot = openSmartCollection == null && openPlaylist == null && tab == 0;
+         View page;
+         if (openSmartCollection != null) page = smartCollectionPage(openSmartCollection);
+         else if (openPlaylist != null) page = playlistDetailPage(openPlaylist);
+@@ -699,9 +704,36 @@
+         page.setAlpha(0f);
+         page.setTranslationY(Ui.dp(this, 8));
+         pageHost.addView(page);
++        if (renderingHomeRoot && restoreHomePosition && page instanceof ScrollView) {
++            final ScrollView homeScroll = (ScrollView) page;
++            final int savedY = Math.max(0, homeScrollY);
++            final int savedRecommendationX = Math.max(0, homeRecommendationScrollX);
++            homeScroll.post(() -> {
++                homeScroll.scrollTo(0, savedY);
++                if (homeRecommendationCarousel != null) {
++                    homeRecommendationCarousel.scrollTo(savedRecommendationX, 0);
++                }
++            });
++            restoreHomePosition = false;
++        }
+         page.animate().alpha(1f).translationY(0).setDuration(180).start();
+     }
+ 
++    private void rememberHomePosition() {
++        if (tab != 0 || openSmartCollection != null || openPlaylist != null || pageHost == null || pageHost.getChildCount() == 0) return;
++        View page = pageHost.getChildAt(0);
++        if (page instanceof ScrollView) homeScrollY = ((ScrollView) page).getScrollY();
++        if (homeRecommendationCarousel != null) homeRecommendationScrollX = homeRecommendationCarousel.getScrollX();
++    }
++
++    private void closeSmartCollectionToHome() {
++        openSmartCollection = null;
++        tab = 0;
++        restoreHomePosition = true;
++        refreshNav();
++        renderTab();
++    }
++
+     private View pageScaffold(String title, String subtitle, View body) {
+         return pageScaffold(title, subtitle, body, null);
+     }
+@@ -799,50 +831,50 @@
+         return pageScaffold(greetingTitle(), "星雨音乐 · 找到想听的，直接播放", body);
+     }
+ 
+-    private View libraryActionCard(IconView.Type type, String title, String count, int tint) {
++    private View libraryActionCard(IconView.Type type, String title, int tint) {
+         LinearLayout card = Ui.column(this);
+-        card.setPadding(Ui.dp(this, 16), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 12));
++        card.setPadding(Ui.dp(this, 16), Ui.dp(this, 15), Ui.dp(this, 14), Ui.dp(this, 13));
+         card.setBackground(Ui.glass(164, 20, 22, this));
+         card.setClickable(true); card.setFocusable(true);
+         Ui.applyRipple(card, Color.argb(34, 255, 255, 255));
+         FrameLayout icon = Ui.iconButton(this, type, 38, tint, Color.argb(28, Color.red(tint), Color.green(tint), Color.blue(tint)));
+         card.addView(icon, Ui.lp(Ui.dp(this, 38), Ui.dp(this, 38)));
+-        TextView name = Ui.text(this, title, 15, Ui.TEXT, true);
+-        LinearLayout.LayoutParams np = Ui.lp(-1, Ui.dp(this, 28)); np.topMargin = Ui.dp(this, 8);
++        TextView name = Ui.text(this, title, 15.5f, Ui.TEXT, true);
++        name.setGravity(Gravity.CENTER_VERTICAL);
++        LinearLayout.LayoutParams np = Ui.lp(-1, Ui.dp(this, 32)); np.topMargin = Ui.dp(this, 10);
+         card.addView(name, np);
+-        card.addView(Ui.text(this, count, 11, Ui.DIM, false), Ui.lp(-1, Ui.dp(this, 22)));
+         return card;
+     }
+ 
+ 
+     private View recommendationCarousel() {
+         HorizontalScrollView scroll = new HorizontalScrollView(this);
++        homeRecommendationCarousel = scroll;
+         scroll.setHorizontalScrollBarEnabled(false);
+         scroll.setClipToPadding(false);
+         LinearLayout row = Ui.row(this);
+         row.setGravity(Gravity.TOP);
+ 
+-        View daily = libraryActionCard(IconView.Type.MUSIC, "每日推荐", "为你选 20 首", Ui.PURPLE);
++        View daily = libraryActionCard(IconView.Type.MUSIC, "每日推荐", Ui.PURPLE);
+         daily.setOnClickListener(v -> openDailyRecommendations());
+-        row.addView(daily, Ui.lp(Ui.dp(this, 154), Ui.dp(this, 108)));
++        row.addView(daily, Ui.lp(Ui.dp(this, 154), Ui.dp(this, 100)));
+ 
+         Space gap1 = new Space(this); row.addView(gap1, Ui.lp(Ui.dp(this, 10), 1));
+-        View radio = libraryActionCard(IconView.Type.SHUFFLE, "私人电台", "从红心与歌单出发", Ui.CYAN);
++        View radio = libraryActionCard(IconView.Type.SHUFFLE, "私人电台", Ui.CYAN);
+         radio.setOnClickListener(v -> openPrivateRadio());
+-        row.addView(radio, Ui.lp(Ui.dp(this, 154), Ui.dp(this, 108)));
++        row.addView(radio, Ui.lp(Ui.dp(this, 154), Ui.dp(this, 100)));
+ 
+         Space gap2 = new Space(this); row.addView(gap2, Ui.lp(Ui.dp(this, 10), 1));
+-        WeatherMoodProvider.WeatherSnapshot cached = weatherMood == null ? null : weatherMood.cached();
+-        String weatherSub = cached == null ? "天气 × 早午晚" : cached.compactLabel();
+-        View weather = libraryActionCard(IconView.Type.WEATHER, "天气电台", weatherSub, Ui.GOLD);
++        View weather = libraryActionCard(IconView.Type.WEATHER, "天气电台", Ui.GOLD);
+         weather.setOnClickListener(v -> openWeatherRadio());
+-        row.addView(weather, Ui.lp(Ui.dp(this, 154), Ui.dp(this, 108)));
++        row.addView(weather, Ui.lp(Ui.dp(this, 154), Ui.dp(this, 100)));
+ 
+         scroll.addView(row);
+         return scroll;
+     }
+ 
+     private void openDailyRecommendations() {
++        rememberHomePosition();
+         if (recommendations == null || !recommendations.hasTaste(favorites, playlists, history)) {
+             toast("先收藏、导入歌单或听几首歌，推荐会更懂你");
+             return;
+@@ -864,6 +896,7 @@
+     }
+ 
+     private void openPrivateRadio() {
++        rememberHomePosition();
+         if (recommendations == null || !recommendations.hasTaste(favorites, playlists, history)) {
+             toast("先收藏、导入歌单或听几首歌，再开启私人电台");
+             return;
+@@ -876,6 +909,7 @@
+     }
+ 
+     private void openWeatherRadio() {
++        rememberHomePosition();
+         if (recommendations == null || !recommendations.hasTaste(favorites, playlists, history)) {
+             toast("先收藏、导入歌单或听几首歌，天气电台会更适合你");
+             return;
+@@ -1663,7 +1697,7 @@
+         TextView bt = Ui.text(this, "返回", 13, collection.accent, true);
+         back.addView(bt, new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
+         back.setClickable(true);
+-        back.setOnClickListener(v -> { openSmartCollection = null; renderTab(); });
++        back.setOnClickListener(v -> closeSmartCollectionToHome());
+         body.addView(back, Ui.lp(-1, Ui.dp(this, 38)));
+ 
+         LinearLayout hero = Ui.column(this);
+@@ -3608,8 +3642,7 @@
+             return;
+         }
+         if (openSmartCollection != null) {
+-            openSmartCollection = null;
+-            renderTab();
++            closeSmartCollectionToHome();
+             return;
+         }
+         if (openPlaylist != null) {
+diff -ruN '--exclude=V21-to-V22_UI_NAV.patch' /mnt/data/v22baseline/XingyuMusic-V21/changes/PLAYBACK_CORE_GUARD_V22.txt /mnt/data/v22work/XingyuMusic-V21/changes/PLAYBACK_CORE_GUARD_V22.txt
+--- /mnt/data/v22baseline/XingyuMusic-V21/changes/PLAYBACK_CORE_GUARD_V22.txt	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/v22work/XingyuMusic-V21/changes/PLAYBACK_CORE_GUARD_V22.txt	2026-08-10 08:22:58.638621205 +0000
+@@ -0,0 +1,53 @@
++XingyuMusic V22 播放核心保护检查
++Baseline: V21-Full
++Rule: V22 仅允许修改首页推荐卡片与返回位置记忆，不得修改播放解析/缓存/健康核心。
++
++[PASS] app/src/main/java/com/xingyu/music/playback/PlaybackService.java
++      V21 0fad6065fbb1805b18f3673178460a5d0c5e05bb87257c46f9f505bf96253dc7
++      V22 0fad6065fbb1805b18f3673178460a5d0c5e05bb87257c46f9f505bf96253dc7
++[PASS] app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java
++      V21 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
++      V22 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
++[PASS] app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
++      V21 cdcc6afe54a7a70251a64689a1fa851eda251d220ec4438bd4c607018c86b37c
++      V22 cdcc6afe54a7a70251a64689a1fa851eda251d220ec4438bd4c607018c86b37c
++[PASS] app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
++      V21 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
++      V22 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
++[PASS] app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
++      V21 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
++      V22 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
++[PASS] app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
++      V21 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
++      V22 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
++[PASS] app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
++      V21 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
++      V22 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
++[PASS] app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
++      V21 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
++      V22 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
++[PASS] app/src/main/java/com/xingyu/music/data/ResolverProvider.java
++      V21 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
++      V22 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
++[PASS] app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
++      V21 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
++      V22 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
++[PASS] app/src/main/assets/source/huibq-latest.js
++      V21 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
++      V22 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
++[PASS] app/src/main/java/com/xingyu/music/data/QQMusicApi.java
++      V21 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
++      V22 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
++[PASS] app/src/main/java/com/xingyu/music/data/NeteaseApi.java
++      V21 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
++      V22 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
++[PASS] app/src/main/java/com/xingyu/music/data/LibraryStore.java
++      V21 0d8eaf627eebe00f29743d68f2429127e3086248b693ca5f1adb98a396acb5dc
++      V22 0d8eaf627eebe00f29743d68f2429127e3086248b693ca5f1adb98a396acb5dc
++[PASS] app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
++      V21 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
++      V22 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
++
++结论：受保护播放核心 15/15 完全一致。
++AndroidManifest.xml: PASS 未修改
++本版 MainActivity 的变化只涉及推荐卡片 UI、首页 scrollY/scrollX 保存恢复以及版本说明。

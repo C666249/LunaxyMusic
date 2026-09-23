@@ -1,0 +1,62 @@
+Lunaxy Music V32 播放核心保护报告
+基线：V31
+
+网络播放主链冻结对象：
+PASS  app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+  V31 8e1b7d154d0d51613666327b2f5d2a63aa331396d351b7ccb434f3163f0e8860
+  V32 8e1b7d154d0d51613666327b2f5d2a63aa331396d351b7ccb434f3163f0e8860
+PASS  app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java
+  V31 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
+  V32 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
+PASS  app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
+  V31 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
+  V32 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
+PASS  app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
+  V31 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
+  V32 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
+PASS  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
+  V31 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
+  V32 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
+PASS  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
+  V31 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
+  V32 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
+PASS  app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
+  V31 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
+  V32 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
+PASS  app/src/main/java/com/xingyu/music/data/ResolverProvider.java
+  V31 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
+  V32 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
+PASS  app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
+  V31 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
+  V32 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
+PASS  app/src/main/assets/source/huibq-latest.js
+  V31 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
+  V32 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
+PASS  app/src/main/java/com/xingyu/music/data/QQMusicApi.java
+  V31 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
+  V32 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
+PASS  app/src/main/java/com/xingyu/music/data/NeteaseApi.java
+  V31 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
+  V32 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
+PASS  app/src/main/java/com/xingyu/music/data/LibraryStore.java
+  V31 4b1b5438a1aabb476b097c7cf4f617884cb98360514cdd7239b0084bfc5bb60f
+  V32 4b1b5438a1aabb476b097c7cf4f617884cb98360514cdd7239b0084bfc5bb60f
+PASS  app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
+  V31 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
+  V32 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
+PASS  app/src/main/AndroidManifest.xml
+  V31 96d959b329e0b897db94052dbdc988d2dbb44a3271354f2e6573c83bd97d9007
+  V32 96d959b329e0b897db94052dbdc988d2dbb44a3271354f2e6573c83bd97d9007
+
+结果：15/15 个网络播放核心/配置对象 SHA-256 完全一致。
+
+有意修改但经过隔离审查的两个共享模型/协调文件：
+- SourceCoordinator.java：只增加 source=local 的离线 URI 直通分支，并让 offline 成功/失败不写 SourceHealthStore；原 Huibq/QDY resolveVariant/resolveFresh 路径未改。
+- Song.java：仅增加 providerLabel("local") = "离线"，原 tx/wy/其它身份、key、variants 逻辑未改。
+
+下载解析隔离：
+- DownloadSourceResolver 是新增独立解析器，不调用 SourceHealthStore，不会给 Huibq/QDY 的 READY/失败学习加减分或写冷却。
+- 优先读取 PlaybackUrlStore 中已经被 Media3 READY 验证过的 URL；缓存失效时才独立 fresh resolve 一次。
+- 下载失败不会 invalidate PlaybackUrlStore，也不会修改播放队列。
+
+如 V32 出现网络播放回归，优先对照 changes/V31-to-V32_DOWNLOAD_LIBRARY.patch；网络主链 15 个对象应保持以上哈希。

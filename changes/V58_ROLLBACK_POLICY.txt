@@ -1,0 +1,7 @@
+V58 rollback policy
+===================
+1. V58 is intentionally rebuilt from the V56 full-source baseline, not V57.
+2. V57 Unified Discovery / combined lyric-search presentation is removed in full; search behavior returns to V56.
+3. Search/lyrics are lower priority than playback stability. If a future lyric-search enhancement affects playback or search-to-play stability, remove that enhancement first and preserve the V56/V58 playback baseline.
+4. V58 changes are visual-only except for version metadata: Starfield Studio wiring + Starfield3DView travel profiles.
+5. Locked playback/provider/download/offline/ringtone/library core remains SHA-256 guarded against V56.

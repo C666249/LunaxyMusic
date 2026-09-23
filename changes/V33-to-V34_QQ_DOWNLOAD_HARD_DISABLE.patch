@@ -1,0 +1,212 @@
+diff -ruN '--exclude=README_验收说明.txt' '--exclude=SHA256SUMS.txt' '--exclude=changes' '--exclude=V34.0_QQ下载彻底禁用.md' '--exclude=V34.0_自测结果.txt' v33inspect/LunaxyMusic-V33/BUILD_APK.bat v34work/LunaxyMusic-V34/BUILD_APK.bat
+--- v33inspect/LunaxyMusic-V33/BUILD_APK.bat	2026-08-10 13:01:31.000000000 +0000
++++ v34work/LunaxyMusic-V34/BUILD_APK.bat	2026-08-10 15:46:54.108678590 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   LunaxyMusic V31 - Debug APK Build
++echo   LunaxyMusic V34 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V31-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V34-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\LunaxyMusic-V31-debug.apk
++echo [OK] APK: %CD%\dist\LunaxyMusic-V34-debug.apk
+ pause
+diff -ruN '--exclude=README_验收说明.txt' '--exclude=SHA256SUMS.txt' '--exclude=changes' '--exclude=V34.0_QQ下载彻底禁用.md' '--exclude=V34.0_自测结果.txt' v33inspect/LunaxyMusic-V33/app/build.gradle.kts v34work/LunaxyMusic-V34/app/build.gradle.kts
+--- v33inspect/LunaxyMusic-V33/app/build.gradle.kts	2026-08-10 14:10:19.000000000 +0000
++++ v34work/LunaxyMusic-V34/app/build.gradle.kts	2026-08-10 15:46:44.826693797 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 36
+-        versionName = "33.0.0"
++        versionCode = 37
++        versionName = "34.0.0"
+     }
+ 
+     buildTypes {
+diff -ruN '--exclude=README_验收说明.txt' '--exclude=SHA256SUMS.txt' '--exclude=changes' '--exclude=V34.0_QQ下载彻底禁用.md' '--exclude=V34.0_自测结果.txt' v33inspect/LunaxyMusic-V33/app/src/main/java/com/xingyu/music/MainActivity.java v34work/LunaxyMusic-V34/app/src/main/java/com/xingyu/music/MainActivity.java
+--- v33inspect/LunaxyMusic-V33/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 14:13:56.000000000 +0000
++++ v34work/LunaxyMusic-V34/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 15:46:44.826552677 +0000
+@@ -55,6 +55,7 @@
+ import com.xingyu.music.data.LyricMatcher;
+ import com.xingyu.music.data.LyricParser;
+ import com.xingyu.music.data.NeteaseApi;
++import com.xingyu.music.data.DownloadPolicy;
+ import com.xingyu.music.data.OfflineDownloadManager;
+ import com.xingyu.music.data.QQMusicApi;
+ import com.xingyu.music.data.QQLyricApi;
+@@ -2563,6 +2564,13 @@
+ 
+     private void startSongDownload(Song song) {
+         if (song == null || offlineDownloads == null || downloadStore == null) return;
++        // V34 product-level hard stop: QQ download is intentionally unavailable.
++        // Check this before downloadStore / cache / worker access so even an
++        // accidental tap has zero QQ-side network effect.
++        if (DownloadPolicy.blocksQqDownload(song)) {
++            toast(DownloadPolicy.QQ_DOWNLOAD_DISABLED);
++            return;
++        }
+         if ("local".equals(song.source)) { toast("这首歌已经是离线文件"); return; }
+         if (downloadStore.contains(song)) { toast("这首歌已经在离线歌单里"); return; }
+         if (offlineDownloads.isRunning(song)) { toast("这首歌正在下载"); return; }
+diff -ruN '--exclude=README_验收说明.txt' '--exclude=SHA256SUMS.txt' '--exclude=changes' '--exclude=V34.0_QQ下载彻底禁用.md' '--exclude=V34.0_自测结果.txt' v33inspect/LunaxyMusic-V33/app/src/main/java/com/xingyu/music/data/DownloadPolicy.java v34work/LunaxyMusic-V34/app/src/main/java/com/xingyu/music/data/DownloadPolicy.java
+--- v33inspect/LunaxyMusic-V33/app/src/main/java/com/xingyu/music/data/DownloadPolicy.java	1970-01-01 00:00:00.000000000 +0000
++++ v34work/LunaxyMusic-V34/app/src/main/java/com/xingyu/music/data/DownloadPolicy.java	2026-08-10 15:46:44.388920494 +0000
+@@ -0,0 +1,30 @@
++package com.xingyu.music.data;
++
++import com.xingyu.music.model.Song;
++import com.xingyu.music.model.SourceVariant;
++
++/**
++ * V34 hard download policy.
++ *
++ * Safety invariant: if a canonical song contains ANY QQ/tx provider identity,
++ * download is forbidden before cache lookup, background scheduling, CDN access,
++ * Huibq/QDY resolution, or any other network work.
++ *
++ * This intentionally also blocks merged "QQ · 网易" tracks. Playback is not
++ * affected; the rule applies only to the optional offline download feature.
++ */
++public final class DownloadPolicy {
++    public static final String QQ_DOWNLOAD_DISABLED = "QQ 来源已禁用下载，仅支持在线播放";
++
++    private DownloadPolicy() { }
++
++    /** True when this canonical track contains any QQ (tx) identity. */
++    public static boolean blocksQqDownload(Song song) {
++        if (song == null) return false;
++        if ("tx".equals(song.source) || "tx".equals(song.fallbackSource)) return true;
++        for (SourceVariant variant : song.variants()) {
++            if (variant != null && "tx".equals(variant.source)) return true;
++        }
++        return false;
++    }
++}
+diff -ruN '--exclude=README_验收说明.txt' '--exclude=SHA256SUMS.txt' '--exclude=changes' '--exclude=V34.0_QQ下载彻底禁用.md' '--exclude=V34.0_自测结果.txt' v33inspect/LunaxyMusic-V33/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java v34work/LunaxyMusic-V34/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java
+--- v33inspect/LunaxyMusic-V33/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java	2026-08-10 14:10:18.000000000 +0000
++++ v34work/LunaxyMusic-V34/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java	2026-08-10 15:46:54.108819990 +0000
+@@ -9,9 +9,10 @@
+ import java.util.List;
+ 
+ /**
+- * V33 download resolver: CACHE-ONLY by design.
++ * V34 download resolver: CACHE-ONLY, with QQ/tx hard-disabled.
+  *
+  * Downloading must never ask Huibq/QDY (or any other resolver) for a fresh URL.
++ * Any song containing a QQ/tx identity is rejected before cache access.
+  * It may only consume a URL that the normal playback chain has already proven
+  * with Media3 READY and persisted into PlaybackUrlStore.
+  *
+@@ -23,7 +24,7 @@
+  *  - invalidate the playback URL cache.
+  */
+ public final class DownloadSourceResolver {
+-    public static final String QQ_UNSUPPORTED = "当前音源暂不支持下载，可尝试在线播放";
++    public static final String QQ_UNSUPPORTED = DownloadPolicy.QQ_DOWNLOAD_DISABLED;
+     public static final String PLAY_FIRST = "请先在线播放一次，成功后再下载";
+ 
+     public static final class Candidate {
+@@ -55,10 +56,14 @@
+     public Candidate resolve(Song song) throws Exception {
+         if (song == null) throw new Exception("歌曲为空");
+ 
++        // V34 HARD WALL: any canonical track containing a QQ/tx identity is
++        // rejected BEFORE PlaybackUrlStore is even read. This means a QQ tap
++        // cannot touch a cached QQ CDN URL, cannot schedule network I/O, and
++        // cannot indirectly disturb the normal playback chain.
++        if (DownloadPolicy.blocksQqDownload(song)) throw new Exception(QQ_UNSUPPORTED);
++
+         Candidate stored = cached(song);
+         if (stored != null) return stored;
+-
+-        if (isPureQq(song)) throw new Exception(QQ_UNSUPPORTED);
+         throw new Exception(PLAY_FIRST);
+     }
+ 
+@@ -90,17 +95,8 @@
+         return q;
+     }
+ 
+-    private static boolean isPureQq(Song song) {
+-        boolean hasTx = false;
+-        boolean hasOtherPlayable = false;
+-        for (SourceVariant v : song.variants()) {
+-            if ("tx".equals(v.source)) hasTx = true;
+-            else if (!"local".equals(v.source)) hasOtherPlayable = true;
+-        }
+-        return hasTx && !hasOtherPlayable;
+-    }
+ 
+     public void destroy() {
+-        // Intentionally empty. V33 owns no source runtime / WebView / resolver.
++        // Intentionally empty. V34 owns no source runtime / WebView / resolver.
+     }
+ }
+diff -ruN '--exclude=README_验收说明.txt' '--exclude=SHA256SUMS.txt' '--exclude=changes' '--exclude=V34.0_QQ下载彻底禁用.md' '--exclude=V34.0_自测结果.txt' v33inspect/LunaxyMusic-V33/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java v34work/LunaxyMusic-V34/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java
+--- v33inspect/LunaxyMusic-V33/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java	2026-08-10 14:10:18.000000000 +0000
++++ v34work/LunaxyMusic-V34/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java	2026-08-10 15:46:44.824336290 +0000
+@@ -24,7 +24,7 @@
+ import java.util.concurrent.Executors;
+ 
+ /**
+- * V33 background downloader.
++ * V34 background downloader.
+  *
+  * Safety invariant: this class only downloads a URL already validated and cached
+  * by the normal Media3 playback chain. A failed download NEVER asks an audio
+@@ -54,6 +54,12 @@
+ 
+     public void download(Song song, Listener listener) {
+         if (song == null) { fail(listener, "歌曲为空"); return; }
++        // Defense-in-depth: reject QQ synchronously before queueing a worker.
++        // No cache lookup, no URL access, no CDN request, no resolver call.
++        if (DownloadPolicy.blocksQqDownload(song)) {
++            fail(listener, DownloadPolicy.QQ_DOWNLOAD_DISABLED);
++            return;
++        }
+         String key = song.key();
+         if (!running.add(key)) { fail(listener, "这首歌正在下载"); return; }
+         worker.submit(() -> {
+@@ -70,6 +76,10 @@
+     }
+ 
+     private DownloadedTrack tryDownload(Song song) throws Exception {
++        // Second hard wall in case a future caller bypasses download().
++        if (DownloadPolicy.blocksQqDownload(song)) {
++            throw new Exception(DownloadPolicy.QQ_DOWNLOAD_DISABLED);
++        }
+         // CACHE ONLY. resolve() is deliberately incapable of calling Huibq/QDY.
+         DownloadSourceResolver.Candidate candidate = resolver.resolve(song);
+         String ext = extension(candidate.url);
+@@ -205,17 +215,9 @@
+         String msg = e == null || e.getMessage() == null ? "下载失败" : e.getMessage();
+         if (DownloadSourceResolver.QQ_UNSUPPORTED.equals(msg)) return msg;
+ 
+-        boolean hasTx = false;
+-        boolean hasNonTx = false;
+-        if (song != null) {
+-            for (com.xingyu.music.model.SourceVariant v : song.variants()) {
+-                if ("tx".equals(v.source)) hasTx = true;
+-                else if (!"local".equals(v.source)) hasNonTx = true;
+-            }
+-        }
+-        // Pure QQ download failures never trigger a fresh Huibq request. Give the
+-        // requested friendly message regardless of whether the cached CDN URL expired.
+-        if (hasTx && !hasNonTx) return DownloadSourceResolver.QQ_UNSUPPORTED;
++        // V34: ANY QQ identity means download is disabled, including merged
++        // QQ · 网易 canonical tracks. Keep the user-facing reason unambiguous.
++        if (DownloadPolicy.blocksQqDownload(song)) return DownloadPolicy.QQ_DOWNLOAD_DISABLED;
+ 
+         if (msg.contains("已失效") || msg.contains("HTTP")) {
+             return "下载地址已失效，请先在线播放一次刷新后再下载";

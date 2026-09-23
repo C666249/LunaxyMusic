@@ -1,0 +1,425 @@
+--- LunaxyMusic-V54/app/src/main/java/com/xingyu/music/ui/Starfield3DView.java	2026-08-12 12:10:02.000000000 +0000
++++ LunaxyMusic-V55/app/src/main/java/com/xingyu/music/ui/Starfield3DView.java	2026-08-12 12:45:14.384802368 +0000
+@@ -45,6 +45,9 @@
+     private static final int MOTION_PULSE = 3;
+     private static final int MOTION_COMET = 4;
+ 
++    public static final int PROFILE_LIVING = 0;
++    public static final int PROFILE_CLASSIC_FORWARD = 1;
++
+     // A complete 360-degree volume.  Only the current camera frustum is rendered.
+     private static final int FAR_COUNT = 1700;
+     private static final int MID_COUNT = 760;
+@@ -72,6 +75,10 @@
+         float phase;
+         float twinkleSpeed;
+         float pulseSpeed;
++        float lifeBreathCycles;
++        float sizeBreathDepth;
++        float lightBreathDepth;
++        float fadeStart;
+         float tintWeight;
+         float radialSpeed;
+         float angularSpeed;
+@@ -80,6 +87,7 @@
+         int layer;
+         int motionType;
+         boolean flare;
++        boolean fadeBeforeRecycle;
+         boolean previousVisible;
+         float previousX, previousY;
+     }
+@@ -94,12 +102,17 @@
+         float phase;
+         float twinkleSpeed;
+         float pulseSpeed;
++        float lifeBreathCycles;
++        float sizeBreathDepth;
++        float lightBreathDepth;
++        float fadeStart;
+         float tintWeight;
+         float curveStrength;
+         float axisX, axisY, axisZ;
+         int motionType;
+         boolean coolWhite;
+         boolean flare;
++        boolean fadeBeforeRecycle;
+         boolean previousVisible;
+         float previousX, previousY;
+     }
+@@ -144,6 +157,9 @@
+     private AudioLevelProvider audioLevels;
+     private float visualEnergy;
+     private float visualBeat;
++    private float speedMultiplier = 1f;
++    private float sensitivity = 1f;
++    private int motionProfile = PROFILE_LIVING;
+ 
+     public Starfield3DView(Context context) {
+         super(context);
+@@ -181,6 +197,26 @@
+         return rotationSensor != null;
+     }
+ 
++    /** Visual-only user controls. Defaults preserve the V54/V55 tuned behaviour. */
++    public void setSpeedMultiplier(float value) {
++        speedMultiplier = clamp(value, .45f, 1.90f);
++    }
++
++    public float speedMultiplier() { return speedMultiplier; }
++
++    public void setSensitivity(float value) {
++        sensitivity = clamp(value, .35f, 1.85f);
++    }
++
++    public float sensitivity() { return sensitivity; }
++
++    public void setMotionProfile(int profile) {
++        motionProfile = profile == PROFILE_CLASSIC_FORWARD ? PROFILE_CLASSIC_FORWARD : PROFILE_LIVING;
++        clearTrails();
++    }
++
++    public int motionProfile() { return motionProfile; }
++
+     private void createUniverse() {
+         int index = 0;
+         for (int i = 0; i < FAR_COUNT; i++) stars[index++] = createStar(LAYER_FAR);
+@@ -195,7 +231,7 @@
+             s.farDistance = lerp(72f, 104f, random.nextFloat());
+             s.nearDistance = lerp(3.0f, 4.6f, random.nextFloat());
+             s.worldRadius = lerp(.095f, .225f, random.nextFloat());
+-            s.brightness = lerp(.38f, .78f, random.nextFloat());
++            s.brightness = lerp(.44f, .84f, random.nextFloat());
+             s.tintWeight = lerp(.04f, .13f, random.nextFloat());
+             s.radialSpeed = lerp(1.35f, 2.35f, random.nextFloat());
+             s.angularSpeed = lerp(.020f, .060f, random.nextFloat());
+@@ -204,7 +240,7 @@
+             s.farDistance = lerp(48f, 78f, random.nextFloat());
+             s.nearDistance = lerp(1.9f, 3.1f, random.nextFloat());
+             s.worldRadius = lerp(.055f, .145f, random.nextFloat());
+-            s.brightness = lerp(.50f, .94f, random.nextFloat());
++            s.brightness = lerp(.56f, .98f, random.nextFloat());
+             s.tintWeight = lerp(.08f, .24f, random.nextFloat());
+             s.radialSpeed = lerp(1.55f, 2.85f, random.nextFloat());
+             s.angularSpeed = lerp(.032f, .086f, random.nextFloat());
+@@ -213,7 +249,7 @@
+             s.farDistance = lerp(30f, 54f, random.nextFloat());
+             s.nearDistance = lerp(1.05f, 1.75f, random.nextFloat());
+             s.worldRadius = lerp(.028f, .085f, random.nextFloat());
+-            s.brightness = lerp(.62f, 1.0f, random.nextFloat());
++            s.brightness = lerp(.67f, 1.0f, random.nextFloat());
+             s.tintWeight = lerp(.12f, .36f, random.nextFloat());
+             s.radialSpeed = lerp(1.85f, 3.45f, random.nextFloat());
+             s.angularSpeed = lerp(.045f, .120f, random.nextFloat());
+@@ -224,6 +260,7 @@
+         s.pulseSpeed = lerp(.22f, .78f, random.nextFloat());
+         s.wobbleSpeed = lerp(.18f, .72f, random.nextFloat());
+         s.motionType = chooseMotionType(random.nextFloat());
++        randomizeLightLife(s);
+         randomUnitVector(random, spawnDirection);
+         randomUnitVector(random, spawnWorld);
+         s.axisX = spawnWorld[0];
+@@ -251,11 +288,28 @@
+         s.motionType = chooseMotionType(random.nextFloat());
+         s.phase = random.nextFloat() * (float) (Math.PI * 2.0);
+         s.flare = random.nextFloat() < (s.layer == LAYER_NEAR ? .05f : s.layer == LAYER_MID ? .02f : .009f);
++        randomizeLightLife(s);
+         placeStar(s, spawnDirection[0], spawnDirection[1], spawnDirection[2],
+                 lerp(s.farDistance * .90f, s.farDistance, random.nextFloat()));
+         s.previousVisible = false;
+     }
+ 
++    private void randomizeLightLife(Star s) {
++        s.lifeBreathCycles = lerp(2.15f, 4.75f, random.nextFloat());
++        s.sizeBreathDepth = lerp(.13f, .34f, random.nextFloat());
++        s.lightBreathDepth = lerp(.17f, .42f, random.nextFloat());
++        s.fadeBeforeRecycle = random.nextFloat() < .68f;
++        s.fadeStart = lerp(.82f, .94f, random.nextFloat());
++    }
++
++    private void randomizeLightLife(FlowStar s) {
++        s.lifeBreathCycles = lerp(2.35f, 5.10f, flowRandom.nextFloat());
++        s.sizeBreathDepth = lerp(.16f, .38f, flowRandom.nextFloat());
++        s.lightBreathDepth = lerp(.18f, .44f, flowRandom.nextFloat());
++        s.fadeBeforeRecycle = flowRandom.nextFloat() < .60f;
++        s.fadeStart = lerp(.84f, .955f, flowRandom.nextFloat());
++    }
++
+     private static void placeStar(Star s, float dx, float dy, float dz, float distance) {
+         float n = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+         if (n < 1.0e-6f) {
+@@ -302,7 +356,7 @@
+         s.remainingDepth = depth;
+         s.speed = lerp(1.70f, 3.05f, flowRandom.nextFloat());
+         s.size = lerp(.22f, .72f, flowRandom.nextFloat());
+-        s.brightness = lerp(.62f, .98f, flowRandom.nextFloat());
++        s.brightness = lerp(.68f, 1.0f, flowRandom.nextFloat());
+         s.phase = flowRandom.nextFloat() * (float) (Math.PI * 2.0);
+         s.twinkleSpeed = lerp(.70f, 1.60f, flowRandom.nextFloat());
+         s.pulseSpeed = lerp(.36f, 1.12f, flowRandom.nextFloat());
+@@ -315,6 +369,7 @@
+         s.axisX = spawnWorld[0];
+         s.axisY = spawnWorld[1];
+         s.axisZ = spawnWorld[2];
++        randomizeLightLife(s);
+         s.previousVisible = false;
+     }
+ 
+@@ -503,11 +558,17 @@
+                 break;
+         }
+ 
++        if (motionProfile == PROFILE_CLASSIC_FORWARD) {
++            // V49-like personality inside the 3D camera: pure perspective approach, no orbit/curve.
++            typeRadial = 1.16f;
++            typeAngular = 0f;
++        }
++
+         // Every star always approaches.  Orbit/curve personalities only redistribute the
+         // radial/tangential balance; none of them can become a static decorative point.
+         float localPulse = .90f + .16f * (float) Math.sin(time * s.wobbleSpeed + s.phase * 1.71f);
+         float audioDrive = 1f + visualEnergy * .08f + visualBeat * .08f;
+-        s.distance -= s.radialSpeed * typeRadial * surge * localPulse * audioDrive * dt;
++        s.distance -= s.radialSpeed * typeRadial * surge * localPulse * audioDrive * speedMultiplier * dt;
+         if (s.distance <= s.nearDistance) {
+             recycleStar(s);
+             return;
+@@ -525,9 +586,10 @@
+ 
+         float localAngle = s.angularSpeed * typeAngular
+                 * (.42f + .58f * (.5f + .5f * (float) Math.sin(time * s.wobbleSpeed + s.phase))) * dt;
+-        float globalAngle = (.008f + .031f * swirl) * dt
++        float globalAngle = motionProfile == PROFILE_CLASSIC_FORWARD ? 0f : (.008f + .031f * swirl) * dt
+                 * (s.motionType == MOTION_ORBIT ? 1.45f : 1f);
+-        float micro = .0022f * (float) Math.sin(time * (s.wobbleSpeed * .73f + .11f) + s.phase * 2.13f) * dt;
++        float micro = motionProfile == PROFILE_CLASSIC_FORWARD ? 0f
++                : .0022f * (float) Math.sin(time * (s.wobbleSpeed * .73f + .11f) + s.phase * 2.13f) * dt;
+ 
+         ux += tx * localAngle + gx * globalAngle + gy * micro;
+         uy += ty * localAngle + gy * globalAngle - gx * micro;
+@@ -571,21 +633,30 @@
+         // approach to the camera supplies most of the perceived brightening.
+         float twinkleWave = .5f + .5f * (float) Math.sin(time * s.twinkleSpeed + s.phase);
+         float pulseWave = .5f + .5f * (float) Math.sin(time * s.pulseSpeed + s.phase * 1.31f);
+-        float twinkle = lerp(.94f, 1.0f, twinkleWave);
+-        float breath = lerp(.975f, 1.025f, pulseWave);
+-        if (s.motionType == MOTION_PULSE) breath = lerp(.955f, 1.045f, pulseWave);
+-        // A travelling luminance wave, inspired by coordinated pulse-field animations: it
+-        // changes light, not geometry, and stays subtle enough to feel celestial rather than UI-like.
++        // Each particle goes through several smooth bright/dim and size cycles during one flight.
++        // The cycles are tied mostly to lifetime progress, not frame time, so the star visibly
++        // breathes a few times before fading/recycling instead of merely translating and vanishing.
++        float lifePulse = stellarLifePulse(life, time, s.phase, s.lifeBreathCycles);
++        float twinkle = lerp(.91f, 1.035f, twinkleWave);
++        float breath = lerp(1f - s.sizeBreathDepth * .50f, 1f + s.sizeBreathDepth, lifePulse);
++        breath *= lerp(.985f, 1.025f, pulseWave);
++        if (s.motionType == MOTION_PULSE) breath *= lerp(.965f, 1.055f, pulseWave);
++        // A travelling luminance wave gives the whole sky a slow common breath while each star
++        // keeps its own local cycle.  Both are continuous sinusoids, never threshold flashes.
+         float depthWave = .5f + .5f * (float) Math.sin(time * .37f - life * 5.6f + s.phase * .19f);
+-        float shimmer = lerp(.965f, 1.045f, depthWave);
++        float shimmer = lerp(.955f, 1.060f, depthWave);
++        float localLight = lerp(1f - s.lightBreathDepth * .58f, 1f + s.lightBreathDepth * .24f, lifePulse);
+         float radius = s.worldRadius * focal * invDepth;
+-        radius *= breath * (1f + life * .11f + visualEnergy * .020f + visualBeat * .035f);
+-        radius = clamp(radius, .18f * density, 1.85f * density);
++        radius *= breath * (1f + life * .14f + visualEnergy * .022f + visualBeat * .038f);
++        radius = clamp(radius, .17f * density, 1.92f * density);
+ 
+-        float layerAlpha = s.layer == LAYER_FAR ? .72f : s.layer == LAYER_MID ? .90f : 1f;
++        float layerAlpha = s.layer == LAYER_FAR ? .82f : s.layer == LAYER_MID ? .94f : 1f;
+         float approach = smoothstep(.02f, .98f, life);
+-        int alpha = (int) ((42f + 210f * approach) * s.brightness * layerAlpha * twinkle * shimmer);
+-        alpha = Math.max(22, Math.min(255, alpha));
++        float lifeAlpha = stellarLifeEnvelope(life, s.fadeBeforeRecycle, s.fadeStart);
++        int alpha = (int) ((60f + 195f * approach) * s.brightness * layerAlpha * twinkle * shimmer * localLight * lifeAlpha);
++        alpha = Math.min(255, alpha);
++        if (!s.fadeBeforeRecycle || life < s.fadeStart) alpha = Math.max(30, alpha);
++        else alpha = Math.max(0, alpha);
+ 
+         int neutralR = s.layer == LAYER_FAR ? 226 : 248;
+         int neutralG = s.layer == LAYER_FAR ? 237 : 249;
+@@ -635,9 +706,10 @@
+                         : s.motionType == MOTION_PULSE
+                         ? (.88f + .28f * (.5f + .5f * (float) Math.sin(time * s.pulseSpeed + s.phase)))
+                         : 1f;
+-                float advance = s.speed * typeSpeed * surge * audioDrive * dt;
++                if (motionProfile == PROFILE_CLASSIC_FORWARD) typeSpeed = 1.0f;
++                float advance = s.speed * typeSpeed * surge * audioDrive * speedMultiplier * dt;
+ 
+-                if (s.motionType == MOTION_CURVE || s.motionType == MOTION_ORBIT || s.motionType == MOTION_PULSE) {
++                if (motionProfile != PROFILE_CLASSIC_FORWARD && (s.motionType == MOTION_CURVE || s.motionType == MOTION_ORBIT || s.motionType == MOTION_PULSE)) {
+                     float cx = s.axisY * s.dirZ - s.axisZ * s.dirY;
+                     float cy = s.axisZ * s.dirX - s.axisX * s.dirZ;
+                     float cz = s.axisX * s.dirY - s.axisY * s.dirX;
+@@ -686,18 +758,24 @@
+                     / (FLOW_FAR_DEPTH - FLOW_NEAR_DEPTH), 0f, 1f);
+             float twinkleWave = .5f + .5f * (float) Math.sin(time * s.twinkleSpeed + s.phase);
+             float pulseWave = .5f + .5f * (float) Math.sin(time * s.pulseSpeed + s.phase * 1.37f);
+-            float twinkle = lerp(.935f, 1.0f, twinkleWave);
+-            float pulse = lerp(.972f, 1.03f, pulseWave);
+-            if (s.motionType == MOTION_PULSE) pulse = lerp(.948f, 1.052f, pulseWave);
++            float lifePulse = stellarLifePulse(progress, time, s.phase, s.lifeBreathCycles);
++            float twinkle = lerp(.91f, 1.04f, twinkleWave);
++            float pulse = lerp(1f - s.sizeBreathDepth * .52f, 1f + s.sizeBreathDepth, lifePulse);
++            pulse *= lerp(.982f, 1.032f, pulseWave);
++            if (s.motionType == MOTION_PULSE) pulse *= lerp(.958f, 1.06f, pulseWave);
+             float depthWave = .5f + .5f * (float) Math.sin(time * .41f - progress * 5.1f + s.phase * .17f);
+-            float shimmer = lerp(.96f, 1.055f, depthWave);
+-            float radius = s.size * (.28f + progress * 1.48f) * density;
+-            radius *= pulse * (1f + visualEnergy * .025f + visualBeat * .045f);
+-            radius = clamp(radius, .22f * density, 2.05f * density);
++            float shimmer = lerp(.95f, 1.065f, depthWave);
++            float localLight = lerp(1f - s.lightBreathDepth * .58f, 1f + s.lightBreathDepth * .25f, lifePulse);
++            float radius = s.size * (.26f + progress * 1.55f) * density;
++            radius *= pulse * (1f + visualEnergy * .027f + visualBeat * .047f);
++            radius = clamp(radius, .20f * density, 2.12f * density);
+ 
+             float approach = smoothstep(.02f, .99f, progress);
+-            int alpha = (int) ((48f + 203f * approach) * s.brightness * twinkle * shimmer);
+-            alpha = Math.max(28, Math.min(255, alpha));
++            float lifeAlpha = stellarLifeEnvelope(progress, s.fadeBeforeRecycle, s.fadeStart);
++            int alpha = (int) ((64f + 191f * approach) * s.brightness * twinkle * shimmer * localLight * lifeAlpha);
++            alpha = Math.min(255, alpha);
++            if (!s.fadeBeforeRecycle || progress < s.fadeStart) alpha = Math.max(34, alpha);
++            else alpha = Math.max(0, alpha);
+             int neutralR = s.coolWhite ? 224 : 250;
+             int neutralG = s.coolWhite ? 236 : 250;
+             int neutralB = 255;
+@@ -752,10 +830,10 @@
+         // A faint halo may extend several core radii, just like V49, but its alpha decays to
+         // exactly zero at the edge.  Hence large near stars glow without exposing a circle.
+         float glowBreath = .5f + .5f * (float) Math.sin(time * .29f + phase * .61f);
+-        float glowScale = foreground ? lerp(3.2f, 5.2f, near) : lerp(2.7f, 4.6f, near);
+-        glowScale *= lerp(.96f, 1.07f, glowBreath) * (1f + sceneBloom * .035f);
+-        float glowRadius = Math.max(.80f * density, coreRadius * glowScale);
+-        glowRadius = Math.min(glowRadius, (foreground ? 8.4f : 7.0f) * density);
++        float glowScale = foreground ? lerp(3.6f, 5.8f, near) : lerp(3.0f, 5.05f, near);
++        glowScale *= lerp(.94f, 1.08f, glowBreath) * (1f + sceneBloom * .030f);
++        float glowRadius = Math.max(.84f * density, coreRadius * glowScale);
++        glowRadius = Math.min(glowRadius, (foreground ? 9.0f : 7.6f) * density);
+ 
+         float tint = colorTintDistance(r, g, b);
+         Shader shader = glowShaders[paletteIndex(tint)];
+@@ -766,8 +844,8 @@
+             shader.setLocalMatrix(glowMatrix);
+             glowPaint.setShader(shader);
+             // Far stars keep a detectable but restrained atmosphere; near stars bloom more.
+-            float haloStrength = (foreground ? .56f : .48f) + near * (foreground ? .34f : .28f);
+-            haloStrength *= lerp(.96f, 1.04f, glowBreath);
++            float haloStrength = (foreground ? .43f : .37f) + near * (foreground ? .29f : .23f);
++            haloStrength *= lerp(.92f, 1.06f, glowBreath);
+             glowPaint.setAlpha(clamp255((int) (alpha * haloStrength)));
+             canvas.drawCircle(sx, sy, glowRadius, glowPaint);
+             glowPaint.setShader(null);
+@@ -776,7 +854,7 @@
+ 
+         // Coloured stellar body.  It is intentionally smaller than V53 and therefore reads
+         // as a point of light even when flying close to the virtual camera.
+-        int bodyAlpha = clamp255((int) (alpha * lerp(.88f, 1f, near)));
++        int bodyAlpha = clamp255((int) (alpha * lerp(.94f, 1f, near)));
+         paint.setColor(Color.argb(bodyAlpha, r, g, b));
+         canvas.drawCircle(sx, sy, coreRadius, paint);
+ 
+@@ -785,7 +863,7 @@
+         int hotG = mix(g, 255, .78f);
+         int hotB = mix(b, 255, .78f);
+         float nucleusRadius = Math.max(.11f * density, coreRadius * .26f);
+-        int hotAlpha = clamp255((int) (alpha * (.80f + near * .18f)));
++        int hotAlpha = clamp255((int) (alpha * (.92f + near * .08f)));
+         canvas.drawCircle(sx, sy, nucleusRadius, colorPaint(hotAlpha, hotR, hotG, hotB));
+ 
+         // Rare diffraction spikes use two low-frequency envelopes.  Their rise/fall is
+@@ -830,14 +908,15 @@
+             // This alpha profile approximates pow(1-r, 3): bright center, fast organic
+             // falloff, then a long almost-invisible tail.  The transparent last stop is
+             // what removes the visible "bubble boundary" of solid-circle bloom.
+-            int hot = Color.argb(250, mix(rr, 255, .76f), mix(gg, 255, .76f), mix(bb, 255, .76f));
+-            int body = Color.argb(188, rr, gg, bb);
+-            int inner = Color.argb(78, rr, gg, bb);
+-            int haze = Color.argb(18, rr, gg, bb);
++            int hot = Color.argb(255, mix(rr, 255, .82f), mix(gg, 255, .82f), mix(bb, 255, .82f));
++            int body = Color.argb(196, rr, gg, bb);
++            int inner = Color.argb(92, rr, gg, bb);
++            int soft = Color.argb(38, rr, gg, bb);
++            int haze = Color.argb(10, rr, gg, bb);
+             int zero = Color.argb(0, rr, gg, bb);
+             glowShaders[i] = new RadialGradient(0f, 0f, 1f,
+-                    new int[]{hot, body, inner, haze, zero},
+-                    new float[]{0f, .105f, .30f, .59f, 1f}, Shader.TileMode.CLAMP);
++                    new int[]{hot, body, inner, soft, haze, zero},
++                    new float[]{0f, .070f, .22f, .47f, .76f, 1f}, Shader.TileMode.CLAMP);
+         }
+     }
+ 
+@@ -858,6 +937,26 @@
+         return total < 1f ? .20f : clamp(whiteDistance / total, .04f, .60f);
+     }
+ 
++    /** Several gentle light/size breaths across one particle lifetime. */
++    private static float stellarLifePulse(float life, float time, float phase, float cycles) {
++        float a = life * cycles * (float) (Math.PI * 2.0) + phase + time * .085f;
++        float primary = .5f + .5f * (float) Math.sin(a);
++        float secondary = .5f + .5f * (float) Math.sin(a * .51f + phase * .73f + 1.17f);
++        float mixed = primary * .76f + secondary * .24f;
++        return smoothstep(.04f, .96f, mixed);
++    }
++
++    /**
++     * Most stars fade out slowly near the end of their flight; a minority keep their light
++     * and simply leave/recycle, which prevents the scene from looking mechanically uniform.
++     */
++    private static float stellarLifeEnvelope(float life, boolean fadeBeforeRecycle, float fadeStart) {
++        float fadeIn = smoothstep(0f, .075f, life);
++        if (!fadeBeforeRecycle) return fadeIn;
++        float fadeOut = 1f - smoothstep(fadeStart, .995f, life);
++        return clamp(fadeIn * fadeOut, 0f, 1f);
++    }
++
+     private static int clamp255(int value) {
+         return Math.max(0, Math.min(255, value));
+     }
+@@ -885,9 +984,9 @@
+         if (event.sensor == rotationSensor) {
+             updateRotation(event);
+         } else if (event.sensor == linearAccelerationSensor && event.values.length >= 3) {
+-            targetShiftX = clamp(-event.values[0] * .030f, -.18f, .18f);
+-            targetShiftY = clamp(-event.values[1] * .026f, -.16f, .16f);
+-            targetShiftZ = clamp(event.values[2] * .018f, -.10f, .10f);
++            targetShiftX = clamp(-event.values[0] * .030f * sensitivity, -.26f, .26f);
++            targetShiftY = clamp(-event.values[1] * .026f * sensitivity, -.24f, .24f);
++            targetShiftZ = clamp(event.values[2] * .018f * sensitivity, -.16f, .16f);
+         }
+     }
+ 
+@@ -909,6 +1008,7 @@
+             }
+ 
+             Starfield3DMath.relativeCamera(baselineSensorQ, sensorQ, targetCameraQ);
++            scaleQuaternionAngle(targetCameraQ, sensitivity);
+ 
+             if (hasLastSensorQ && lastRotationSensorNs > 0L && event.timestamp > lastRotationSensorNs) {
+                 float seconds = (event.timestamp - lastRotationSensorNs) / 1_000_000_000f;
+@@ -923,6 +1023,22 @@
+         } catch (Exception ignored) { }
+     }
+ 
++    private static void scaleQuaternionAngle(float[] q, float gain) {
++        if (q == null || q.length < 4 || Math.abs(gain - 1f) < .001f) return;
++        // Use the shortest equivalent quaternion before scaling its axis-angle magnitude.
++        if (q[0] < 0f) { q[0] = -q[0]; q[1] = -q[1]; q[2] = -q[2]; q[3] = -q[3]; }
++        float w = clamp(q[0], -1f, 1f);
++        float half = (float) Math.acos(w);
++        float sinHalf = (float) Math.sin(half);
++        if (Math.abs(sinHalf) < 1.0e-6f) return;
++        float ax = q[1] / sinHalf, ay = q[2] / sinHalf, az = q[3] / sinHalf;
++        float scaledHalf = half * gain;
++        float outSin = (float) Math.sin(scaledHalf);
++        q[0] = (float) Math.cos(scaledHalf);
++        q[1] = ax * outSin; q[2] = ay * outSin; q[3] = az * outSin;
++        Starfield3DMath.normalize(q);
++    }
++
+     @Override public void onAccuracyChanged(Sensor sensor, int accuracy) { }
+ 
+     private static void randomUnitVector(Random r, float[] out3) {

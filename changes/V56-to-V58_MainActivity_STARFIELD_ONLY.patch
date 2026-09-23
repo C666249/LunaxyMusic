@@ -1,0 +1,65 @@
+--- /mnt/data/LunaxyMusic-V56/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-12 13:16:35.563555869 +0000
++++ /mnt/data/LunaxyMusic-V58/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-12 14:45:55.883991275 +0000
+@@ -475,7 +475,11 @@
+         starfieldUse3D = p.getBoolean("mode_3d", true);
+         starfieldSpeed = clampFloat(p.getFloat("speed", 1f), .45f, 1.90f);
+         starfieldSensitivity = clampFloat(p.getFloat("sensitivity", 1f), .35f, 1.85f);
+-        starfieldMotionProfile = p.getInt("motion", Starfield3DView.PROFILE_LIVING);
++        int savedMotion = p.getInt("motion", Starfield3DView.PROFILE_LIVING);
++        starfieldMotionProfile = savedMotion == Starfield3DView.PROFILE_CLASSIC_FORWARD
++                ? Starfield3DView.PROFILE_CLASSIC_FORWARD
++                : savedMotion == Starfield3DView.PROFILE_DEEP_SPACE
++                ? Starfield3DView.PROFILE_DEEP_SPACE : Starfield3DView.PROFILE_LIVING;
+         starfieldColorMode = Math.max(0, Math.min(6, p.getInt("particle_color", 0)));
+         starfieldBackgroundMode = Math.max(0, Math.min(5, p.getInt("background_mode", 0)));
+         starfieldBackgroundGlow = clampFloat(p.getFloat("background_glow", .24f), 0f, 1f);
+@@ -6273,15 +6277,17 @@
+         body.addView(modes, marginTop(7));
+ 
+         body.addView(starStudioSection("运动方式", starfieldUse3D
+-                ? "3D 模式可在灵性多人格与原版式持续穿越之间切换。"
++                ? "三种运动人格：活的宇宙、V49 式纯净穿越，以及旅行者号般的深空航行。"
+                 : "2D 经典模式直接使用 V49 原始运动逻辑，不做二次改写。"), marginTop(16));
+         LinearLayout motion = Ui.row(this);
+         boolean living = starfieldMotionProfile == Starfield3DView.PROFILE_LIVING;
++        boolean classicSelected = starfieldMotionProfile == Starfield3DView.PROFILE_CLASSIC_FORWARD;
++        boolean deepSelected = starfieldMotionProfile == Starfield3DView.PROFILE_DEEP_SPACE;
+         View mix = starStudioChoice("灵性混合", "Flow · Curve · Orbit", living, Ui.CYAN, v -> {
+             starfieldMotionProfile = Starfield3DView.PROFILE_LIVING;
+             saveStarfieldPreferences(); applyStarfieldPreferences(); redraw.run();
+         });
+-        View classic = starStudioChoice("经典穿越", "持续向镜头飞来", !living, Ui.GREEN, v -> {
++        View classic = starStudioChoice("经典穿越", "V49 式纯净前进", classicSelected, Ui.GREEN, v -> {
+             starfieldMotionProfile = Starfield3DView.PROFILE_CLASSIC_FORWARD;
+             saveStarfieldPreferences(); applyStarfieldPreferences(); redraw.run();
+         });
+@@ -6292,6 +6298,16 @@
+         motion.addView(classic, c2);
+         body.addView(motion, marginTop(7));
+ 
++        View deep = starStudioChoice("深空航行", "旅行者 · 星河隧道", deepSelected, Ui.PURPLE, v -> {
++            starfieldMotionProfile = Starfield3DView.PROFILE_DEEP_SPACE;
++            saveStarfieldPreferences(); applyStarfieldPreferences(); redraw.run();
++        });
++        deep.setAlpha(starfieldUse3D ? 1f : .42f);
++        deep.setEnabled(starfieldUse3D);
++        LinearLayout.LayoutParams deepLp = Ui.lp(-1, Ui.dp(this, 64));
++        deepLp.topMargin = Ui.dp(this, 8);
++        body.addView(deep, deepLp);
++
+         if (!starfieldUse3D) {
+             body.addView(starInfoCard("2D 是真正的原版", "当前项目中的 StarfieldView.java 与 Lunaxy V49 SHA-256 一致；这里只负责切换显示，没有重写它的粒子逻辑。", Ui.PURPLE), marginTop(12));
+         }
+@@ -6325,6 +6341,12 @@
+                     starfieldSensitivity = v; saveStarfieldPreferences(); applyStarfieldPreferences();
+                 }, true), marginTop(10));
+ 
++        if (starfieldUse3D && starfieldMotionProfile == Starfield3DView.PROFILE_CLASSIC_FORWARD) {
++            body.addView(starInfoCard("经典穿越 · 纯净透视", "所有可见星点都会像 V49 一样真实向镜头推进，并自动采用轻量粒子预算；既不再钉在原地，也避免满屏光点。", Ui.GREEN), marginTop(12));
++        } else if (starfieldUse3D && starfieldMotionProfile == Starfield3DView.PROFILE_DEEP_SPACE) {
++            body.addView(starInfoCard("深空航行 · 旅行者", "低密度宽阔星河通道、分层掠过、少量短柔光尾迹与极轻微航向曲率营造持续前进感；保持留白，不再堆满光点。", Ui.PURPLE), marginTop(12));
++        }
++
+         if (!starfieldUse3D) {
+             body.addView(starInfoCard("当前正在使用 2D 经典模式", "上面的数值会保存，但只在切回 3D 时生效；2D 模式保持 V49 原始速度和倾斜手感。", Ui.PURPLE), marginTop(12));
+         } else {

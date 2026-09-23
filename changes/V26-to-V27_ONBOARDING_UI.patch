@@ -1,0 +1,581 @@
+--- /mnt/data/v27base/LunaxyMusic-V26/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 10:49:27.000000000 +0000
++++ /mnt/data/v27work/LunaxyMusic-V26/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 11:11:18.380496586 +0000
+@@ -69,6 +69,7 @@
+ import com.xingyu.music.ui.IconView;
+ import com.xingyu.music.ui.ImageLoader;
+ import com.xingyu.music.ui.LyricLineView;
++import com.xingyu.music.ui.OnboardingOverlay;
+ import com.xingyu.music.ui.LyricGestureScrollView;
+ import com.xingyu.music.ui.StarfieldView;
+ import com.xingyu.music.ui.SwipeAwareScrollView;
+@@ -90,9 +91,9 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V26.0 – UI/navigation refinement on top of the frozen V25 playback chain.
++ * Lunaxy Music V27.0 – first-run onboarding + small UI polish on top of the frozen V25 playback chain.
+  *
+- * V26 keeps the proven audio-resolution/playback core frozen. Tapping a normal row in a saved playlist
++ * V27 keeps the proven audio-resolution/playback core frozen. Tapping a normal row in a saved playlist
+  * still replaces the current queue with the entire playlist and starts at that row. Tapping a result
+  * inside that playlist's search modal is a temporary pick: insert/play only that song and keep the
+  * existing queue, matching global-search behavior.
+@@ -153,6 +154,16 @@
+     private int homeLyricQuoteIndex;
+     private int homeLyricQuoteGeneration;
+     private int playlistVisibleCount = 40;
++
++    // V27 first-run coach marks. UI-only: never touches playback/source routing.
++    private OnboardingOverlay onboardingOverlay;
++    private boolean onboardingStarted;
++    private int onboardingStep;
++    private ScrollView onboardingHomeScroll;
++    private View onboardingSearchTarget;
++    private View onboardingSourceTarget;
++    private View onboardingRecentTarget;
++    private View onboardingRecommendationTarget;
+     private android.window.OnBackInvokedCallback backInvokedCallback;
+     private Song lastHistorySong;
+     private String lastErrorShown;
+@@ -292,6 +303,7 @@
+         installSystemBackHandler();
+         renderTab();
+         bindService(new Intent(this, PlaybackService.class), connection, BIND_AUTO_CREATE);
++        main.postDelayed(this::maybeStartOnboarding, 620L);
+     }
+ 
+     private void loadUiPreferences() {
+@@ -818,6 +830,7 @@
+         View.OnClickListener openSearch = v -> { tab = 1; refreshNav(); renderTab(); };
+         quick.setOnClickListener(openSearch);
+         qGo.setOnClickListener(openSearch);
++        onboardingSearchTarget = quick;
+         body.addView(quick, Ui.lp(-1, Ui.dp(this, 54)));
+ 
+         LinearLayout sourceCard = Ui.row(this);
+@@ -836,19 +849,24 @@
+         sourceCard.addView(sourceArrow, Ui.lp(Ui.dp(this, 28), Ui.dp(this, 28)));
+         sourceCard.setClickable(true); sourceCard.setFocusable(true); Ui.applyRipple(sourceCard, Color.argb(32,255,255,255));
+         sourceCard.setOnClickListener(v -> showSourceStatus());
++        onboardingSourceTarget = sourceCard;
+         body.addView(sourceCard, marginTop(10));
+ 
+         List<Song> recent = history.subList(0, Math.min(10, history.size()));
+-        body.addView(history.isEmpty()
++        View recentHeader = history.isEmpty()
+                 ? sectionHeader("最近播放", "")
+-                : sectionHeaderAction("最近播放", "全部播放", this::openRecentHistory), marginTop(24));
++                : sectionHeaderAction("最近播放", "全部播放", this::openRecentHistory);
++        onboardingRecentTarget = recentHeader;
++        body.addView(recentHeader, marginTop(24));
+         if (history.isEmpty()) {
+             body.addView(compactEmpty("播放过的歌曲会出现在这里"), marginTop(7));
+         } else {
+             body.addView(recentCarousel(recent), marginTop(8));
+         }
+ 
+-        body.addView(sectionHeader("为你推荐", ""), marginTop(24));
++        View recommendationHeader = sectionHeader("为你推荐", "");
++        onboardingRecommendationTarget = recommendationHeader;
++        body.addView(recommendationHeader, marginTop(24));
+         body.addView(recommendationCarousel(), marginTop(8));
+ 
+         if (!playlists.isEmpty()) {
+@@ -856,7 +874,121 @@
+             for (int i = 0; i < Math.min(3, playlists.size()); i++) body.addView(playlistCard(playlists.get(i)), marginTop(8));
+         }
+ 
+-        return pageScaffold(greetingTitle(), "", body, null, true);
++        View page = pageScaffold(greetingTitle(), "", body, null, true);
++        onboardingHomeScroll = page instanceof ScrollView ? (ScrollView) page : null;
++        return page;
++    }
++
++    private void maybeStartOnboarding() {
++        if (isFinishing() || onboardingStarted || onboardingOverlay != null) return;
++        SharedPreferences prefs = getSharedPreferences("lunaxy_onboarding", MODE_PRIVATE);
++        if (prefs.getBoolean("first_run_guide_v1_done", false)) return;
++        onboardingStarted = true;
++        if (tab != 0 || openPlaylist != null || openSmartCollection != null) {
++            tab = 0;
++            openPlaylist = null;
++            openSmartCollection = null;
++            refreshNav();
++            renderTab();
++        }
++        onboardingStep = 0;
++        main.postDelayed(() -> showOnboardingStep(0), 180L);
++    }
++
++    private void showOnboardingStep(int step) {
++        if (isFinishing()) return;
++        onboardingStep = Math.max(0, Math.min(4, step));
++        View target;
++        String title;
++        String body;
++        switch (onboardingStep) {
++            case 0:
++                target = onboardingSearchTarget;
++                title = "先从搜索开始";
++                body = "输入歌名或歌手即可搜索。搜索结果点一下只会临时插入并播放这首歌，不会打乱你原来的播放列表。";
++                break;
++            case 1:
++                target = onboardingSourceTarget;
++                title = "智能音源会自己选路";
++                body = "Lunaxy 会优先走已经验证过、成功率更高的线路；只有真正播放成功后才会记住这条路径。";
++                break;
++            case 2:
++                target = onboardingRecentTarget;
++                title = "最近播放随时回到现场";
++                body = "首页展示最近 10 首，点“全部播放”会进入完整的最近播放歌单，最多保留 50 首。";
++                break;
++            case 3:
++                target = onboardingRecommendationTarget;
++                title = "推荐会越来越贴近你";
++                body = "每日推荐、私人电台和天气电台会结合你的收藏、歌单、播放习惯与时间天气生成。";
++                break;
++            default:
++                target = navBar;
++                title = "四个入口，其他都交给音乐";
++                body = "首页、搜索、歌单、收藏都固定在底部。以后打开 Lunaxy，直接从这里进入你想去的地方。";
++                break;
++        }
++        if (target == null) {
++            main.postDelayed(() -> showOnboardingStep(onboardingStep), 160L);
++            return;
++        }
++        scrollGuideTargetIntoView(target, () -> attachOrUpdateOnboarding(target, title, body));
++    }
++
++    private void scrollGuideTargetIntoView(View target, Runnable after) {
++        if (onboardingOverlay != null) onboardingOverlay.setVisibility(View.INVISIBLE);
++        if (target != navBar && onboardingHomeScroll != null && isDescendantOf(target, onboardingHomeScroll)) {
++            android.graphics.Rect rect = new android.graphics.Rect();
++            target.getDrawingRect(rect);
++            onboardingHomeScroll.offsetDescendantRectToMyCoords(target, rect);
++            int desiredY = Math.max(0, rect.centerY() - Math.max(Ui.dp(this, 170), onboardingHomeScroll.getHeight() / 3));
++            onboardingHomeScroll.smoothScrollTo(0, desiredY);
++            main.postDelayed(after, 290L);
++        } else {
++            main.postDelayed(after, 40L);
++        }
++    }
++
++    private boolean isDescendantOf(View child, ViewGroup ancestor) {
++        if (child == null || ancestor == null) return false;
++        View current = child;
++        while (current != null) {
++            if (current == ancestor) return true;
++            android.view.ViewParent parent = current.getParent();
++            current = parent instanceof View ? (View) parent : null;
++        }
++        return false;
++    }
++
++    private void attachOrUpdateOnboarding(View target, String title, String body) {
++        if (target == null || appRoot == null || isFinishing()) return;
++        if (onboardingOverlay == null) {
++            onboardingOverlay = new OnboardingOverlay(this);
++            appRoot.addView(onboardingOverlay, Ui.frame(-1, -1, Gravity.FILL));
++        }
++        final boolean last = onboardingStep == 4;
++        onboardingOverlay.setStep(target, title, body, onboardingStep + 1, 5, last,
++                new OnboardingOverlay.Callback() {
++                    @Override public void onNext() {
++                        if (last) finishOnboarding();
++                        else showOnboardingStep(onboardingStep + 1);
++                    }
++                    @Override public void onSkip() { finishOnboarding(); }
++                });
++        onboardingOverlay.setVisibility(View.VISIBLE);
++        onboardingOverlay.bringToFront();
++        onboardingOverlay.post(onboardingOverlay::refreshTarget);
++    }
++
++    private void finishOnboarding() {
++        getSharedPreferences("lunaxy_onboarding", MODE_PRIVATE).edit()
++                .putBoolean("first_run_guide_v1_done", true).apply();
++        if (onboardingOverlay != null) {
++            ViewGroup parent = (ViewGroup) onboardingOverlay.getParent();
++            if (parent != null) parent.removeView(onboardingOverlay);
++            onboardingOverlay = null;
++        }
++        onboardingStarted = false;
+     }
+ 
+     private void startHomeLyricQuoteTicker(TextView target) {
+@@ -884,10 +1016,10 @@
+                         target.animate().alpha(1f).setDuration(220).start();
+                     }).start();
+                 }
+-                main.postDelayed(this, 3000L);
++                main.postDelayed(this, 5000L);
+             }
+         };
+-        main.postDelayed(homeLyricQuoteTicker, 3000L);
++        main.postDelayed(homeLyricQuoteTicker, 5000L);
+         prefetchHomeLyricQuotes(generation, target);
+     }
+ 
+@@ -1981,27 +2113,28 @@
+         LinearLayout playlistActions = Ui.row(this);
+         playlistActions.setGravity(Gravity.CENTER_VERTICAL);
+ 
+-        FrameLayout playlistSearch = Ui.iconButton(this, IconView.Type.SEARCH, 38, Ui.CYAN,
+-                Color.argb(22, Color.red(Ui.CYAN), Color.green(Ui.CYAN), Color.blue(Ui.CYAN)));
+-        playlistSearch.setContentDescription("搜索当前歌单");
+-        playlistSearch.setOnClickListener(v -> showPlaylistSearch(p));
+-        playlistActions.addView(playlistSearch, Ui.lp(Ui.dp(this, 38), Ui.dp(this, 38)));
++        // V27: frequent search sits at the far right. All three actions are slightly larger for easier tapping.
++        FrameLayout manage = Ui.iconButton(this, IconView.Type.MORE, 42, Ui.GOLD,
++                Color.argb(22, Color.red(Ui.GOLD), Color.green(Ui.GOLD), Color.blue(Ui.GOLD)));
++        manage.setContentDescription("批量管理歌曲");
++        manage.setOnClickListener(v -> showSongBatchManager(p.name, p.songs, p.id));
++        playlistActions.addView(manage, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
+ 
+         Space actionGap1 = new Space(this);
+-        playlistActions.addView(actionGap1, Ui.lp(Ui.dp(this, 6), 1));
+-        FrameLayout add = Ui.iconButton(this, IconView.Type.PLUS, 38, Ui.GREEN,
++        playlistActions.addView(actionGap1, Ui.lp(Ui.dp(this, 7), 1));
++        FrameLayout add = Ui.iconButton(this, IconView.Type.PLUS, 42, Ui.GREEN,
+                 Color.argb(22, Color.red(Ui.GREEN), Color.green(Ui.GREEN), Color.blue(Ui.GREEN)));
+         add.setContentDescription("向歌单添加歌曲");
+         add.setOnClickListener(v -> showAddSongsToPlaylist(p));
+-        playlistActions.addView(add, Ui.lp(Ui.dp(this, 38), Ui.dp(this, 38)));
++        playlistActions.addView(add, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
+ 
+         Space actionGap2 = new Space(this);
+-        playlistActions.addView(actionGap2, Ui.lp(Ui.dp(this, 6), 1));
+-        FrameLayout manage = Ui.iconButton(this, IconView.Type.MORE, 38, Ui.GOLD,
+-                Color.argb(22, Color.red(Ui.GOLD), Color.green(Ui.GOLD), Color.blue(Ui.GOLD)));
+-        manage.setContentDescription("批量管理歌曲");
+-        manage.setOnClickListener(v -> showSongBatchManager(p.name, p.songs, p.id));
+-        playlistActions.addView(manage, Ui.lp(Ui.dp(this, 38), Ui.dp(this, 38)));
++        playlistActions.addView(actionGap2, Ui.lp(Ui.dp(this, 7), 1));
++        FrameLayout playlistSearch = Ui.iconButton(this, IconView.Type.SEARCH, 42, Ui.CYAN,
++                Color.argb(22, Color.red(Ui.CYAN), Color.green(Ui.CYAN), Color.blue(Ui.CYAN)));
++        playlistSearch.setContentDescription("搜索当前歌单");
++        playlistSearch.setOnClickListener(v -> showPlaylistSearch(p));
++        playlistActions.addView(playlistSearch, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
+ 
+         return pageScaffold("歌单详情", "已保存到本机", body, playlistActions);
+     }
+@@ -3050,7 +3183,7 @@
+                 loadLyrics(snapshot.song);
+                 boolean modalOpen = modalOverlay != null && modalOverlay.getVisibility() == View.VISIBLE;
+                 boolean playerOpen = playerOverlay != null && playerOverlay.getVisibility() == View.VISIBLE;
+-                if (tab == 0 && !modalOpen && !playerOpen) renderTab();
++                if (tab == 0 && !modalOpen && !playerOpen && onboardingOverlay == null) renderTab();
+             }
+             if (snapshot.error != null && !snapshot.error.equals(lastErrorShown)) {
+                 lastErrorShown = snapshot.error;
+@@ -3855,6 +3988,10 @@
+     }
+ 
+     private void handleBackNavigation() {
++        if (onboardingOverlay != null && onboardingOverlay.getVisibility() == View.VISIBLE) {
++            finishOnboarding();
++            return;
++        }
+         if (activeSearchSuggestions != null && activeSearchSuggestions.getVisibility() == View.VISIBLE) {
+             hideSearchSuggestions();
+             return;
+@@ -3893,6 +4030,10 @@
+ 
+     @Override protected void onDestroy() {
+         stopHomeLyricQuoteTicker();
++        if (onboardingOverlay != null) {
++            try { ((ViewGroup) onboardingOverlay.getParent()).removeView(onboardingOverlay); } catch (Exception ignored) { }
++            onboardingOverlay = null;
++        }
+         if (Build.VERSION.SDK_INT >= 33 && backInvokedCallback != null) {
+             try { getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backInvokedCallback); } catch (Exception ignored) { }
+             backInvokedCallback = null;
+--- /dev/null	2026-08-10 10:41:42.059413361 +0000
++++ /mnt/data/v27work/LunaxyMusic-V26/app/src/main/java/com/xingyu/music/ui/OnboardingOverlay.java	2026-08-10 11:09:32.585113278 +0000
+@@ -0,0 +1,232 @@
++package com.xingyu.music.ui;
++
++import android.content.Context;
++import android.graphics.Canvas;
++import android.graphics.Color;
++import android.graphics.Paint;
++import android.graphics.Path;
++import android.graphics.PorterDuff;
++import android.graphics.PorterDuffXfermode;
++import android.graphics.RectF;
++import android.view.Gravity;
++import android.view.View;
++import android.view.ViewGroup;
++import android.widget.FrameLayout;
++import android.widget.LinearLayout;
++import android.widget.TextView;
++
++/**
++ * Lightweight first-run coach-mark overlay for Lunaxy Music.
++ *
++ * This class is deliberately UI-only: it knows nothing about playback, sources or networking.
++ * The real page stays underneath; the overlay dims it, cuts a rounded spotlight around a target
++ * view, and points a small glass instruction card at that target.
++ */
++public final class OnboardingOverlay extends FrameLayout {
++    public interface Callback {
++        void onNext();
++        void onSkip();
++    }
++
++    private final Paint shadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private final Paint clearPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private final Paint arrowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private final RectF targetRect = new RectF();
++    private final RectF expandedTargetRect = new RectF();
++    private final LinearLayout card;
++    private final TextView stepView;
++    private final TextView titleView;
++    private final TextView bodyView;
++    private final TextView nextView;
++    private final TextView skipView;
++
++    private View target;
++    private Callback callback;
++    private int cardX;
++    private int cardY;
++    private int cardWidth;
++    private int cardHeight;
++    private boolean cardBelowTarget = true;
++
++    public OnboardingOverlay(Context context) {
++        super(context);
++        setWillNotDraw(false);
++        setClickable(true);
++        setFocusable(true);
++        setLayerType(View.LAYER_TYPE_SOFTWARE, null);
++
++        shadePaint.setColor(Color.argb(208, 0, 0, 0));
++        clearPaint.setColor(Color.TRANSPARENT);
++        clearPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
++
++        borderPaint.setStyle(Paint.Style.STROKE);
++        borderPaint.setStrokeWidth(Ui.dp(context, 1.4f));
++        borderPaint.setColor(Color.argb(215, Color.red(Ui.LYRIC_ICE_START), Color.green(Ui.LYRIC_ICE_START), Color.blue(Ui.LYRIC_ICE_START)));
++        borderPaint.setShadowLayer(Ui.dp(context, 11), 0, 0, Color.argb(145, 105, 171, 255));
++
++        arrowPaint.setStyle(Paint.Style.STROKE);
++        arrowPaint.setStrokeCap(Paint.Cap.ROUND);
++        arrowPaint.setStrokeJoin(Paint.Join.ROUND);
++        arrowPaint.setStrokeWidth(Ui.dp(context, 2.0f));
++        arrowPaint.setColor(Color.argb(235, 185, 232, 255));
++        arrowPaint.setShadowLayer(Ui.dp(context, 7), 0, 0, Color.argb(120, 105, 171, 255));
++
++        card = Ui.column(context);
++        card.setPadding(Ui.dp(context, 17), Ui.dp(context, 15), Ui.dp(context, 17), Ui.dp(context, 14));
++        card.setBackground(Ui.stroke(Color.argb(246, 9, 12, 18), 20,
++                Color.argb(70, 201, 242, 255), context));
++        card.setElevation(Ui.dp(context, 18));
++
++        LinearLayout top = Ui.row(context);
++        top.setGravity(Gravity.CENTER_VERTICAL);
++        stepView = Ui.text(context, "1 / 5", 10.5f, Ui.CYAN, true);
++        top.addView(stepView, new LinearLayout.LayoutParams(0, Ui.dp(context, 28), 1f));
++        skipView = Ui.text(context, "跳过", 10.8f, Ui.DIM, true);
++        skipView.setGravity(Gravity.CENTER);
++        skipView.setPadding(Ui.dp(context, 10), 0, Ui.dp(context, 10), 0);
++        skipView.setClickable(true);
++        Ui.applyRipple(skipView, Color.argb(32, 255, 255, 255));
++        skipView.setOnClickListener(v -> {
++            if (callback != null) callback.onSkip();
++        });
++        top.addView(skipView, Ui.lp(Ui.dp(context, 58), Ui.dp(context, 28)));
++        card.addView(top, Ui.lp(-1, Ui.dp(context, 28)));
++
++        titleView = Ui.text(context, "欢迎使用 Lunaxy Music", 16.5f, Ui.TEXT, true);
++        LinearLayout.LayoutParams titleLp = Ui.lp(-1, -2);
++        titleLp.topMargin = Ui.dp(context, 4);
++        card.addView(titleView, titleLp);
++
++        bodyView = Ui.text(context, "", 12.2f, Ui.TEXT_2, false);
++        bodyView.setGravity(Gravity.START);
++        bodyView.setLineSpacing(Ui.dp(context, 2), 1f);
++        LinearLayout.LayoutParams bodyLp = Ui.lp(-1, -2);
++        bodyLp.topMargin = Ui.dp(context, 8);
++        card.addView(bodyView, bodyLp);
++
++        LinearLayout footer = Ui.row(context);
++        footer.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
++        nextView = Ui.text(context, "下一步  ›", 11.8f, Color.rgb(10, 14, 20), true);
++        nextView.setGravity(Gravity.CENTER);
++        nextView.setBackground(Ui.primaryFill(Ui.CYAN, 15, context));
++        nextView.setClickable(true);
++        Ui.applyRipple(nextView, Color.argb(32, 0, 0, 0));
++        nextView.setOnClickListener(v -> {
++            if (callback != null) callback.onNext();
++        });
++        footer.addView(nextView, Ui.lp(Ui.dp(context, 104), Ui.dp(context, 38)));
++        LinearLayout.LayoutParams footerLp = Ui.lp(-1, Ui.dp(context, 42));
++        footerLp.topMargin = Ui.dp(context, 12);
++        card.addView(footer, footerLp);
++
++        addView(card);
++    }
++
++    public void setStep(View target, String title, String body, int index, int total,
++                        boolean last, Callback callback) {
++        this.target = target;
++        this.callback = callback;
++        stepView.setText(Math.max(1, index) + " / " + Math.max(index, total));
++        titleView.setText(title == null ? "" : title);
++        bodyView.setText(body == null ? "" : body);
++        nextView.setText(last ? "开始使用" : "下一步  ›");
++        skipView.setVisibility(last ? View.INVISIBLE : View.VISIBLE);
++        requestLayout();
++        invalidate();
++    }
++
++    public void refreshTarget() {
++        requestLayout();
++        invalidate();
++    }
++
++    @Override protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
++        int width = MeasureSpec.getSize(widthMeasureSpec);
++        int height = MeasureSpec.getSize(heightMeasureSpec);
++        setMeasuredDimension(width, height);
++        cardWidth = Math.min(Ui.dp(getContext(), 326), Math.max(Ui.dp(getContext(), 244), width - Ui.dp(getContext(), 36)));
++        int childW = MeasureSpec.makeMeasureSpec(cardWidth, MeasureSpec.EXACTLY);
++        int childH = MeasureSpec.makeMeasureSpec(Math.max(0, height - Ui.dp(getContext(), 42)), MeasureSpec.AT_MOST);
++        card.measure(childW, childH);
++        cardHeight = card.getMeasuredHeight();
++    }
++
++    @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
++        updateTargetRect();
++        int margin = Ui.dp(getContext(), 18);
++        int gap = Ui.dp(getContext(), 22);
++        float centerX = targetRect.isEmpty() ? getWidth() / 2f : targetRect.centerX();
++        cardX = Math.round(centerX - cardWidth / 2f);
++        cardX = Math.max(margin, Math.min(cardX, getWidth() - margin - cardWidth));
++
++        int belowY = Math.round(targetRect.bottom) + gap;
++        int aboveY = Math.round(targetRect.top) - gap - cardHeight;
++        if (!targetRect.isEmpty() && belowY + cardHeight <= getHeight() - margin) {
++            cardY = belowY;
++            cardBelowTarget = true;
++        } else if (!targetRect.isEmpty() && aboveY >= margin) {
++            cardY = aboveY;
++            cardBelowTarget = false;
++        } else {
++            cardY = Math.max(margin, (getHeight() - cardHeight) / 2);
++            cardBelowTarget = cardY > targetRect.centerY();
++        }
++        card.layout(cardX, cardY, cardX + cardWidth, cardY + cardHeight);
++    }
++
++    private void updateTargetRect() {
++        targetRect.setEmpty();
++        if (target == null || target.getWidth() <= 0 || target.getHeight() <= 0) return;
++        int[] tl = new int[2];
++        int[] ol = new int[2];
++        target.getLocationOnScreen(tl);
++        getLocationOnScreen(ol);
++        targetRect.set(tl[0] - ol[0], tl[1] - ol[1],
++                tl[0] - ol[0] + target.getWidth(), tl[1] - ol[1] + target.getHeight());
++        float pad = Ui.dp(getContext(), 7);
++        expandedTargetRect.set(targetRect.left - pad, targetRect.top - pad,
++                targetRect.right + pad, targetRect.bottom + pad);
++    }
++
++    @Override protected void dispatchDraw(Canvas canvas) {
++        updateTargetRect();
++        int save = canvas.saveLayer(0, 0, getWidth(), getHeight(), null);
++        canvas.drawRect(0, 0, getWidth(), getHeight(), shadePaint);
++        if (!targetRect.isEmpty()) {
++            float radius = Math.min(Ui.dp(getContext(), 22), expandedTargetRect.height() / 2f);
++            canvas.drawRoundRect(expandedTargetRect, radius, radius, clearPaint);
++        }
++        canvas.restoreToCount(save);
++
++        if (!targetRect.isEmpty()) {
++            float radius = Math.min(Ui.dp(getContext(), 22), expandedTargetRect.height() / 2f);
++            canvas.drawRoundRect(expandedTargetRect, radius, radius, borderPaint);
++            drawArrow(canvas);
++        }
++        super.dispatchDraw(canvas);
++    }
++
++    private void drawArrow(Canvas canvas) {
++        float tx = targetRect.centerX();
++        float ty = cardBelowTarget ? expandedTargetRect.bottom + Ui.dp(getContext(), 3)
++                : expandedTargetRect.top - Ui.dp(getContext(), 3);
++        float cx = Math.max(cardX + Ui.dp(getContext(), 28), Math.min(tx, cardX + cardWidth - Ui.dp(getContext(), 28)));
++        float cy = cardBelowTarget ? cardY - Ui.dp(getContext(), 4) : cardY + cardHeight + Ui.dp(getContext(), 4);
++
++        float bendY = (ty + cy) / 2f;
++        Path path = new Path();
++        path.moveTo(cx, cy);
++        path.cubicTo(cx, bendY, tx, bendY, tx, ty);
++        canvas.drawPath(path, arrowPaint);
++
++        float dir = cardBelowTarget ? 1f : -1f;
++        float head = Ui.dp(getContext(), 7);
++        Path arrow = new Path();
++        arrow.moveTo(tx, ty);
++        arrow.lineTo(tx - head, ty + dir * head);
++        arrow.moveTo(tx, ty);
++        arrow.lineTo(tx + head, ty + dir * head);
++        canvas.drawPath(arrow, arrowPaint);
++    }
++}
+--- /mnt/data/v27base/LunaxyMusic-V26/app/build.gradle.kts	2026-08-10 10:45:43.000000000 +0000
++++ /mnt/data/v27work/LunaxyMusic-V26/app/build.gradle.kts	2026-08-10 11:09:15.366211936 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 29
+-        versionName = "26.0.0"
++        versionCode = 30
++        versionName = "27.0.0"
+     }
+ 
+     buildTypes {
+--- /mnt/data/v27base/LunaxyMusic-V26/BUILD_APK.bat	2026-08-10 10:49:59.000000000 +0000
++++ /mnt/data/v27work/LunaxyMusic-V26/BUILD_APK.bat	2026-08-10 11:10:36.176179363 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   LunaxyMusic V26 - Debug APK Build
++echo   LunaxyMusic V27 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V26-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V27-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\LunaxyMusic-V26-debug.apk
++echo [OK] APK: %CD%\dist\LunaxyMusic-V27-debug.apk
+ pause
+--- "/mnt/data/v27base/LunaxyMusic-V26/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-10 10:50:44.000000000 +0000
++++ "/mnt/data/v27work/LunaxyMusic-V26/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-10 11:10:36.176387249 +0000
+@@ -1,4 +1,4 @@
+-LunaxyMusic V26.0 — 当前 Android Studio 完整工程
++LunaxyMusic V27.0 — 当前 Android Studio 完整工程
+ 
+ 【本版快速验收】
+ 1. 覆盖安装后系统显示名称应为 Lunaxy Music，原图标保持不变；包名仍为 com.xingyu.music，因此历史/收藏/歌单/音源学习和 URL 缓存继续沿用。
+@@ -6,8 +6,8 @@
+ 3. 歌单详情不再显示“从第一首播放”卡片，右上角为搜索 / 添加 / 批量管理。点歌单任意歌曲仍会装载整个歌单并从该首开始。
+ 4. 新加进歌单的歌曲应出现在最顶部；歌单列表三点菜单可重命名或删除。
+ 5. 首页标题下方不再显示旧品牌说明，而是从收藏/歌单歌词里随机取一句，约每 3 秒切换；“本地口味 · 天气与时间”已删除。
+-6. 播放核心保护：详见 changes\PLAYBACK_CORE_GUARD_V26.txt；完整 V25→V26 差异见 changes\V25-to-V26_UI_NAV_PLAYLIST.patch。
+-7. BUILD_APK.bat 成功构建后输出 dist\LunaxyMusic-V26-debug.apk。
++6. 播放核心保护：详见 changes\PLAYBACK_CORE_GUARD_V27.txt；完整 V26→V27 差异见 changes\V26-to-V27_ONBOARDING_UI.patch。
++7. BUILD_APK.bat 成功构建后输出 dist\LunaxyMusic-V27-debug.apk。
+ 
+ ----------------------------------------
+ 以下保留旧版本验收记录，供回退/排查历史问题使用。

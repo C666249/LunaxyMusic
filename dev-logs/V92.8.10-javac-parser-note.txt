@@ -1,0 +1,4 @@
+Parser-level Java diagnostic
+- Command: javac -proc:none -Xmaxerrs 10000 on MainActivity.java, RecommendationGlassDrawable.java and CoverAmbientDrawable.java.
+- Result: javac cannot resolve Android framework symbols because this runner has no Android SDK android.jar.
+- No parser/syntax diagnostics were present (no illegal start, missing delimiter, unclosed block, invalid declaration, etc.).

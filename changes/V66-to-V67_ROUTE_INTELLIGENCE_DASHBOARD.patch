@@ -1,0 +1,575 @@
+--- /mnt/data/MainActivity.V66.java	2026-08-14 06:46:43.220836124 +0000
++++ app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-14 06:53:36.326836138 +0000
+@@ -86,6 +86,7 @@
+ import com.xingyu.music.data.RecommendationEngine;
+ import com.xingyu.music.data.SearchRanker;
+ import com.xingyu.music.data.SearchPaginationApi;
++import com.xingyu.music.data.SourceHealthStore;
+ import com.xingyu.music.data.V14PlaybackStateMigration;
+ import com.xingyu.music.data.WeatherMoodProvider;
+ import com.xingyu.music.model.ImportedPlaylist;
+@@ -163,6 +164,14 @@
+     private WeatherMoodProvider weatherMood;
+     private PlaybackService playback;
+     private boolean bound;
++    private int sourceDashboardTab = 0;
++    private int sourceMatrixFilter = 0;
++    private static final String[][] SOURCE_UI_PROVIDERS = {
++            {"qdy", "QDY"}, {"huibq", "Huibq"}, {"juhe", "Juhe"}, {"lx", "LX"},
++            {"flower", "Flower"}, {"grass", "Grass"}, {"sixyin", "SixYin"}, {"ikun", "ikun"}
++    };
++    private static final String[] SOURCE_UI_PLATFORMS = {"tx", "kw", "kg", "wy"};
++    private static final String[] SOURCE_UI_PLATFORM_LABELS = {"QQ", "酷我", "酷狗", "网易"};
+ 
+     private FrameLayout appRoot;
+     private FrameLayout safeLayer;
+@@ -1086,29 +1095,444 @@
+         presentModal(card);
+     }
+ 
++    /**
++     * V67 Route Intelligence Dashboard. Observation-only UI: it reads V66 Learning V4 telemetry
++     * through SourceHealthStore peek/getter APIs and never writes routing preference, READY cache,
++     * provider cooldown, resolver order or playback state.
++     */
+     private void showSourceStatus() {
+-        String status = playback == null ? "音源管理器正在启动…" : playback.sourceStatus();
+-        showGlassMessage("音源状态", status + "\n\nQQ、酷我、酷狗与网易会自动选择可用路线。V66 的路线经验会随时间衰减，旧成功/失败会慢慢回到中性；READY URL 仍只作为临时快速路径。",
+-                "关闭", null, "音源工具", this::showSourceTools);
+-    }
+-
+-    private void showSourceTools() {
+-        showGlassOptions("音源工具", "只处理网络音源环境，不会修改歌单、收藏、离线音乐或本地导入。",
+-                new String[]{"更新社区源", "重新学习音源"}, which -> {
+-                    if (playback == null) { toast("播放器正在连接"); return; }
+-                    if (which == 0) {
+-                        playback.resetCommunityProviderScripts();
+-                        toast("社区音源已刷新，下次使用时会重新获取");
+-                    } else {
+-                        showGlassMessage("重新学习音源",
+-                                "把播放/下载的路线偏好恢复到中性，再从新的真实成功与失败重新学习。\n\n不会清空 READY URL、歌曲平台身份、歌单、收藏、离线音乐；429 / IP 限制 / Provider 故障等正在生效的安全冷却也会继续保留。",
+-                                "重新学习", () -> {
+-                                    if (playback == null) { toast("播放器正在连接"); return; }
+-                                    playback.resetRouteLearning();
+-                                    toast("音源路线已恢复中性，将从新的实播结果重新学习");
+-                                }, "取消", null);
+-                    }
+-                });
++        LinearLayout card = modalCard("智能音源", "Route Intelligence · 只观察，不干预当前选路与学习");
++        LinearLayout content = Ui.column(this);
++        LinearLayout tabs = sourceDashboardTabs(content);
++        LinearLayout.LayoutParams tp = Ui.lp(-1, Ui.dp(this, 46)); tp.topMargin = Ui.dp(this, 8);
++        card.addView(tabs, tp);
++
++        ScrollView scroll = new ScrollView(this);
++        scroll.setFillViewport(true);
++        scroll.setVerticalScrollBarEnabled(false);
++        scroll.addView(content, new FrameLayout.LayoutParams(-1, -2));
++        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, 0, 1f); sp.topMargin = Ui.dp(this, 8);
++        card.addView(scroll, sp);
++
++        renderSourceDashboard(content);
++        presentFractionModal(card, .84f);
++    }
++
++    private LinearLayout sourceDashboardTabs(LinearLayout content) {
++        LinearLayout row = Ui.row(this);
++        row.setGravity(Gravity.CENTER_VERTICAL);
++        String[] labels = {"概览", "矩阵", "学习", "工具"};
++        for (int i = 0; i < labels.length; i++) {
++            final int tabIndex = i;
++            LinearLayout cell = Ui.column(this);
++            cell.setGravity(Gravity.CENTER);
++            cell.setTag(i);
++            TextView text = Ui.text(this, labels[i], 12.2f, i == sourceDashboardTab ? Ui.TEXT : Ui.DIM, i == sourceDashboardTab);
++            text.setGravity(Gravity.CENTER);
++            cell.addView(text, new LinearLayout.LayoutParams(-1, 0, 1f));
++            View line = new View(this);
++            line.setBackgroundColor(i == sourceDashboardTab ? Ui.CYAN : Color.TRANSPARENT);
++            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, 24), Ui.dp(this, 2));
++            lp.gravity = Gravity.CENTER_HORIZONTAL;
++            cell.addView(line, lp);
++            cell.setClickable(true); cell.setFocusable(true);
++            cell.setOnClickListener(v -> {
++                if (sourceDashboardTab == tabIndex) return;
++                sourceDashboardTab = tabIndex;
++                refreshSourceDashboardTabs(row);
++                renderSourceDashboard(content);
++            });
++            Ui.applyRipple(cell, Color.TRANSPARENT);
++            row.addView(cell, new LinearLayout.LayoutParams(0, -1, 1f));
++        }
++        return row;
++    }
++
++    private void refreshSourceDashboardTabs(LinearLayout row) {
++        for (int i = 0; i < row.getChildCount(); i++) {
++            View raw = row.getChildAt(i);
++            if (!(raw instanceof LinearLayout)) continue;
++            LinearLayout cell = (LinearLayout) raw;
++            boolean selected = i == sourceDashboardTab;
++            if (cell.getChildCount() > 0 && cell.getChildAt(0) instanceof TextView) {
++                TextView text = (TextView) cell.getChildAt(0);
++                text.setTextColor(selected ? Ui.TEXT : Ui.DIM);
++                text.setTypeface(selected ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
++            }
++            if (cell.getChildCount() > 1) cell.getChildAt(1).setBackgroundColor(selected ? Ui.CYAN : Color.TRANSPARENT);
++        }
++    }
++
++    private void renderSourceDashboard(LinearLayout host) {
++        host.removeAllViews();
++        if (playback == null) {
++            host.addView(compactEmpty("播放器正在连接，稍后再查看路线学习状态"), marginTop(8));
++            return;
++        }
++        SourceHealthStore health = new SourceHealthStore(this);
++        if (sourceDashboardTab == 0) renderSourceOverview(host, health);
++        else if (sourceDashboardTab == 1) renderSourceMatrix(host, health);
++        else if (sourceDashboardTab == 2) renderSourceLearning(host, health);
++        else renderSourceToolsTab(host);
++    }
++
++    private void renderSourceOverview(LinearLayout host, SourceHealthStore health) {
++        String bestProvider = "等待新证据", bestPlatform = "";
++        float bestScore = -999f;
++        int readyTotal = 0, failTotal = 0, provenPlatforms = 0, coolingCells = 0;
++        for (String[] provider : SOURCE_UI_PROVIDERS) {
++            readyTotal += health.totalOk(provider[0]);
++            failTotal += health.totalFail(provider[0]);
++            for (String platform : SOURCE_UI_PLATFORMS) {
++                float score = health.peekPlatformLearningScore(provider[0], platform);
++                if (score > bestScore) { bestScore = score; bestProvider = provider[1]; bestPlatform = platform; }
++                if (health.cooling(provider[0], platform, "320k") || health.cooling(provider[0], platform, "128k")) coolingCells++;
++            }
++        }
++        for (String platform : SOURCE_UI_PLATFORMS) {
++            int ok = 0;
++            for (String[] provider : SOURCE_UI_PROVIDERS) ok += health.platformOk(provider[0], platform);
++            if (ok > 0) provenPlatforms++;
++        }
++
++        LinearLayout hero = Ui.column(this);
++        hero.setPadding(Ui.dp(this, 16), Ui.dp(this, 14), Ui.dp(this, 16), Ui.dp(this, 14));
++        hero.setBackground(Ui.tintedGlass(bestScore > .35f ? Ui.CYAN : Ui.PURPLE, 20, this));
++        TextView state = Ui.text(this, sourceEnvironmentLabel(bestScore, coolingCells), 16.0f, Ui.TEXT, true);
++        hero.addView(state, Ui.lp(-1, Ui.dp(this, 28)));
++        TextView subtitle = Ui.text(this, "近期结果决定优先级，久远成功/失败会自动衰减回中性", 11.1f, Ui.TEXT_2, false);
++        hero.addView(subtitle, Ui.lp(-1, Ui.dp(this, 26)));
++        LinearLayout stats = Ui.row(this);
++        stats.addView(sourceStat("已验证平台", provenPlatforms + "/4"), new LinearLayout.LayoutParams(0, Ui.dp(this, 54), 1f));
++        stats.addView(sourceStat("历史 READY", String.valueOf(readyTotal)), new LinearLayout.LayoutParams(0, Ui.dp(this, 54), 1f));
++        stats.addView(sourceStat("冷却格子", String.valueOf(coolingCells)), new LinearLayout.LayoutParams(0, Ui.dp(this, 54), 1f));
++        hero.addView(stats, marginTop(6));
++        if (bestScore > -998f) {
++            TextView best = Ui.text(this, "当前最强近期证据 · " + bestProvider + (bestPlatform.isEmpty() ? "" : " × " + sourcePlatformLabel(bestPlatform))
++                    + "  " + sourceScore(bestScore), 11.4f, bestScore >= 0f ? Ui.CYAN : Ui.PINK, true);
++            hero.addView(best, marginTop(6));
++        }
++        host.addView(hero, marginTop(4));
++
++        TextView section = Ui.text(this, "当前 Provider", 13.5f, Ui.TEXT, true);
++        host.addView(section, marginTop(18));
++        List<String[]> providers = sourceSortedProviders(health, false);
++        int shown = 0;
++        for (String[] provider : providers) {
++            if (sourceProviderLowActivity(health, provider[0])) continue;
++            host.addView(sourceProviderCard(health, provider[0], provider[1]), marginTop(8));
++            if (++shown >= 4) break;
++        }
++        int low = 0;
++        for (String[] provider : SOURCE_UI_PROVIDERS) if (sourceProviderLowActivity(health, provider[0])) low++;
++        if (low > 0) {
++            TextView hint = Ui.text(this, "还有 " + low + " 个低活跃 Provider 收纳在「矩阵 → 低活跃」。这只是观察筛选，后台并未静默它们。", 10.7f, Ui.DIM, false);
++            hint.setLineSpacing(0f, 1.20f);
++            host.addView(hint, marginTop(10));
++        }
++
++        TextView history = Ui.text(this, "历史统计只是履历，不直接决定今天的 Matrix 排序 · fail " + failTotal, 10.5f, Ui.DIM, false);
++        host.addView(history, marginTop(16));
++    }
++
++    private View sourceStat(String label, String value) {
++        LinearLayout box = Ui.column(this); box.setGravity(Gravity.CENTER);
++        TextView v = Ui.text(this, value, 15.2f, Ui.TEXT, true); v.setGravity(Gravity.CENTER);
++        TextView l = Ui.text(this, label, 9.6f, Ui.DIM, false); l.setGravity(Gravity.CENTER);
++        box.addView(v, Ui.lp(-1, Ui.dp(this, 28))); box.addView(l, Ui.lp(-1, Ui.dp(this, 20)));
++        return box;
++    }
++
++    private View sourceProviderCard(SourceHealthStore health, String providerId, String label) {
++        LinearLayout card = Ui.column(this);
++        card.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12));
++        card.setBackground(Ui.glass(132, 18, 20, this));
++        LinearLayout top = Ui.row(this);
++        float best = sourceProviderBestScore(health, providerId);
++        TextView name = Ui.text(this, label, 13.5f, Ui.TEXT, true);
++        top.addView(name, new LinearLayout.LayoutParams(0, Ui.dp(this, 28), 1f));
++        TextView badge = Ui.pill(this, sourceProviderState(health, providerId), sourceProviderLowActivity(health, providerId) ? Ui.PINK : (best > .45f ? Ui.CYAN : Ui.PURPLE));
++        top.addView(badge, Ui.lp(-2, Ui.dp(this, 24)));
++        card.addView(top, Ui.lp(-1, Ui.dp(this, 30)));
++        TextView score = Ui.text(this, "最佳近期分 " + sourceScore(best) + "   ·   历史 READY " + health.totalOk(providerId) + "   ·   fail " + health.totalFail(providerId), 10.8f, Ui.TEXT_2, false);
++        card.addView(score, Ui.lp(-1, Ui.dp(this, 24)));
++        String route = health.lastRoute(providerId);
++        String reason = health.lastReason(providerId);
++        String detail = !route.isEmpty() ? "最近成功路线 " + sourceRouteLabel(route) : (reason.isEmpty() ? "等待新的真实播放证据" : "最近状态 " + reason);
++        TextView d = Ui.text(this, detail, 10.2f, Ui.DIM, false); d.setSingleLine(true); d.setEllipsize(TextUtils.TruncateAt.END);
++        card.addView(d, Ui.lp(-1, Ui.dp(this, 22)));
++        return card;
++    }
++
++    private void renderSourceMatrix(LinearLayout host, SourceHealthStore health) {
++        TextView expl = Ui.text(this, "二维矩阵展示 Provider × Catalog 的近期学习分。默认「当前」会把已有充分负面证据的 Provider 收起；这只是 UI 观察分类，不改变后台选路。", 10.8f, Ui.TEXT_2, false);
++        expl.setLineSpacing(0f, 1.20f); host.addView(expl, marginTop(4));
++
++        LinearLayout filters = Ui.row(this);
++        String[] f = {"当前", "全部", "低活跃"};
++        for (int i = 0; i < f.length; i++) {
++            final int idx = i;
++            TextView t = Ui.text(this, f[i], 11.5f, i == sourceMatrixFilter ? Ui.TEXT : Ui.DIM, i == sourceMatrixFilter);
++            t.setGravity(Gravity.CENTER); t.setClickable(true); t.setFocusable(true);
++            t.setBackground(i == sourceMatrixFilter ? Ui.tintedGlass(Ui.CYAN, 13, this) : Ui.glass(36, 13, 10, this));
++            t.setOnClickListener(v -> { sourceMatrixFilter = idx; renderSourceDashboard(host); });
++            Ui.applyRipple(t, Color.TRANSPARENT);
++            LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(0, Ui.dp(this, 36), 1f); if (i > 0) fp.leftMargin = Ui.dp(this, 7);
++            filters.addView(t, fp);
++        }
++        host.addView(filters, marginTop(12));
++
++        HorizontalScrollView hs = new HorizontalScrollView(this); hs.setHorizontalScrollBarEnabled(false);
++        LinearLayout table = Ui.column(this);
++        LinearLayout header = Ui.row(this);
++        TextView empty = Ui.text(this, "Provider", 9.8f, Ui.DIM, true); empty.setGravity(Gravity.CENTER_VERTICAL);
++        header.addView(empty, Ui.lp(Ui.dp(this, 82), Ui.dp(this, 36)));
++        for (String label : SOURCE_UI_PLATFORM_LABELS) {
++            TextView h = Ui.text(this, label, 10.3f, Ui.TEXT_2, true); h.setGravity(Gravity.CENTER);
++            header.addView(h, Ui.lp(Ui.dp(this, 64), Ui.dp(this, 36)));
++        }
++        table.addView(header, Ui.lp(-2, Ui.dp(this, 36)));
++
++        List<String[]> providers = sourceSortedProviders(health, false);
++        int count = 0;
++        for (String[] provider : providers) {
++            boolean low = sourceProviderLowActivity(health, provider[0]);
++            if (sourceMatrixFilter == 0 && low) continue;
++            if (sourceMatrixFilter == 2 && !low) continue;
++            table.addView(sourceMatrixRow(health, provider[0], provider[1], low), marginTop(6)); count++;
++        }
++        if (count == 0) {
++            TextView none = Ui.text(this, sourceMatrixFilter == 2 ? "暂无低活跃 Provider" : "暂无可展示 Provider", 11.3f, Ui.DIM, false);
++            none.setGravity(Gravity.CENTER); table.addView(none, Ui.lp(Ui.dp(this, 338), Ui.dp(this, 70)));
++        }
++        hs.addView(table, new FrameLayout.LayoutParams(-2, -2));
++        host.addView(hs, marginTop(10));
++
++        TextView legend = Ui.text(this, "近期分：正值=最近更可信 · 接近0=中性/等待新证据 · 负值=近期降权。历史 READY 只在 Cell 详情里作为履历展示。", 10.2f, Ui.DIM, false);
++        legend.setLineSpacing(0f, 1.18f); host.addView(legend, marginTop(12));
++    }
++
++    private View sourceMatrixRow(SourceHealthStore health, String providerId, String label, boolean low) {
++        LinearLayout row = Ui.row(this);
++        TextView name = Ui.text(this, label, 10.6f, low ? Ui.DIM : Ui.TEXT_2, true);
++        name.setSingleLine(true); name.setEllipsize(TextUtils.TruncateAt.END);
++        row.addView(name, Ui.lp(Ui.dp(this, 82), Ui.dp(this, 48)));
++        for (int i = 0; i < SOURCE_UI_PLATFORMS.length; i++) {
++            String platform = SOURCE_UI_PLATFORMS[i];
++            float score = health.peekPlatformLearningScore(providerId, platform);
++            int samples = health.platformOk(providerId, platform) + health.platformFail(providerId, platform);
++            boolean cooling = health.cooling(providerId, platform, "320k") || health.cooling(providerId, platform, "128k");
++            TextView cell = Ui.text(this, (cooling ? "◷ " : "") + sourceScore(score), 10.8f, sourceScoreColor(score), true);
++            cell.setGravity(Gravity.CENTER); cell.setClickable(true); cell.setFocusable(true);
++            int accent = cooling ? Ui.GOLD : (score > .35f ? Ui.CYAN : (score < -.35f ? Ui.PINK : Ui.PURPLE));
++            cell.setBackground(Ui.tintedGlass(accent, 13, this));
++            String pl = SOURCE_UI_PLATFORM_LABELS[i];
++            cell.setOnClickListener(v -> showSourceCellDetail(providerId, label, platform, pl));
++            Ui.applyRipple(cell, Color.TRANSPARENT);
++            LinearLayout.LayoutParams cp = Ui.lp(Ui.dp(this, 60), Ui.dp(this, 44)); cp.leftMargin = Ui.dp(this, 4);
++            row.addView(cell, cp);
++        }
++        return row;
++    }
++
++    private void showSourceCellDetail(String providerId, String providerLabel, String platform, String platformLabel) {
++        SourceHealthStore health = new SourceHealthStore(this);
++        float p = health.peekPlatformLearningScore(providerId, platform);
++        float q320 = health.peekLearningScore(providerId, platform, "320k");
++        float q128 = health.peekLearningScore(providerId, platform, "128k");
++        int ok320 = health.ok(providerId, platform, "320k"), fail320 = health.fail(providerId, platform, "320k");
++        int ok128 = health.ok(providerId, platform, "128k"), fail128 = health.fail(providerId, platform, "128k");
++        long lat320 = health.latency(providerId, platform, "320k"), lat128 = health.latency(providerId, platform, "128k");
++        long cooldown = Math.max(health.cooldownRemaining(providerId, platform, "320k"), health.cooldownRemaining(providerId, platform, "128k"));
++        long lastOk = Math.max(health.lastOkAt(providerId, platform, "320k"), health.lastOkAt(providerId, platform, "128k"));
++        long lastFail = Math.max(health.lastFailAt(providerId, platform, "320k"), health.lastFailAt(providerId, platform, "128k"));
++        String reason = health.reason(providerId, platform, "320k"); if (reason == null || reason.isEmpty()) reason = health.reason(providerId, platform, "128k");
++        StringBuilder b = new StringBuilder();
++        b.append("近期综合分  ").append(sourceScore(p)).append("\n\n")
++                .append("320k  ·  ").append(sourceScore(q320)).append("  ·  READY ").append(ok320).append(" / fail ").append(fail320);
++        if (lat320 > 0) b.append("  ·  ").append(lat320).append("ms");
++        b.append("\n128k  ·  ").append(sourceScore(q128)).append("  ·  READY ").append(ok128).append(" / fail ").append(fail128);
++        if (lat128 > 0) b.append("  ·  ").append(lat128).append("ms");
++        b.append("\n\n最近成功  ").append(sourceRelativeTime(lastOk))
++                .append("\n最近失败  ").append(sourceRelativeTime(lastFail))
++                .append("\n安全冷却  ").append(cooldown > 0 ? sourceDuration(cooldown) : "无");
++        if (reason != null && !reason.isEmpty()) b.append("\n最近原因  ").append(reason);
++        b.append("\n\n说明：这只是 Learning V4 的观察快照；实际某一首歌的最终顺序还会结合歌曲平台身份、Exact Track affinity、基础优先级、近期 READY、延迟与 cooldown。");
++        showGlassMessage(providerLabel + " × " + platformLabel, b.toString(), "返回矩阵", this::showSourceStatus, "关闭", null);
++    }
++
++    private void renderSourceLearning(LinearLayout host, SourceHealthStore health) {
++        LinearLayout intro = Ui.column(this);
++        intro.setPadding(Ui.dp(this, 15), Ui.dp(this, 13), Ui.dp(this, 15), Ui.dp(this, 13));
++        intro.setBackground(Ui.tintedGlass(Ui.PURPLE, 18, this));
++        intro.addView(Ui.text(this, "Learning V4 · 会学习，也会遗忘", 14.5f, Ui.TEXT, true), Ui.lp(-1, Ui.dp(this, 28)));
++        TextView d = Ui.text(this, "Provider 路线证据约 " + SourceHealthStore.learningHalfLifeDays() + " 天衰减一半；长期没有新结果会逐步回到中性。歌曲平台身份不会因为衰减被删除。", 10.8f, Ui.TEXT_2, false);
++        d.setLineSpacing(0f, 1.20f); intro.addView(d, Ui.lp(-1, -2));
++        host.addView(intro, marginTop(4));
++
++        host.addView(Ui.text(this, "当前近期路线热度", 13.5f, Ui.TEXT, true), marginTop(18));
++        List<SourceUiCell> cells = new ArrayList<>();
++        for (String[] provider : SOURCE_UI_PROVIDERS) for (int i = 0; i < SOURCE_UI_PLATFORMS.length; i++) {
++            String platform = SOURCE_UI_PLATFORMS[i];
++            float score = health.peekPlatformLearningScore(provider[0], platform);
++            int samples = health.platformOk(provider[0], platform) + health.platformFail(provider[0], platform);
++            if (samples > 0 || Math.abs(score) >= .05f) cells.add(new SourceUiCell(provider[0], provider[1], platform, SOURCE_UI_PLATFORM_LABELS[i], score, samples));
++        }
++        cells.sort((a,b) -> Float.compare(b.score, a.score));
++        if (cells.isEmpty()) host.addView(compactEmpty("还没有真实播放样本，Matrix 正处在中性起点"), marginTop(8));
++        else {
++            int rank = 1;
++            for (SourceUiCell c : cells) {
++                LinearLayout row = Ui.row(this); row.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 12), 0); row.setBackground(Ui.glass(92, 15, 16, this));
++                TextView r = Ui.text(this, String.format(Locale.ROOT, "%02d", rank++), 10.0f, Ui.DIM, true); r.setGravity(Gravity.CENTER);
++                row.addView(r, Ui.lp(Ui.dp(this, 34), Ui.dp(this, 48)));
++                LinearLayout mid = Ui.column(this);
++                mid.addView(Ui.text(this, c.providerLabel + " × " + c.platformLabel, 11.5f, Ui.TEXT_2, true), Ui.lp(-1, Ui.dp(this, 27)));
++                mid.addView(Ui.text(this, "样本 " + c.samples + " · 历史履历不等于当前优先级", 9.5f, Ui.DIM, false), Ui.lp(-1, Ui.dp(this, 18)));
++                row.addView(mid, new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f));
++                TextView sc = Ui.text(this, sourceScore(c.score), 12.2f, sourceScoreColor(c.score), true); sc.setGravity(Gravity.CENTER);
++                row.addView(sc, Ui.lp(Ui.dp(this, 58), Ui.dp(this, 48)));
++                host.addView(row, marginTop(7));
++                if (rank > 12) break;
++            }
++        }
++
++        host.addView(Ui.text(this, "怎么读这个大脑", 13.5f, Ui.TEXT, true), marginTop(18));
++        host.addView(sourceLearningRule("近期成功", "真实 Media3 READY 会快速增加路线信任；新的证据优先于很久以前的履历。", Ui.CYAN), marginTop(8));
++        host.addView(sourceLearningRule("长期无新结果", "分数持续衰减，曾经很好或很差的路线都会慢慢恢复开放的中性状态。", Ui.PURPLE), marginTop(8));
++        host.addView(sourceLearningRule("近期失败", "降低尝试优先级，但不会永久封杀 Provider；所有实际路线仍由当前 Matrix 决策。", Ui.PINK), marginTop(8));
++    }
++
++    private View sourceLearningRule(String title, String body, int accent) {
++        LinearLayout card = Ui.column(this); card.setPadding(Ui.dp(this, 13), Ui.dp(this, 10), Ui.dp(this, 13), Ui.dp(this, 10)); card.setBackground(Ui.tintedGlass(accent, 15, this));
++        card.addView(Ui.text(this, title, 11.5f, Ui.TEXT, true), Ui.lp(-1, Ui.dp(this, 24)));
++        TextView b = Ui.text(this, body, 10.1f, Ui.TEXT_2, false); b.setLineSpacing(0f, 1.18f); card.addView(b, Ui.lp(-1, -2));
++        return card;
++    }
++
++    private void renderSourceToolsTab(LinearLayout host) {
++        TextView note = Ui.text(this, "工具只处理网络音源环境，不会修改歌单、收藏、离线音乐或本地导入。", 10.7f, Ui.TEXT_2, false);
++        host.addView(note, marginTop(4));
++        host.addView(sourceToolRow("更新社区源", "重新获取当前社区 Provider 脚本；Huibq 继续遵循自己的冻结策略。", Ui.CYAN, () -> {
++            if (playback == null) { toast("播放器正在连接"); return; }
++            playback.resetCommunityProviderScripts(); toast("社区音源已刷新，下次使用时会重新获取");
++        }), marginTop(12));
++        host.addView(sourceToolRow("重新学习音源", "把路线偏好恢复中性；READY URL、歌曲身份与安全 cooldown 都保留。", Ui.PURPLE, () -> {
++            showGlassMessage("重新学习音源", "把播放/下载的路线偏好恢复到中性，再从新的真实成功与失败重新学习。\n\n不会清空 READY URL、歌曲平台身份、歌单、收藏、离线音乐；429 / IP 限制 / Provider 故障等正在生效的安全冷却也会继续保留。",
++                    "重新学习", () -> { if (playback == null) { toast("播放器正在连接"); return; } playback.resetRouteLearning(); toast("音源路线已恢复中性，将从新的实播结果重新学习"); }, "取消", this::showSourceStatus);
++        }), marginTop(8));
++        host.addView(sourceToolRow("复制诊断信息", "复制原始 Route Matrix 状态文本，适合排查难复现的问题。", Ui.GOLD, () -> {
++            if (playback == null) { toast("播放器正在连接"); return; }
++            copyText(playback.sourceStatus());
++        }), marginTop(8));
++        TextView safety = Ui.text(this, "V67 Dashboard 不改变 Provider 启停、Matrix 排序、衰减参数、Resolver 预算或播放 fallback；这里只是把当前已有状态搬到明面上。", 10.3f, Ui.DIM, false);
++        safety.setLineSpacing(0f, 1.20f); host.addView(safety, marginTop(14));
++    }
++
++    private View sourceToolRow(String title, String body, int accent, SimpleAction action) {
++        LinearLayout card = Ui.column(this); card.setPadding(Ui.dp(this, 14), Ui.dp(this, 11), Ui.dp(this, 14), Ui.dp(this, 11)); card.setBackground(Ui.tintedGlass(accent, 16, this));
++        card.addView(Ui.text(this, title, 12.3f, Ui.TEXT, true), Ui.lp(-1, Ui.dp(this, 26)));
++        TextView b = Ui.text(this, body, 10.2f, Ui.TEXT_2, false); b.setLineSpacing(0f, 1.17f); card.addView(b, Ui.lp(-1, -2));
++        card.setClickable(true); card.setFocusable(true); card.setOnClickListener(v -> { if (action != null) action.run(); }); Ui.applyRipple(card, Color.TRANSPARENT);
++        return card;
++    }
++
++    // Keep the legacy entry callable from any old UI reference, but route it into the new Tools tab.
++    private void showSourceTools() { sourceDashboardTab = 3; showSourceStatus(); }
++
++    private List<String[]> sourceSortedProviders(SourceHealthStore health, boolean lowFirst) {
++        List<String[]> list = new ArrayList<>(); for (String[] p : SOURCE_UI_PROVIDERS) list.add(p);
++        list.sort((a,b) -> {
++            boolean al = sourceProviderLowActivity(health, a[0]), bl = sourceProviderLowActivity(health, b[0]);
++            if (al != bl) return lowFirst ? (al ? -1 : 1) : (al ? 1 : -1);
++            return Float.compare(sourceProviderBestScore(health, b[0]), sourceProviderBestScore(health, a[0]));
++        });
++        return list;
++    }
++
++    private float sourceProviderBestScore(SourceHealthStore health, String providerId) {
++        float best = -999f; boolean observed = false;
++        for (String platform : SOURCE_UI_PLATFORMS) {
++            int samples = health.platformOk(providerId, platform) + health.platformFail(providerId, platform);
++            float score = health.peekPlatformLearningScore(providerId, platform);
++            if (samples > 0 || Math.abs(score) >= .05f) { best = Math.max(best, score); observed = true; }
++        }
++        return observed ? best : 0f;
++    }
++
++    /** Observation-only classification. It does not silence or remove any provider in V66 routing. */
++    private boolean sourceProviderLowActivity(SourceHealthStore health, String providerId) {
++        int samples = 0; float bestObserved = -999f; boolean observed = false;
++        for (String platform : SOURCE_UI_PLATFORMS) {
++            int cellSamples = health.platformOk(providerId, platform) + health.platformFail(providerId, platform);
++            samples += cellSamples;
++            if (cellSamples > 0) {
++                bestObserved = Math.max(bestObserved, health.peekPlatformLearningScore(providerId, platform));
++                observed = true;
++            }
++        }
++        // Fresh/neutral providers stay visible. Only sufficient and consistently negative OBSERVED evidence moves a row out of Current.
++        return observed && samples >= 8 && bestObserved < -0.50f;
++    }
++
++    private String sourceProviderState(SourceHealthStore health, String providerId) {
++        if (sourceProviderLowActivity(health, providerId)) return "低活跃";
++        float best = sourceProviderBestScore(health, providerId);
++        if (best >= 2.0f) return "强";
++        if (best >= .50f) return "活跃";
++        return "中性";
++    }
++
++    private static int sourceScoreColor(float score) {
++        if (score >= .50f) return Ui.CYAN;
++        if (score <= -.50f) return Ui.PINK;
++        return Ui.TEXT_2;
++    }
++
++    private static String sourceScore(float score) {
++        if (Math.abs(score) < .05f) return "0.0";
++        return String.format(Locale.ROOT, "%+.1f", score);
++    }
++
++    private static String sourcePlatformLabel(String platform) {
++        for (int i = 0; i < SOURCE_UI_PLATFORMS.length; i++) if (SOURCE_UI_PLATFORMS[i].equals(platform)) return SOURCE_UI_PLATFORM_LABELS[i];
++        return platform == null ? "" : platform;
++    }
++
++    private static String sourceRouteLabel(String route) {
++        if (route == null || route.isEmpty()) return "—";
++        String[] parts = route.split("/", 2);
++        return sourcePlatformLabel(parts[0]) + (parts.length > 1 ? " / " + parts[1] : "");
++    }
++
++    private static String sourceEnvironmentLabel(float bestScore, int coolingCells) {
++        if (coolingCells >= 5) return "当前音源环境正在保护冷却";
++        if (bestScore >= 2.0f) return "当前音源环境良好";
++        if (bestScore >= .25f) return "当前音源环境正在学习";
++        return "当前路线接近中性";
++    }
++
++    private static String sourceRelativeTime(long at) {
++        if (at <= 0L) return "暂无";
++        long d = Math.max(0L, System.currentTimeMillis() - at);
++        if (d < 60_000L) return "刚刚";
++        if (d < 3_600_000L) return (d / 60_000L) + "分钟前";
++        if (d < 86_400_000L) return (d / 3_600_000L) + "小时前";
++        return (d / 86_400_000L) + "天前";
++    }
++
++    private static String sourceDuration(long ms) {
++        long sec = Math.max(1L, ms / 1000L);
++        if (sec < 60) return sec + "秒";
++        long min = sec / 60L; if (min < 60) return min + "分钟";
++        return (min / 60L) + "小时";
++    }
++
++    private static final class SourceUiCell {
++        final String providerId, providerLabel, platform, platformLabel; final float score; final int samples;
++        SourceUiCell(String providerId, String providerLabel, String platform, String platformLabel, float score, int samples) {
++            this.providerId = providerId; this.providerLabel = providerLabel; this.platform = platform; this.platformLabel = platformLabel; this.score = score; this.samples = samples;
++        }
+     }
+ 
+     private void copyText(String text) {
+@@ -1342,7 +1766,7 @@
+             case 1:
+                 target = onboardingSourceTarget;
+                 title = "多平台会自动选路";
+-                body = "QQ、酷我、酷狗、网易会自动匹配同一首歌。路线经验会随时间衰减：最近成功更重要，久远成功/失败会慢慢回到中性；播放与下载都会自动换路自愈。";
++                body = "QQ、酷我、酷狗、网易会自动匹配同一首歌。路线经验会随时间衰减：最近成功更重要，久远成功/失败会慢慢回到中性。点“智能音源”还能直接查看近期分、二维矩阵与学习状态。";
+                 break;
+             case 2:
+                 target = onboardingRecentTarget;
+--- /mnt/data/SourceHealthStore.V66.java	2026-08-14 06:46:43.222406776 +0000
++++ app/src/main/java/com/xingyu/music/data/SourceHealthStore.java	2026-08-14 06:48:27.340783401 +0000
+@@ -150,6 +150,47 @@
+     public String lastRoute(String providerId) { return prefs.getString(providerId + ".lastRoute", ""); }
+     public String lastReason(String providerId) { return compactReason(prefs.getString(providerId + ".lastReason", "")); }
+ 
++    // V67 observation-only dashboard getters. These methods never mutate learning/cooldown state.
++    public long lastOkAt(String providerId, String platform, String quality) {
++        return prefs.getLong(routeKey(providerId, platform, quality) + ".lastOk", 0L);
++    }
++
++    public long lastFailAt(String providerId, String platform, String quality) {
++        return prefs.getLong(routeKey(providerId, platform, quality) + ".lastFail", 0L);
++    }
++
++    public float peekLearningScore(String providerId, String platform, String quality) {
++        return previewDecayedLearning(routeKey(providerId, platform, quality), System.currentTimeMillis());
++    }
++
++    public float peekPlatformLearningScore(String providerId, String platform) {
++        float a = peekLearningScore(providerId, platform, "320k");
++        float b = peekLearningScore(providerId, platform, "128k");
++        if (Math.abs(a) < 0.001f) return b;
++        if (Math.abs(b) < 0.001f) return a;
++        return (a + b) * 0.5f;
++    }
++
++    private float previewDecayedLearning(String routeKey, long now) {
++        long at = prefs.getLong(routeKey + ".learnAt", 0L);
++        float value;
++        if (at <= 0L) {
++            int ok = prefs.getInt(routeKey + ".ok", 0);
++            int fail = prefs.getInt(routeKey + ".fail", 0);
++            if (ok == 0 && fail == 0) return 0f;
++            double seed = Math.log1p(ok) * 0.55d - Math.log1p(fail) * 0.45d;
++            value = (float)Math.max(-1.5d, Math.min(2.0d, seed));
++        } else {
++            value = prefs.getFloat(routeKey + ".learnScore", 0f);
++        }
++        long age = at <= 0L ? 0L : Math.max(0L, now - at);
++        if (age > 0L && Math.abs(value) >= 0.001f) {
++            double factor = Math.pow(0.5d, age / (double) LEARNING_HALF_LIFE_MS);
++            value = (float)(value * factor);
++        }
++        return Math.abs(value) < 0.015f ? 0f : value;
++    }
++
+     public int platformOk(String providerId, String platform) {
+         int total = 0;
+         for (String q : new String[]{"320k","128k"}) total += ok(providerId, platform, q);
+--- /mnt/data/build.V66.gradle.kts	2026-08-14 06:46:43.223494022 +0000
++++ app/build.gradle.kts	2026-08-14 06:48:27.340902504 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 660
+-        versionName = "66.0.0"
++        versionCode = 670
++        versionName = "67.0.0"
+     }
+ 
+     buildTypes {
+--- /mnt/data/V66-verify/LunaxyMusic-V66/BUILD_APK.bat	2026-08-14 06:51:24.979055182 +0000
++++ BUILD_APK.bat	2026-08-14 06:51:53.135346849 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   Lunaxy Music V66 - Debug APK Build
++echo   Lunaxy Music V67 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (

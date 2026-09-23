@@ -1,0 +1,10 @@
+Sunflower V4.1 Diff Inventory vs Sunflower V4.0
+
+Only expected production/helper changes:
+MODIFY  BUILD_APK.bat
+MODIFY  app/build.gradle.kts
+MODIFY  app/src/main/java/com/xingyu/music/MainActivity.java
+ADD  app/src/main/java/com/xingyu/music/download/AudioClipper.java
+MODIFY  app/src/main/java/com/xingyu/music/download/RingtoneHelper.java
+
+Expected scope: BUILD_APK helper, version metadata, MainActivity ringtone UI/workflow, RingtoneHelper read-back/export, new local-only AudioClipper.

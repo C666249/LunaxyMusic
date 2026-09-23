@@ -1,0 +1,17 @@
+XingyuMusic V18 播放链保护检查
+基线：V17-Full
+
+以下真正负责音源解析/冷却/健康学习/URL缓存的文件必须保持字节级不变：
+UNCHANGED  app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java  sha256=522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
+UNCHANGED  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java  sha256=7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
+UNCHANGED  app/src/main/java/com/xingyu/music/data/MultiSourceManager.java  sha256=9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
+UNCHANGED  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java  sha256=013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
+UNCHANGED  app/src/main/java/com/xingyu/music/data/ResolverProvider.java  sha256=dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
+UNCHANGED  app/src/main/java/com/xingyu/music/data/SourceCoordinator.java  sha256=cdcc6afe54a7a70251a64689a1fa851eda251d220ec4438bd4c607018c86b37c
+UNCHANGED  app/src/main/java/com/xingyu/music/data/SourceHealthStore.java  sha256=7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
+UNCHANGED  app/src/main/assets/source/huibq-latest.js  sha256=a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
+
+结论：音源解析核心 全部未修改。
+V18 唯一触及 PlaybackService 的改动：顺序播放在最后一首自然播放结束后 index=0 并走原 resolveCurrent()，从第一首继续；
+没有修改 URL 解析、Huibq/QDY、Media3 READY 成功判定、失败降级、冷却或缓存。
+歌词增强属于元数据请求：NeteaseApi 新增 lyricData()，不参与 SourceCoordinator / MultiSourceManager 播放解析。

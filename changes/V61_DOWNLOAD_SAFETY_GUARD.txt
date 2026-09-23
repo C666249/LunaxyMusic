@@ -1,0 +1,10 @@
+V61 DOWNLOAD SAFETY GUARD
+
+PASS	Huibq absent from Cold Discovery provider specs
+PASS	Huibq cached fast-path rejected before transfer
+PASS	Download-only provider circuit breaker
+PASS	Playback recovery brake
+PASS	Single-thread download worker
+PASS	TX protection remains in unchanged DownloadResolver
+
+RESULT: PASS

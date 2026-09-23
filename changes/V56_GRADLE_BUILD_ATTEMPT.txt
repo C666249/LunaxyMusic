@@ -1,0 +1,10 @@
+Lunaxy Music V56 Gradle build attempt
+=====================================
+Command: ./gradlew :app:assembleDebug --offline
+
+Result: NOT COMPLETED.
+The project wrapper script still attempts the first-time Gradle 9.5.0 distribution download.
+Current container DNS cannot resolve services.gradle.org (curl: (6) Could not resolve host), so the attempt timed out before an Android SDK/AGP build could start.
+
+Therefore this delivery does NOT claim a real assembleDebug success or device test.
+Static/stub checks are documented separately in LUNAXY_V56_自测结果.txt.

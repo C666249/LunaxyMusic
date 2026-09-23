@@ -1,0 +1,96 @@
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V23.0_更新说明.md' '--exclude=V23.0_自测结果.txt' v23baseline/XingyuMusic-V22/app/build.gradle.kts v23work/XingyuMusic-V23/app/build.gradle.kts
+--- v23baseline/XingyuMusic-V22/app/build.gradle.kts	2026-08-10 08:21:52.000000000 +0000
++++ v23work/XingyuMusic-V23/app/build.gradle.kts	2026-08-10 08:30:32.498718059 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 25
+-        versionName = "22.0.0"
++        versionCode = 26
++        versionName = "23.0.0"
+     }
+ 
+     buildTypes {
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V23.0_更新说明.md' '--exclude=V23.0_自测结果.txt' v23baseline/XingyuMusic-V22/app/src/main/java/com/xingyu/music/MainActivity.java v23work/XingyuMusic-V23/app/src/main/java/com/xingyu/music/MainActivity.java
+--- v23baseline/XingyuMusic-V22/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 08:21:52.000000000 +0000
++++ v23work/XingyuMusic-V23/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 08:30:32.498216742 +0000
+@@ -90,11 +90,11 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Xingyu Music V22.0 – recommendation card cleanup + Home position memory.
++ * Xingyu Music V23.0 – recent-play collection page + 50-track history.
+  *
+- * V22 keeps the proven audio-resolution/playback core frozen. Recommendation cards are
+- * visually simplified, and returning from a recommendation collection restores the exact Home
+- * vertical position plus recommendation-carousel horizontal position. No audio URL logic changes.
++ * V23 keeps the proven audio-resolution/playback core frozen. The Home recent shelf remains compact,
++ * while “全部播放” now opens a real recent-play collection page instead of immediately replacing
++ * the queue. Recent history persistence is expanded to 50 tracks. No audio URL logic changes.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(4);
+@@ -813,7 +813,7 @@
+         List<Song> recent = history.subList(0, Math.min(10, history.size()));
+         body.addView(history.isEmpty()
+                 ? sectionHeader("最近播放", "")
+-                : sectionHeaderAction("最近播放", "全部播放", () -> playQueue(new ArrayList<>(recent), 0)), marginTop(24));
++                : sectionHeaderAction("最近播放", "全部播放", this::openRecentHistory), marginTop(24));
+         if (history.isEmpty()) {
+             body.addView(compactEmpty("播放过的歌曲会出现在这里"), marginTop(7));
+         } else {
+@@ -873,6 +873,18 @@
+         return scroll;
+     }
+ 
++    private void openRecentHistory() {
++        rememberHomePosition();
++        List<Song> songs = new ArrayList<>(history);
++        if (songs.isEmpty()) {
++            toast("还没有最近播放");
++            return;
++        }
++        openSmartCollection = new SmartCollection("最近播放", "最近听过 · " + songs.size() + " 首",
++                "recent", Ui.CYAN, songs);
++        renderTab();
++    }
++
+     private void openDailyRecommendations() {
+         rememberHomePosition();
+         if (recommendations == null || !recommendations.hasTaste(favorites, playlists, history)) {
+@@ -1742,7 +1754,10 @@
+         } else {
+             body.addView(smartCollectionSongList(collection.songs), marginTop(6));
+         }
+-        String pageSub = "weather".equals(collection.kind) ? "天气 × 时间 × 你的口味" : "根据你的本地音乐偏好生成";
++        String pageSub;
++        if ("weather".equals(collection.kind)) pageSub = "天气 × 时间 × 你的口味";
++        else if ("recent".equals(collection.kind)) pageSub = "最近播放 · 最多保留 50 首";
++        else pageSub = "根据你的本地音乐偏好生成";
+         return pageScaffold(collection.title, pageSub, body);
+     }
+ 
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V23.0_更新说明.md' '--exclude=V23.0_自测结果.txt' v23baseline/XingyuMusic-V22/app/src/main/java/com/xingyu/music/data/LibraryStore.java v23work/XingyuMusic-V23/app/src/main/java/com/xingyu/music/data/LibraryStore.java
+--- v23baseline/XingyuMusic-V22/app/src/main/java/com/xingyu/music/data/LibraryStore.java	2026-08-10 06:05:48.000000000 +0000
++++ v23work/XingyuMusic-V23/app/src/main/java/com/xingyu/music/data/LibraryStore.java	2026-08-10 08:30:32.498611149 +0000
+@@ -25,7 +25,7 @@
+     public List<Song> favorites(){ return decodeSongs(prefs.getString("favorites","[]")); }
+     public List<Song> history(){
+         List<Song> all=decodeSongs(prefs.getString("history","[]"));
+-        return all.size()<=10?all:new ArrayList<>(all.subList(0,10));
++        return all.size()<=50?all:new ArrayList<>(all.subList(0,50));
+     }
+     public List<ImportedPlaylist> playlists(){ return decodePlaylists(prefs.getString("playlists","[]")); }
+     public List<String> searchHistory(){ return decodeStrings(prefs.getString("search_history","[]")); }
+@@ -44,8 +44,8 @@
+     public List<Song> addHistory(Song song){
+         List<Song> src=history(), out=new ArrayList<>();
+         out.add(song);
+-        // Home only exposes a compact recent shelf; keep persistence compact too.
+-        for(Song s:src) if(!s.key().equals(song.key())&&out.size()<10) out.add(s);
++        // Home still shows a compact shelf, but the full recent collection keeps up to 50 tracks.
++        for(Song s:src) if(!s.key().equals(song.key())&&out.size()<50) out.add(s);
+         saveSongs("history",out); return out;
+     }
+     public List<String> addSearchHistory(String query){

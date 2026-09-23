@@ -1,0 +1,14 @@
+V92.8.10 HOME VISUAL SYSTEM
+
+Baseline: V92.8.9
+Runtime diff:
+- MOD com/xingyu/music/MainActivity.java
+- ADD com/xingyu/music/ui/CoverAmbientDrawable.java
+- ADD com/xingyu/music/ui/RecommendationGlassDrawable.java
+
+Scope:
+1. Five recommendation card styles (Original + four new materials), icon-only switcher, bottom drawer, persisted selection.
+2. Album-colour ambient halo for Recent Played covers.
+3. Subtle cover scrolling depth only; no 3D rotation.
+4. Home search field reuses the current-track album-reactive FluidTrackHaloDrawable.
+5. Preserve V92.8.9 song-title direct search.

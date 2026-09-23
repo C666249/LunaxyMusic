@@ -1,0 +1,15 @@
+V20 QQ 歌词风险隔离 / 回退说明
+
+危险点被刻意限制在“歌词元数据”层：
+- 新增：data/QQLyricApi.java
+- 新增：data/LyricMatcher.java
+- 新增：data/LyricCacheStore.java
+- 新增：data/LyricMatchStore.java
+- MainActivity.java：仅 loadLyrics()、歌词逐句显示、对象初始化/引用发生变化。
+
+绝对没有改动：PlaybackService、SourceCoordinator、MultiSourceManager、SourceHealthStore、PlaybackUrlStore、LxSourceRuntime、AudioUrlProbe、Huibq JS。
+
+如果 V20 出现“QQ 歌词错配/拿不到”但音频仍正常：只回退上述歌词层，不要动播放核心。
+如果 V20 出现“歌曲突然不能播放”：先对照 PLAYBACK_CORE_GUARD_V20.txt。受保护文件与 V19 二进制文本完全一致，优先排查上游音源状态/安装时是否清过 App 数据，而不是先改播放算法。
+
+注意：覆盖安装同 applicationId + 同签名 APK 会保留 SharedPreferences；如果手动卸载 App 后再安装，Android 会删除播放 URL 缓存、健康学习、歌词映射等本地状态。

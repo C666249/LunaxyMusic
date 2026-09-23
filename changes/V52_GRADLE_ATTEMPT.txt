@@ -1,0 +1,7 @@
+V52 assembleDebug attempt
+=========================
+Command attempted: ./gradlew :app:assembleDebug --stacktrace
+Result: environment/network failure before Android compilation.
+Observed: curl: (6) Could not resolve host: services.gradle.org
+Gradle 9.5.0 wrapper could not be downloaded in this container.
+Therefore no claim of Android SDK assembleDebug or device sensor test is made.

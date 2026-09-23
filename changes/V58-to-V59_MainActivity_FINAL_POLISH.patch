@@ -1,0 +1,238 @@
+--- /mnt/data/LunaxyMusic-V58/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-12 14:45:55.883991275 +0000
++++ app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-12 15:15:29.145005361 +0000
+@@ -985,11 +985,11 @@
+ 
+     private void showSourceStatus() {
+         String status = playback == null ? "音源管理器正在启动…" : playback.sourceStatus();
+-        showGlassMessage("Lunaxy Route Matrix V3", status + "\n\nV3 把歌曲身份扩展为 QQ(tx) / 酷我(kw) / 酷狗(kg) / 网易(wy) 多 Catalog，并按 Provider × Variant 二维矩阵选路。跨平台 Variant 只有通过 Exact Gate 才能加入；历史学习只认 Media3 READY，不会为了提高成功率播放翻唱、Live、Remix 或明显不同版本。",
++        showGlassMessage("音源状态", status + "\n\nQQ、酷我、酷狗与网易会自动选择可用路线，并优先保持歌曲与版本准确。",
+                 "关闭", null, "更新社区源", () -> {
+                     if (playback == null) { toast("播放器正在连接"); return; }
+                     playback.resetCommunityProviderScripts();
+-                    toast("社区 Provider 脚本已清除固定快照，下次使用时重新拉取；Huibq 内置快照不变");
++                    toast("社区音源已刷新，下次使用时会重新获取");
+                 });
+     }
+ 
+@@ -1221,8 +1221,8 @@
+                 break;
+             case 1:
+                 target = onboardingSourceTarget;
+-                title = "Route Matrix 会自动选路";
+-                body = "QQ、酷我、酷狗、网易只负责提供同一录音的身份；播放时会在 Provider × Catalog 矩阵里自动选路，只有 Media3 READY 后才记住成功组合。";
++                title = "多平台会自动选路";
++                body = "QQ、酷我、酷狗、网易会自动匹配同一首歌的可用来源；成功播放后会优先记住更稳定的路线。";
+                 break;
+             case 2:
+                 target = onboardingRecentTarget;
+@@ -2761,7 +2761,7 @@
+                             if (status != null) status.setText(searchAllStatusText());
+                             if (footer != null) {
+                                 if (pageHadError) {
+-                                    footer.setText("部分 Catalog 加载失败 · 其他平台结果不受影响"); footer.setVisibility(View.VISIBLE);
++                                    footer.setText("部分平台加载失败 · 其他平台结果不受影响"); footer.setVisibility(View.VISIBLE);
+                                     footer.postDelayed(() -> { if (footer.isAttachedToWindow() && !searchMoreLoading) footer.setVisibility(View.GONE); }, 1800L);
+                                 } else footer.setVisibility(View.GONE);
+                             }
+@@ -3102,7 +3102,7 @@
+         appendCatalogDebug(b, "QQ", lastTxCount, lastTxError);
+         appendCatalogDebug(b, "酷我", lastKwCount, lastKwError);
+         appendCatalogDebug(b, "酷狗", lastKgCount, lastKgError);
+-        showGlassMessage("多 Catalog 网络详情", b.toString(), "知道了", null, "", null);
++        showGlassMessage("搜索网络详情", b.toString(), "知道了", null, "", null);
+     }
+ 
+     private static void appendCatalogDebug(StringBuilder b, String name, int count, String error) {
+@@ -3191,7 +3191,7 @@
+                 "“查看”不会修改任何声音。点进去可以确认当前来电铃声、通知音和闹钟音，还能试听或直接打开 Android 系统声音设置。"), 180L);
+         hero.addView(heroTitle, Ui.lp(-1, Ui.dp(this, 34)));
+         hero.addView(Ui.text(this, records.size() + " 首 · " + formatStorage(offlineStore == null ? 0L : offlineStore.totalBytes()) + " · App 私有存储", 11f, Ui.TEXT_2, false), Ui.lp(-1, Ui.dp(this, 28)));
+-        hero.addView(Ui.text(this, "安全模式：仅复用非 TX 的 Media3 READY 缓存 · 在线播放时下载自动让路", 10.2f, Ui.DIM, false), Ui.lp(-1, Ui.dp(this, 28)));
++        hero.addView(Ui.text(this, "下载与在线播放相互隔离 · 离线歌曲优先本地播放", 10.2f, Ui.DIM, false), Ui.lp(-1, Ui.dp(this, 28)));
+         TextView playAll = modalButton("全部播放", true); playAll.setEnabled(!records.isEmpty()); playAll.setAlpha(records.isEmpty() ? .45f : 1f);
+         playAll.setOnClickListener(v -> { if (records.isEmpty()) return; List<Song> songs = new ArrayList<>(); for (OfflineStore.Record r : records) songs.add(r.song); playQueue(songs, 0); });
+         LinearLayout.LayoutParams pap = Ui.lp(-1, Ui.dp(this, 46)); pap.topMargin = Ui.dp(this, 8); hero.addView(playAll, pap); body.addView(hero, Ui.lp(-1, -2));
+@@ -3213,7 +3213,7 @@
+             if (!contextCoachDone(COACH_OFFLINE_RINGTONE) && !deferredContextCoachThisSession.contains(COACH_OFFLINE_RINGTONE) && contextCoachOverlay == null) {
+                 maybeShowContextCoach(COACH_OFFLINE_RINGTONE, ring,
+                         "离线歌曲可以直接做系统铃声",
+-                        "这里可以把已经下载好的本地歌曲设为来电铃声、通知音或闹钟音。整个流程只处理离线文件，不会重新请求播放 Provider。看完后再点一次“铃声”即可继续。" );
++                        "这里可以把已经下载好的本地歌曲设为来电铃声、通知音或闹钟音。整个流程只处理离线文件，不会影响在线播放。看完后再点一次“铃声”即可继续。" );
+                 return;
+             }
+             showRingtoneOptions(record);
+@@ -3225,7 +3225,7 @@
+     }
+ 
+     private void showSystemSoundStatusDialog() {
+-        LinearLayout card = modalCard("当前系统声音", "查看 Android 当前默认声音；这里只读取系统状态，不修改播放或下载线路");
++        LinearLayout card = modalCard("当前系统声音", "查看 Android 当前默认声音；这里只读取系统状态，不改变播放或下载设置");
+         String ring = RingtoneHelper.currentToneTitle(this, android.media.RingtoneManager.TYPE_RINGTONE);
+         String notification = RingtoneHelper.currentToneTitle(this, android.media.RingtoneManager.TYPE_NOTIFICATION);
+         String alarm = RingtoneHelper.currentToneTitle(this, android.media.RingtoneManager.TYPE_ALARM);
+@@ -5575,23 +5575,29 @@
+         scroll.addView(content);
+         playerSafe.addView(scroll, Ui.frame(-1, -1, Gravity.FILL));
+ 
+-        LinearLayout top = Ui.row(this);
+-        FrameLayout back = Ui.iconButton(this, IconView.Type.BACK, 42, Ui.TEXT, Color.argb(18, 255, 255, 255));
+-        back.setOnClickListener(v -> closeNowPlaying());
+-        top.addView(back, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
++        // Keep the title geometrically centered in the screen: left and right actions float
++        // independently instead of participating in a weighted row.
++        FrameLayout top = new FrameLayout(this);
+         TextView label = Ui.text(this, "正在播放", 12.2f, Ui.TEXT, true);
+         label.setGravity(Gravity.CENTER);
+-        top.addView(label, new LinearLayout.LayoutParams(0, Ui.dp(this, 42), 1f));
++        top.addView(label, Ui.frame(-1, Ui.dp(this, 42), Gravity.CENTER));
++
++        FrameLayout back = Ui.iconButton(this, IconView.Type.BACK, 42, Ui.TEXT, Color.argb(18, 255, 255, 255));
++        back.setOnClickListener(v -> closeNowPlaying());
++        top.addView(back, Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.START | Gravity.CENTER_VERTICAL));
++
++        LinearLayout rightActions = Ui.row(this);
+         FrameLayout starStudio = Ui.iconButton(this, IconView.Type.PALETTE, 42, Ui.CYAN, Color.TRANSPARENT);
+         starStudio.setContentDescription("自定义星空背景");
+         starStudio.setOnClickListener(v -> showStarfieldStudio());
+-        top.addView(starStudio, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
++        rightActions.addView(starStudio, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
+         FrameLayout more = Ui.iconButton(this, IconView.Type.MORE, 42, Ui.TEXT_2, Color.TRANSPARENT);
+         more.setOnClickListener(v -> {
+             Song song = playback == null ? null : playback.currentSong();
+             if (song != null) showSongActions(song);
+         });
+-        top.addView(more, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
++        rightActions.addView(more, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
++        top.addView(rightActions, Ui.frame(Ui.dp(this, 84), Ui.dp(this, 42), Gravity.END | Gravity.CENTER_VERTICAL));
+         content.addView(top, Ui.lp(-1, Ui.dp(this, 46)));
+ 
+         int widthDp = (int) (getResources().getDisplayMetrics().widthPixels / getResources().getDisplayMetrics().density);
+@@ -6260,15 +6266,15 @@
+     private void renderStarfieldModeTab(LinearLayout body, Runnable redraw) {
+         body.addView(starStudioHero(
+                 starfieldUse3D ? "3D 沉浸星空" : "2D 经典星河",
+-                starfieldUse3D ? "360° 姿态相机 · 所有粒子持续运动" : "完整保留 V49 原版 StarfieldView 的轨迹与质感",
++                starfieldUse3D ? "360° 姿态视角 · 星光持续运动" : "经典粒子轨迹 · 轻盈视差与柔光",
+                 starfieldUse3D ? Ui.CYAN : Ui.PURPLE), marginTop(3));
+ 
+-        body.addView(starStudioSection("渲染模式", "两套引擎随时切换，不影响歌曲、歌词或播放状态。"), marginTop(12));
++        body.addView(starStudioSection("渲染模式", "两种星空风格，切换后立即生效。"), marginTop(12));
+         LinearLayout modes = Ui.row(this);
+         View mode3d = starStudioChoice("3D 沉浸", "空间镜头", starfieldUse3D, Ui.CYAN, v -> {
+             starfieldUse3D = true; saveStarfieldPreferences(); applyStarfieldPreferences(); redraw.run();
+         });
+-        View mode2d = starStudioChoice("2D 经典", "V49 原版", !starfieldUse3D, Ui.PURPLE, v -> {
++        View mode2d = starStudioChoice("2D 经典", "经典星河", !starfieldUse3D, Ui.PURPLE, v -> {
+             starfieldUse3D = false; saveStarfieldPreferences(); applyStarfieldPreferences(); redraw.run();
+         });
+         modes.addView(mode3d, new LinearLayout.LayoutParams(0, Ui.dp(this, 64), 1f));
+@@ -6277,8 +6283,8 @@
+         body.addView(modes, marginTop(7));
+ 
+         body.addView(starStudioSection("运动方式", starfieldUse3D
+-                ? "三种运动人格：活的宇宙、V49 式纯净穿越，以及旅行者号般的深空航行。"
+-                : "2D 经典模式直接使用 V49 原始运动逻辑，不做二次改写。"), marginTop(16));
++                ? "三种运动风格，随时切换。"
++                : "经典星河保持原有运动手感。"), marginTop(16));
+         LinearLayout motion = Ui.row(this);
+         boolean living = starfieldMotionProfile == Starfield3DView.PROFILE_LIVING;
+         boolean classicSelected = starfieldMotionProfile == Starfield3DView.PROFILE_CLASSIC_FORWARD;
+@@ -6287,7 +6293,7 @@
+             starfieldMotionProfile = Starfield3DView.PROFILE_LIVING;
+             saveStarfieldPreferences(); applyStarfieldPreferences(); redraw.run();
+         });
+-        View classic = starStudioChoice("经典穿越", "V49 式纯净前进", classicSelected, Ui.GREEN, v -> {
++        View classic = starStudioChoice("经典穿越", "纯净向前", classicSelected, Ui.GREEN, v -> {
+             starfieldMotionProfile = Starfield3DView.PROFILE_CLASSIC_FORWARD;
+             saveStarfieldPreferences(); applyStarfieldPreferences(); redraw.run();
+         });
+@@ -6308,13 +6314,10 @@
+         deepLp.topMargin = Ui.dp(this, 8);
+         body.addView(deep, deepLp);
+ 
+-        if (!starfieldUse3D) {
+-            body.addView(starInfoCard("2D 是真正的原版", "当前项目中的 StarfieldView.java 与 Lunaxy V49 SHA-256 一致；这里只负责切换显示，没有重写它的粒子逻辑。", Ui.PURPLE), marginTop(12));
+-        }
+     }
+ 
+     private void renderStarfieldMotionTab(LinearLayout body, Runnable redraw) {
+-        body.addView(starStudioSection("快速手感", "三个预设会同时调整 3D 粒子速度和手机姿态灵敏度。"), marginTop(4));
++        body.addView(starStudioSection("快速手感", "一键调整速度与姿态灵敏度。"), marginTop(4));
+         LinearLayout quick = Ui.row(this);
+         String[] names = {"轻柔", "标准", "沉浸"};
+         float[][] vals = {{.72f, .68f}, {1f, 1f}, {1.38f, 1.30f}};
+@@ -6332,30 +6335,30 @@
+         }
+         body.addView(quick, marginTop(8));
+ 
+-        body.addView(starStudioSlider("粒子速度", "改变 3D 世界向你推进的节奏，不影响播放速度。",
++        body.addView(starStudioSlider("粒子速度", "调节 3D 星空向前运动的节奏。",
+                 .45f, 1.90f, starfieldSpeed, v -> {
+                     starfieldSpeed = v; saveStarfieldPreferences(); applyStarfieldPreferences();
+                 }, true), marginTop(16));
+-        body.addView(starStudioSlider("晃动灵敏度", "控制手机旋转多少会映射成多少 3D 镜头转向。",
++        body.addView(starStudioSlider("晃动灵敏度", "调节手机转动时的视角响应强度。",
+                 .35f, 1.85f, starfieldSensitivity, v -> {
+                     starfieldSensitivity = v; saveStarfieldPreferences(); applyStarfieldPreferences();
+                 }, true), marginTop(10));
+ 
+         if (starfieldUse3D && starfieldMotionProfile == Starfield3DView.PROFILE_CLASSIC_FORWARD) {
+-            body.addView(starInfoCard("经典穿越 · 纯净透视", "所有可见星点都会像 V49 一样真实向镜头推进，并自动采用轻量粒子预算；既不再钉在原地，也避免满屏光点。", Ui.GREEN), marginTop(12));
++            body.addView(starInfoCard("经典穿越", "星点持续由深处向镜头推进，节奏纯净直接。", Ui.GREEN), marginTop(12));
+         } else if (starfieldUse3D && starfieldMotionProfile == Starfield3DView.PROFILE_DEEP_SPACE) {
+-            body.addView(starInfoCard("深空航行 · 旅行者", "低密度宽阔星河通道、分层掠过、少量短柔光尾迹与极轻微航向曲率营造持续前进感；保持留白，不再堆满光点。", Ui.PURPLE), marginTop(12));
++            body.addView(starInfoCard("深空航行", "低密度分层掠过与轻柔尾迹，营造持续航行的纵深感。", Ui.PURPLE), marginTop(12));
+         }
+ 
+         if (!starfieldUse3D) {
+-            body.addView(starInfoCard("当前正在使用 2D 经典模式", "上面的数值会保存，但只在切回 3D 时生效；2D 模式保持 V49 原始速度和倾斜手感。", Ui.PURPLE), marginTop(12));
++            body.addView(starInfoCard("2D 经典模式", "速度与姿态设置仅作用于 3D 星空。", Ui.PURPLE), marginTop(12));
+         } else {
+-            body.addView(starInfoCard("相机与粒子彼此独立", "无论你怎样转手机，粒子生命周期都会持续推进；灵敏度只改变观察方向，不会暂停星光。", Ui.CYAN), marginTop(12));
++            body.addView(starInfoCard("姿态控制", "转动手机改变观察方向，粒子运动持续进行。", Ui.CYAN), marginTop(12));
+         }
+     }
+ 
+     private void renderStarfieldLightTab(LinearLayout body, Runnable redraw) {
+-        body.addView(starStudioSection("粒子颜色", "像歌词主题一样选择星光色；“跟随封面”会随歌曲自动切换。"), marginTop(4));
++        body.addView(starStudioSection("粒子颜色", "选择星光色彩；“跟随封面”会随歌曲自动变化。"), marginTop(4));
+         String[] names = {"跟随封面", "冰蓝", "暖黄", "星紫", "薄荷", "玫瑰", "银白"};
+         int[] colors = {nowAccent, Color.rgb(151,220,255), Color.rgb(255,214,143), Color.rgb(191,166,255),
+                 Color.rgb(142,232,198), Color.rgb(255,167,210), Color.rgb(226,235,248)};
+@@ -6377,30 +6380,27 @@
+             }
+             body.addView(line, marginTop(row == 0 ? 8 : 7));
+         }
+-        body.addView(starStudioSection("星点质感", "单独控制 3D 星点的视觉存在感；默认值已比 V55 更大、更亮、更密。"), marginTop(16));
+-        body.addView(starStudioSlider("星点大小", "放大真实光核与柔光范围，不改变粒子运动轨迹。",
++        body.addView(starStudioSection("星点质感", "调节 3D 星空的大小、亮度与密度。"), marginTop(16));
++        body.addView(starStudioSlider("星点大小", "调节星点整体视觉尺寸。",
+                 .70f, 1.55f, starfieldStarSize, v -> {
+                     starfieldStarSize = v; saveStarfieldPreferences(); applyStarfieldPreferences();
+                 }, true), marginTop(8));
+-        body.addView(starStudioSlider("星点亮度", "同时增强亮芯、星体与柔光，但仍保留远近层次和呼吸变化。",
++        body.addView(starStudioSlider("星点亮度", "调节星点与柔光的整体亮度。",
+                 .65f, 1.55f, starfieldStarBrightness, v -> {
+                     starfieldStarBrightness = v; saveStarfieldPreferences(); applyStarfieldPreferences();
+                 }, true), marginTop(10));
+-        body.addView(starStudioSlider("星点密度", "实时增减可见星点数量；采用预分配粒子池，不会边拖动边创建对象。",
++        body.addView(starStudioSlider("星点密度", "实时增减可见星点数量。",
+                 .60f, 1.35f, starfieldStarDensity, v -> {
+                     starfieldStarDensity = v; saveStarfieldPreferences(); applyStarfieldPreferences();
+                 }, true), marginTop(10));
+ 
+         if (!starfieldUse3D) {
+-            body.addView(starInfoCard("2D 经典仍保持 V49 原版", "大小、亮度、密度三个新参数只调节 3D 星空；2D StarfieldView 继续字节级保留 V49 原逻辑，切回 3D 后设置会立即生效。", Ui.PURPLE), marginTop(12));
+-        } else {
+-            body.addView(starInfoCard("V56 默认更接近 V49 的第一眼观感", "默认大小 1.18×、亮度 1.20×、密度 1.16×；不是把星点做成大圆，而是在 V55 精细光核基础上恢复更明显的星河存在感。", resolvedStarfieldColor()), marginTop(12));
++            body.addView(starInfoCard("2D 经典模式", "大小、亮度与密度设置仅作用于 3D 星空。", Ui.PURPLE), marginTop(12));
+         }
+-        body.addView(starInfoCard("颜色仍然是光，不是染色圆点", "亮芯保持接近白色，主题色主要进入星体和柔光层；这样既能和歌词/进度条统一，又保留真实星点质感。", resolvedStarfieldColor()), marginTop(10));
+     }
+ 
+     private void renderStarfieldBackgroundTab(LinearLayout body, Runnable redraw) {
+-        body.addView(starStudioSection("背景氛围", "保持黑色宇宙底色，只叠一层非常克制的柔光；纯黑模式完全不绘制氛围层。"), marginTop(4));
++        body.addView(starStudioSection("背景氛围", "保持黑色宇宙底色，仅叠加克制的环境微光。"), marginTop(4));
+         String[] names = {"纯黑", "封面微光", "深空蓝", "星云紫", "暖琥珀", "暮光玫瑰"};
+         int[] colors = {Color.BLACK, nowAccent, Color.rgb(62,113,182), Color.rgb(126,92,201), Color.rgb(198,133,72), Color.rgb(180,81,132)};
+         for (int row = 0; row < 3; row++) {

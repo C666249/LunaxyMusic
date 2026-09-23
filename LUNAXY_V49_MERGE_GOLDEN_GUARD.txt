@@ -1,0 +1,45 @@
+Lunaxy V49 Merge Golden Guard
+
+唯一来源基线：Sunflower V4.4。
+
+V4.4 → V49 字节级完全不变的主要算法/安全核心（17）：
+SourceHealthStore.java
+PlaybackUrlStore.java
+LxSourceRuntime.java
+LxAudioProvider.java
+SearchRanker.java
+ExactTrackMatcher.java
+TrackVariantEnricher.java
+KuwoMusicApi.java
+KugouMusicApi.java
+NeteaseApi.java
+QQMusicApi.java
+LibraryStore.java
+Song.java
+SourceVariant.java
+DownloadResolver.java
+AudioClipper.java
+RingtoneLyricSelectorView.java
+
+必要身份差异、功能算法未改（10）：
+AudioProviderHub.java — 诊断品牌 Lunaxy
+SourceCoordinator.java — runtime 品牌 Lunaxy
+TrackRouteStore.java — prefs 恢复 lunaxy_track_routes_v1
+TrackVariantStore.java — prefs 恢复 lunaxy_track_variants_v1
+PlaybackNetworkGate.java — prefs 恢复 lunaxy_playback_gate_v1
+PlaybackService.java — Android action / MediaSession / 通知品牌恢复 Lunaxy
+DownloadRouteStore.java — prefs 恢复 lunaxy_download_routes_v1
+OfflineDownloadService.java — Android action / prefs / channel / 通知品牌恢复 Lunaxy
+OfflineStore.java — prefs 恢复 lunaxy_offline_store_v1
+RingtoneHelper.java — MediaStore Ringtones/Lunaxy Music 与缺省文件名品牌
+
+UI/Android 身份必要变化：
+MainActivity.java — Lunaxy 文案、onboarding/context coach prefs
+ContextCoachOverlay.java — LUNAXY 小技巧
+OnboardingOverlay.java — Lunaxy 首次引导品牌
+LauncherIconManager.java — LauncherStarNote / LauncherXM
+AndroidManifest.xml — V47/V48 launcher identity + V4 下载/铃声所需 service/permissions
+strings.xml — Lunaxy Music
+app/build.gradle.kts — applicationId/version + share-ready APK copy name
+settings.gradle.kts — rootProject LunaxyMusic
+icon_sunflower.png — 删除，不进入正式 APK

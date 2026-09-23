@@ -1,0 +1,14 @@
+JAVA_SYNTAX_CLASS_PASS (javac exit 1 expected due missing Android SDK)
+javac diagnostic lines: 16786
+app/src/main/java/com/xingyu/music/MainActivity.java:3: error: package android does not exist
+import android.Manifest;
+              ^
+app/src/main/java/com/xingyu/music/MainActivity.java:4: error: package android.app does not exist
+import android.app.Activity;
+                  ^
+app/src/main/java/com/xingyu/music/MainActivity.java:5: error: package android.content does not exist
+import android.content.ClipData;
+                      ^
+app/src/main/java/com/xingyu/music/MainActivity.java:6: error: package android.content does not exist
+import android.content.ClipboardManager;
+                      ^

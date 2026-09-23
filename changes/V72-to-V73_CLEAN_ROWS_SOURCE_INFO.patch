@@ -1,0 +1,441 @@
+--- V72/BUILD_APK.bat
++++ V73/BUILD_APK.bat
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   Lunaxy Music V72 - Debug APK Build
++echo   Lunaxy Music V73 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\Lunaxy Music V72.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\Lunaxy Music V73.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\Lunaxy Music V72.apk
++echo [OK] APK: %CD%\dist\Lunaxy Music V73.apk
+ pause
+--- V72/app/build.gradle.kts
++++ V73/app/build.gradle.kts
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 720
+-        versionName = "72.0.0"
++        versionCode = 730
++        versionName = "73.0.0"
+     }
+ 
+     buildTypes {
+@@ -35,12 +35,12 @@
+ 
+ // Keep AGP's internal APK name intact for Android Studio install/run tasks, then export a
+ // share-ready copy with the product name after assembly. This avoids relying on deprecated
+-// internal VariantOutput APIs while ensuring the file users share is named "Lunaxy Music V72.apk".
++// internal VariantOutput APIs while ensuring the file users share is named "Lunaxy Music V73.apk".
+ tasks.matching { it.name == "assembleDebug" }.configureEach {
+     doLast {
+         val apkDir = project.layout.buildDirectory.dir("outputs/apk/debug").get().asFile
+         val source = apkDir.resolve("app-debug.apk")
+-        if (source.isFile) source.copyTo(apkDir.resolve("Lunaxy Music V72.apk"), overwrite = true)
++        if (source.isFile) source.copyTo(apkDir.resolve("Lunaxy Music V73.apk"), overwrite = true)
+     }
+ }
+ 
+@@ -49,6 +49,6 @@
+         val apkDir = project.layout.buildDirectory.dir("outputs/apk/release").get().asFile
+         val source = listOf(apkDir.resolve("app-release.apk"), apkDir.resolve("app-release-unsigned.apk"))
+             .firstOrNull { it.isFile }
+-        if (source != null) source.copyTo(apkDir.resolve("Lunaxy Music V72.apk"), overwrite = true)
++        if (source != null) source.copyTo(apkDir.resolve("Lunaxy Music V73.apk"), overwrite = true)
+     }
+ }
+--- V72/app/src/main/java/com/xingyu/music/MainActivity.java
++++ V73/app/src/main/java/com/xingyu/music/MainActivity.java
+@@ -101,7 +101,6 @@
+ import com.xingyu.music.ui.ImageLoader;
+ import com.xingyu.music.ui.LyricLineView;
+ import com.xingyu.music.ui.OnboardingOverlay;
+-import com.xingyu.music.ui.PlatformOrbView;
+ import com.xingyu.music.ui.RingtoneLyricSelectorView;
+ import com.xingyu.music.ui.LyricGestureScrollView;
+ import com.xingyu.music.ui.StarfieldView;
+@@ -277,7 +276,6 @@
+     private final LinkedHashSet<String> deferredContextCoachThisSession = new LinkedHashSet<>();
+     private static final String COACH_PREFS = "lunaxy_context_coach_v1";
+     private static final String COACH_LYRIC_SEEK = "lyric_seek";
+-    private static final String COACH_MULTI_CATALOG = "multi_catalog";
+     private static final String COACH_PLAYLIST_QUEUE = "playlist_queue_takeover";
+     private static final String COACH_IMPORT_PLAYLIST = "import_playlist";
+     private static final String COACH_OFFLINE_SYSTEM = "offline_system_sound";
+@@ -1918,13 +1916,6 @@
+         dismissContextCoach();
+     }
+ 
+-    private void teachMultiCatalogIfNeeded(View badge, Song song) {
+-        if (song == null || badge == null || song.variants().size() < 2 || tab != 1 || searchMetadataPending) return;
+-        maybeShowContextCoach(COACH_MULTI_CATALOG, badge,
+-                "一首歌，多条可播放路线",
+-                "歌曲列表统一用小圆点显示同一录音已匹配的平台：紫=网易、蓝=QQ、绿=酷我、黄=酷狗。搜索、歌单、收藏等都保持同一套标识；圆点只是歌曲身份，Lunaxy 仍在后台自动选择真正可用的播放线路。");
+-    }
+-
+     private void startHomeLyricQuoteTicker(TextView target) {
+         homeLyricQuoteView = target;
+         homeLyricQuoteGeneration++;
+@@ -3444,7 +3435,6 @@
+         ImageView cover;
+         TextView title;
+         TextView artist;
+-        LinearLayout source;
+         FrameLayout favorite;
+         IconView favoriteIcon;
+         FrameLayout next;
+@@ -3497,14 +3487,6 @@
+                 texts.addView(holder.artist, new LinearLayout.LayoutParams(-1, 0, 1f));
+                 holder.row.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(MainActivity.this, 52), 1f));
+ 
+-                holder.source = Ui.row(MainActivity.this);
+-                holder.source.setGravity(Gravity.CENTER);
+-                holder.source.setMinimumWidth(Ui.dp(MainActivity.this, 10));
+-                holder.source.setPadding(0, 0, Ui.dp(MainActivity.this, 2), 0);
+-                LinearLayout.LayoutParams sourceDotsLp = Ui.lp(-2, Ui.dp(MainActivity.this, 30));
+-                sourceDotsLp.rightMargin = Ui.dp(MainActivity.this, 2);
+-                holder.row.addView(holder.source, sourceDotsLp);
+-
+                 holder.favorite = Ui.iconButton(MainActivity.this, IconView.Type.HEART, 36, Ui.DIM, Color.TRANSPARENT);
+                 holder.favoriteIcon = (IconView) holder.favorite.getChildAt(0);
+                 holder.row.addView(holder.favorite, Ui.lp(Ui.dp(MainActivity.this, 32), Ui.dp(MainActivity.this, 32)));
+@@ -3534,8 +3516,6 @@
+                 if (!coverKey.trim().isEmpty()) ImageLoader.load(coverKey, holder.cover, null);
+             }
+ 
+-            bindSearchPlatformDots(holder.source, song);
+-            holder.source.post(() -> teachMultiCatalogIfNeeded(holder.source, song));
+             holder.favoriteIcon.setIconColor(isFavorite(song) ? Ui.PINK : Ui.DIM);
+ 
+             SearchAllHolder bound = holder;
+@@ -3556,50 +3536,66 @@
+     }
+ 
+     /**
+-     * V70 search-result source indicator. Multi-catalog text badges could consume more than
+-     * 100dp on narrow phones and squeeze the song title. Keep the same four platform identities
+-     * visible as compact color dots instead: WY purple / QQ blue / KW green / KG gold.
+-     * This is presentation-only and does not change Song variants, ranking or route selection.
++     * V73 UI-only catalog presentation. Song rows deliberately hide source identity so the
++     * title/artist/album own the available width. Source identities remain discoverable in
++     * Song Info and are shown as restrained coloured text on the Now Playing page.
+      */
+-    private void bindSearchPlatformDots(LinearLayout strip, Song song) {
+-        bindPlatformDots(strip, song, 10, 4);
++    private List<String> catalogSourceCodes(Song song) {
++        ArrayList<String> out = new ArrayList<>();
++        if (song == null) return out;
++        String[] preferredOrder = {"wy", "tx", "kw", "kg"};
++        for (String code : preferredOrder) {
++            if (song.variant(code) != null) out.add(code);
++        }
++        for (com.xingyu.music.model.SourceVariant variant : song.variants()) {
++            if (variant == null || variant.source == null || variant.source.trim().isEmpty()) continue;
++            String code = variant.source.trim();
++            if (!out.contains(code)) out.add(code);
++        }
++        if (out.isEmpty() && song.source != null && !song.source.trim().isEmpty()) out.add(song.source.trim());
++        return out;
+     }
+ 
+-    /**
+-     * V71 presentation-only catalog identity indicator used everywhere a song row previously
+-     * showed a long sourceLabel() pill. WY=purple / TX=blue / KW=green / KG=gold.
+-     * The dots only read Song variants; they never reorder, add, remove or prefer a source.
+-     */
+-    private void bindPlatformDots(LinearLayout strip, Song song, int dotDp, int gapDp) {
++    private String catalogSourcesText(Song song) {
++        List<String> codes = catalogSourceCodes(song);
++        if (codes.isEmpty()) return "未知来源";
++        StringBuilder text = new StringBuilder();
++        for (String code : codes) {
++            String label = Song.providerLabel(code);
++            if (label == null || label.trim().isEmpty()) continue;
++            if (text.length() > 0) text.append(" · ");
++            text.append(label);
++        }
++        return text.length() == 0 ? "未知来源" : text.toString();
++    }
++
++    private int catalogSourceColor(String source) {
++        if ("wy".equals(source)) return Ui.PURPLE;
++        if ("tx".equals(source)) return Ui.BLUE;
++        if ("kw".equals(source)) return Ui.GREEN;
++        if ("kg".equals(source)) return Ui.GOLD;
++        return Ui.TEXT_2;
++    }
++
++    private void bindNowPlayingSourceText(LinearLayout strip, Song song) {
+         if (strip == null) return;
+         strip.removeAllViews();
+         strip.setGravity(Gravity.CENTER);
+-        if (song == null) return;
+-        String[] sources = {"wy", "tx", "kw", "kg"};
+-        int[] colors = {Ui.PURPLE, Ui.BLUE, Ui.GREEN, Ui.GOLD};
+-        long rowPhase = Math.floorMod(song.key().hashCode(), 360);
+-        int added = 0;
+-        for (int i = 0; i < sources.length; i++) {
+-            if (song.variant(sources[i]) == null) continue;
+-            PlatformOrbView dot = new PlatformOrbView(this, colors[i], rowPhase + i * 105L);
+-            LinearLayout.LayoutParams lp = Ui.lp(Ui.dp(this, dotDp), Ui.dp(this, dotDp));
+-            if (added > 0) lp.leftMargin = Ui.dp(this, gapDp);
+-            strip.addView(dot, lp);
+-            added++;
+-        }
+-        if (added == 0) {
+-            PlatformOrbView dot = new PlatformOrbView(this, Ui.DIM, rowPhase);
+-            strip.addView(dot, Ui.lp(Ui.dp(this, dotDp), Ui.dp(this, dotDp)));
++        List<String> codes = catalogSourceCodes(song);
++        for (int i = 0; i < codes.size(); i++) {
++            String code = codes.get(i);
++            int color = catalogSourceColor(code);
++            TextView label = Ui.text(this, Song.providerLabel(code), 10.4f, color, false);
++            label.setGravity(Gravity.CENTER);
++            label.setAlpha(.90f);
++            if (Build.VERSION.SDK_INT >= 21) label.setLetterSpacing(.025f);
++            label.setShadowLayer(Ui.dp(this, 1.2f), 0f, 0f,
++                    Color.argb(72, Color.red(color), Color.green(color), Color.blue(color)));
++            LinearLayout.LayoutParams lp = Ui.lp(-2, Ui.dp(this, 24));
++            if (i > 0) lp.leftMargin = Ui.dp(this, 12);
++            strip.addView(label, lp);
+         }
+-        strip.setContentDescription("可用平台：" + song.sourceLabel());
+-    }
+-
+-    private LinearLayout platformDotsView(Song song, int dotDp, int gapDp) {
+-        LinearLayout strip = Ui.row(this);
+-        strip.setGravity(Gravity.CENTER);
+-        strip.setMinimumWidth(Ui.dp(this, dotDp));
+-        bindPlatformDots(strip, song, dotDp, gapDp);
+-        return strip;
++        strip.setContentDescription("可用来源：" + catalogSourcesText(song));
+     }
+ 
+     /**
+@@ -5699,13 +5695,6 @@
+         text.addView(artist, new LinearLayout.LayoutParams(-1, 0, 1f));
+         row.addView(text, new LinearLayout.LayoutParams(0, Ui.dp(this, 56), 1f));
+ 
+-        LinearLayout src = platformDotsView(song, 11, 4);
+-        LinearLayout.LayoutParams sourceDotsLp = Ui.lp(-2, Ui.dp(this, 34));
+-        sourceDotsLp.leftMargin = Ui.dp(this, 2);
+-        sourceDotsLp.rightMargin = Ui.dp(this, 5);
+-        row.addView(src, sourceDotsLp);
+-        src.post(() -> teachMultiCatalogIfNeeded(src, song));
+-
+         FrameLayout fav = Ui.iconButton(this, IconView.Type.HEART, 38, isFavorite(song) ? Ui.PINK : Ui.DIM, Color.TRANSPARENT);
+         IconView favIcon = (IconView) fav.getChildAt(0);
+         fav.setOnClickListener(v -> {
+@@ -5755,6 +5744,7 @@
+         rows.add("下一首播放");
+         rows.add("加入播放列表");
+         rows.add("添加到歌单");
++        rows.add("歌曲信息");
+         if (isCurrentSong) {
+             rows.add(sleepTimerMenuLabel());
+             rows.add(DesktopLyricService.enabled(this) ? "桌面歌词设置" : "开启桌面歌词");
+@@ -5781,6 +5771,8 @@
+                 else { playQueue(java.util.Collections.singletonList(song), 0); toast("播放器启动中"); }
+             } else if ("添加到歌单".equals(action)) {
+                 showAddToPlaylist(song);
++            } else if ("歌曲信息".equals(action)) {
++                showSongInfo(song);
+             } else if (action.startsWith("定时关闭")) {
+                 showSleepTimerOptions();
+             } else if ("开启桌面歌词".equals(action) || "桌面歌词设置".equals(action)) {
+@@ -5799,6 +5791,17 @@
+         });
+     }
+ 
++    private void showSongInfo(Song song) {
++        if (song == null) return;
++        StringBuilder info = new StringBuilder();
++        info.append("歌名：").append(song.title == null || song.title.trim().isEmpty() ? "未知歌曲" : song.title.trim());
++        info.append("\n歌手：").append(song.artist == null || song.artist.trim().isEmpty() ? "未知歌手" : song.artist.trim());
++        if (song.album != null && !song.album.trim().isEmpty()) info.append("\n专辑：").append(song.album.trim());
++        if (song.durationMs > 0L) info.append("\n时长：").append(Ui.time(song.durationMs));
++        info.append("\n\n可用来源：").append(catalogSourcesText(song));
++        showGlassMessage("歌曲信息", info.toString(), "知道了", null, "", null);
++    }
++
+ 
+     private String sleepTimerMenuLabel() {
+         if (playback == null) return "定时关闭";
+@@ -6615,12 +6618,6 @@
+             texts.addView(artist, new LinearLayout.LayoutParams(-1, 0, 1f));
+             row.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(MainActivity.this, 48), 1f));
+ 
+-            LinearLayout source = platformDotsView(song, 11, 4);
+-            LinearLayout.LayoutParams sourceDotsLp = Ui.lp(-2, Ui.dp(MainActivity.this, 32));
+-            sourceDotsLp.leftMargin = Ui.dp(MainActivity.this, 2);
+-            sourceDotsLp.rightMargin = Ui.dp(MainActivity.this, 4);
+-            row.addView(source, sourceDotsLp);
+-
+             FrameLayout drag = Ui.iconButton(MainActivity.this, IconView.Type.DRAG, 42,
+                     (targetBefore || targetAfterLast) ? Ui.CYAN : Ui.TEXT_2, Color.TRANSPARENT);
+             drag.setContentDescription("长按拖动排序");
+@@ -7745,9 +7742,7 @@
+ 
+         nowSource = Ui.row(this);
+         nowSource.setGravity(Gravity.CENTER);
+-        nowSource.setPadding(Ui.dp(this, 8), 0, Ui.dp(this, 8), 0);
+-        nowSource.setBackground(Ui.stroke(Color.argb(14, 255, 255, 255), 15,
+-                Color.argb(38, 255, 255, 255), this));
++        nowSource.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
+         metaRow.addView(nowSource, Ui.frame(-2, Ui.dp(this, 30), Gravity.CENTER));
+         FrameLayout addToPlaylist = Ui.iconButton(this, IconView.Type.PLUS, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
+         addToPlaylist.setContentDescription("添加到歌单");
+@@ -7984,7 +7979,7 @@
+         if (playerOverlay == null || playerOverlay.getVisibility() != View.VISIBLE || s.song == null) return;
+         nowTitle.setText(s.song.title);
+         nowArtist.setText(s.song.artist + (s.song.album.isEmpty() ? "" : "  ·  " + s.song.album));
+-        bindPlatformDots(nowSource, s.song, 11, 5);
++        bindNowPlayingSourceText(nowSource, s.song);
+         int sourceTint = s.song.variants().size() > 1 ? Ui.CYAN : ("tx".equals(s.song.source) ? Ui.GREEN : Ui.GOLD);
+         nowPlayIcon.setType(s.playing ? IconView.Type.PAUSE : IconView.Type.PLAY);
+         nowFavoriteIcon.setIconColor(isFavorite(s.song) ? Ui.PINK : Ui.TEXT_2);
+--- V72/app/src/main/java/com/xingyu/music/ui/PlatformOrbView.java
++++ V73/app/src/main/java/com/xingyu/music/ui/PlatformOrbView.java
+@@ -1,131 +0,0 @@
+-package com.xingyu.music.ui;
+-
+-import android.animation.ValueAnimator;
+-import android.content.Context;
+-import android.graphics.Canvas;
+-import android.graphics.Color;
+-import android.graphics.Paint;
+-import android.graphics.RadialGradient;
+-import android.graphics.Shader;
+-import android.view.View;
+-import android.view.animation.AccelerateDecelerateInterpolator;
+-
+-/**
+- * Presentation-only platform identity orb.
+- *
+- * A tiny layered sphere is used instead of a flat dot: soft halo, shaded body,
+- * glass edge and a one-shot specular shimmer when the row appears. It carries
+- * no source-selection logic and never reads or writes playback state.
+- */
+-public final class PlatformOrbView extends View {
+-    private final int baseColor;
+-    private final long shimmerDelayMs;
+-    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+-    private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+-    private RadialGradient bodyShader;
+-    private ValueAnimator shimmerAnimator;
+-    private float shimmer;
+-    private float cx;
+-    private float cy;
+-    private float bodyRadius;
+-
+-    public PlatformOrbView(Context context, int baseColor, long shimmerDelayMs) {
+-        super(context);
+-        this.baseColor = baseColor;
+-        this.shimmerDelayMs = Math.max(0L, shimmerDelayMs);
+-        stroke.setStyle(Paint.Style.STROKE);
+-        stroke.setStrokeWidth(Ui.dp(context, .55f));
+-        setClickable(false);
+-        setFocusable(false);
+-    }
+-
+-    @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+-        super.onSizeChanged(w, h, oldw, oldh);
+-        float min = Math.min(w, h);
+-        cx = w * .5f;
+-        cy = h * .5f;
+-        bodyRadius = min * .31f;
+-        float lightX = cx - bodyRadius * .34f;
+-        float lightY = cy - bodyRadius * .40f;
+-        int bright = Ui.mix(baseColor, Color.WHITE, .58f);
+-        int mid = Ui.mix(baseColor, Color.WHITE, .16f);
+-        int edge = Ui.mix(baseColor, Color.BLACK, .38f);
+-        bodyShader = new RadialGradient(
+-                lightX, lightY, bodyRadius * 1.56f,
+-                new int[]{bright, mid, baseColor, edge},
+-                new float[]{0f, .23f, .62f, 1f},
+-                Shader.TileMode.CLAMP);
+-    }
+-
+-    @Override protected void onDraw(Canvas canvas) {
+-        super.onDraw(canvas);
+-        if (bodyRadius <= 0f) return;
+-
+-        // Halo stays inside the view bounds so hardware rendering remains cheap and predictable.
+-        paint.setShader(null);
+-        paint.setStyle(Paint.Style.FILL);
+-        paint.setColor(withAlpha(baseColor, 22 + Math.round(26f * shimmer)));
+-        canvas.drawCircle(cx, cy, bodyRadius * 1.55f, paint);
+-        paint.setColor(withAlpha(baseColor, 36 + Math.round(24f * shimmer)));
+-        canvas.drawCircle(cx, cy, bodyRadius * 1.23f, paint);
+-
+-        paint.setShader(bodyShader);
+-        canvas.drawCircle(cx, cy, bodyRadius, paint);
+-        paint.setShader(null);
+-
+-        // Fine glass rim gives the tiny sphere a crisp, premium edge instead of a flat sticker look.
+-        stroke.setColor(Color.argb(88, 255, 255, 255));
+-        canvas.drawCircle(cx, cy, bodyRadius - stroke.getStrokeWidth() * .5f, stroke);
+-        stroke.setColor(Color.argb(48, 0, 0, 0));
+-        canvas.drawArc(cx - bodyRadius, cy - bodyRadius, cx + bodyRadius, cy + bodyRadius,
+-                28f, 150f, false, stroke);
+-
+-        // Permanent top-left specular point.
+-        paint.setColor(Color.argb(185, 255, 255, 255));
+-        canvas.drawCircle(cx - bodyRadius * .34f, cy - bodyRadius * .38f,
+-                Math.max(1f, bodyRadius * .13f), paint);
+-
+-        // One-shot moving highlight. The stagger is supplied by the caller so rows do not flash in sync.
+-        if (shimmer > 0f && shimmer < 1f) {
+-            float wave = (float) Math.sin(Math.PI * shimmer);
+-            float sx = cx - bodyRadius * .48f + bodyRadius * .96f * shimmer;
+-            float sy = cy - bodyRadius * .46f + bodyRadius * .18f * shimmer;
+-            RadialGradient glint = new RadialGradient(
+-                    sx, sy, Math.max(1f, bodyRadius * .54f),
+-                    new int[]{Color.argb(Math.round(150f * wave), 255, 255, 255), Color.TRANSPARENT},
+-                    new float[]{0f, 1f}, Shader.TileMode.CLAMP);
+-            paint.setShader(glint);
+-            canvas.drawCircle(cx, cy, bodyRadius, paint);
+-            paint.setShader(null);
+-        }
+-    }
+-
+-    @Override protected void onAttachedToWindow() {
+-        super.onAttachedToWindow();
+-        startShimmerOnce();
+-    }
+-
+-    @Override protected void onDetachedFromWindow() {
+-        if (shimmerAnimator != null) shimmerAnimator.cancel();
+-        shimmerAnimator = null;
+-        super.onDetachedFromWindow();
+-    }
+-
+-    private void startShimmerOnce() {
+-        if (shimmerAnimator != null) return;
+-        shimmerAnimator = ValueAnimator.ofFloat(0f, 1f);
+-        shimmerAnimator.setStartDelay(shimmerDelayMs);
+-        shimmerAnimator.setDuration(820L);
+-        shimmerAnimator.setInterpolator(new AccelerateDecelerateInterpolator());
+-        shimmerAnimator.addUpdateListener(a -> {
+-            shimmer = (float) a.getAnimatedValue();
+-            invalidate();
+-        });
+-        shimmerAnimator.start();
+-    }
+-
+-    private static int withAlpha(int color, int alpha) {
+-        return Color.argb(Math.max(0, Math.min(255, alpha)),
+-                Color.red(color), Color.green(color), Color.blue(color));
+-    }
+-}

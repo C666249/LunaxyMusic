@@ -1,0 +1,20 @@
+Lunaxy Music V72 — app/src/main runtime diff against V71
+
+BASE_RUNTIME_FILES=119
+V72_RUNTIME_FILES=120
+CHANGED=2
+ADDED=1
+DELETED=0
+
+CHANGED	app/src/main/java/com/xingyu/music/MainActivity.java
+CHANGED	app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+ADDED	app/src/main/java/com/xingyu/music/ui/PlatformOrbView.java
+
+MainActivity authorized scope:
+- platform identity orb presentation only
+- sleep timer menu/countdown/custom modal UI only
+
+PlaybackService authorized scope:
+- setSleepTimerMinutes delegates to exact-duration API
+- new setSleepTimerDurationMs(durationMs)
+- existing deadline persistence / AlarmManager / Handler / pause semantics unchanged

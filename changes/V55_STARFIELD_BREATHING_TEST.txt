@@ -1,0 +1,7 @@
+STARFIELD_V55_BREATHING_CONTROLS_PASS peaks=4 range=0.98944867
+
+验证：
+- 3D speed/sensitivity/profile setter 生效；
+- 单颗星生命周期约 2~5 次平滑亮暗/大小呼吸；
+- fadeBeforeRecycle=true 时末段 smoothstep 渐隐到接近0；
+- fadeBeforeRecycle=false 时保持亮度，允许直接飞出/回收。

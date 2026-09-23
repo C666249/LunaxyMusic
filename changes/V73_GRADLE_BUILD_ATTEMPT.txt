@@ -1,0 +1,7 @@
+Lunaxy Music V73 — Gradle Build Attempt
+
+Command: ./gradlew :app:assembleDebug --stacktrace
+Result: NOT COMPLETED.
+Reason: current sandbox could not resolve services.gradle.org while the custom wrapper attempted to download Gradle 9.5.0 (curl error 6 / DNS resolution failure). The attempt was stopped after repeated download retries.
+
+This is an environment/network limitation, not a claimed successful Android build. Static/guard checks were completed separately.

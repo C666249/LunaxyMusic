@@ -1,0 +1,4 @@
+【真实 Gradle 构建尝试】
+Stable 与 Beta 都实际执行了 `./gradlew :app:assembleDebug --no-daemon`。
+当前容器仍无法解析 `services.gradle.org`，Gradle 9.5.0 分发下载阶段报 `curl: (6) Could not resolve host: services.gradle.org`，未进入 AGP / Android SDK 编译阶段。
+因此本轮不会把 Java parse、stub semantic compile、XML/静态检查冒充为 Android 真编译通过。

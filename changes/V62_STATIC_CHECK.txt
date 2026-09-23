@@ -1,0 +1,13 @@
+Lunaxy Music V62 static checks
+
+- app/src/main Java files: 79; lexical delimiter balance 79/79 PASS.
+- obvious javac syntax-error pattern scan: 0 hits.
+- app/src/main XML: 17/17 parse PASS.
+- app/src/main PNG: 2/2 signature PASS.
+- V61 -> V62 app/src/main runtime diff: exactly 2 files:
+  * download/DownloadDiscoveryResolver.java
+  * download/OfflineDownloadService.java
+- Download behavior compared to Beta 1 V5:
+  * DownloadDiscoveryResolver: behavior-identical; comment branding only.
+  * OfflineDownloadService: behavior-identical; only comment/User-Agent/notification branding differs.
+- Gradle assembleDebug attempted but unavailable because services.gradle.org could not be resolved; no build-success claim.

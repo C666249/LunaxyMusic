@@ -1,0 +1,13 @@
+Lunaxy Music V63 static checks
+
+PASS Java delimiter scan: 79 / 79
+PASS Changed Java javac parse-pattern scan: MainActivity / DownloadPlanStore / OfflineDownloadService
+PASS DownloadPlanStore + OfflineDownloadService synthetic Android/app stub javac
+PASS XML parse: 17 / 17 (AndroidManifest + res XML)
+PASS PNG signature: 2 / 2
+PASS V62 -> V63 app/src/main runtime diff scope: exactly 3 files
+PASS V63 Locked Core Guard: no unauthorized core changes
+PASS MainActivity playback/search method guard: 10 / 10 unchanged vs V62
+PASS project SHA256SUMS manifest: 401 files (verified after final regeneration)
+
+Real Android assembleDebug: attempted but not completed because services.gradle.org cannot be resolved in this environment and Gradle 9.5.0 is not cached.

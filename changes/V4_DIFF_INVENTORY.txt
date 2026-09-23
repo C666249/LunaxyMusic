@@ -1,0 +1,19 @@
+Sunflower V3.2 -> V4.0 file inventory
+
+MOD  README_验收说明.txt
+ADD  SUNFLOWER_V4_下载离线与系统铃声实验.md
+ADD  SUNFLOWER_V4_自测结果.txt
+MOD  app/build.gradle.kts
+MOD  app/src/main/AndroidManifest.xml
+MOD  app/src/main/java/com/xingyu/music/MainActivity.java
+ADD  app/src/main/java/com/xingyu/music/data/PlaybackNetworkGate.java
+ADD  app/src/main/java/com/xingyu/music/download/DownloadResolver.java
+ADD  app/src/main/java/com/xingyu/music/download/DownloadRouteStore.java
+ADD  app/src/main/java/com/xingyu/music/download/OfflineDownloadService.java
+ADD  app/src/main/java/com/xingyu/music/download/OfflineStore.java
+ADD  app/src/main/java/com/xingyu/music/download/RingtoneHelper.java
+MOD  app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+ADD  changes/V3.2-to-V4_MainActivity.patch
+ADD  changes/V3.2-to-V4_PlaybackService.patch
+ADD  changes/V4_DOWNLOAD_ISOLATION_GUARD.txt
+ADD  changes/V4_PLAYBACK_CORE_GUARD.txt

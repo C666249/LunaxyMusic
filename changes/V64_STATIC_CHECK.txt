@@ -1,0 +1,10 @@
+Lunaxy Music V64 — Static Check
+
+PASS Java delimiter scan: 79/79
+PASS XML parse: 17/17
+PASS PNG verify: 2/2
+PASS Runtime diff: app/src/main changes MainActivity.java only
+PASS Locked Core Guard: 26/26 byte-identical to V63
+PASS MainActivity playback/search method guard: 10/10 byte-identical to V63
+PASS changed MainActivity javac syntax-error pattern scan: 0 syntax-pattern hits
+PASS real Gradle build attempted; environment could not resolve services.gradle.org / Gradle 9.5.0 not available locally, so real Android build is NOT claimed

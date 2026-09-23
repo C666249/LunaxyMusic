@@ -1,0 +1,28 @@
+PASS isolated test identity
+PASS playback service bound
+PASS restored test queue
+PASS slow 1.8-second horizontal drag commits
+PASS system-back edge does not switch tracks
+PASS vertical gesture cannot turn into a track swipe
+PASS ACTION_CANCEL rolls back without a commit
+PASS five retained circular records
+PASS both far edges visible
+PASS Hero target is the current view
+PASS no internal clip wall: LinearLayout
+PASS no internal clip wall: SwipeAwareScrollView
+PASS no internal clip wall: FrameLayout
+PASS swipe commits once and finishes adoption
+PASS incoming view survives commit without crossfade rebuild
+PASS Hero target follows adopted center
+PASS adopted center aligned
+PASS playback tick preserves browse window
+PASS all rotated slots retain an artwork loader
+PASS all rotated slots retain an artwork loader
+PASS all rotated slots retain an artwork loader
+PASS all rotated slots retain an artwork loader
+PASS all rotated slots retain an artwork loader
+PASS late neighbour artwork follows song into center
+PASS unrelated stale artwork cannot replace center
+PASS cancel restores actual center reference
+PASS cancel reloads real center artwork
+PASS: 27 Android assertions

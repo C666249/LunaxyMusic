@@ -1,0 +1,53 @@
+Lunaxy Music V33 · PLAYBACK CORE GUARD
+Baseline: V31 stable network playback core
+
+PASS  app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+  V31 8e1b7d154d0d51613666327b2f5d2a63aa331396d351b7ccb434f3163f0e8860
+  V33 8e1b7d154d0d51613666327b2f5d2a63aa331396d351b7ccb434f3163f0e8860
+PASS  app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java
+  V31 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
+  V33 cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
+PASS  app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
+  V31 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
+  V33 9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
+PASS  app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
+  V31 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
+  V33 7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
+PASS  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
+  V31 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
+  V33 013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
+PASS  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
+  V31 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
+  V33 7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
+PASS  app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
+  V31 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
+  V33 522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
+PASS  app/src/main/java/com/xingyu/music/data/ResolverProvider.java
+  V31 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
+  V33 dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
+PASS  app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
+  V31 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
+  V33 590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
+PASS  app/src/main/java/com/xingyu/music/data/QQMusicApi.java
+  V31 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
+  V33 bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
+PASS  app/src/main/java/com/xingyu/music/data/NeteaseApi.java
+  V31 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
+  V33 5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
+PASS  app/src/main/java/com/xingyu/music/data/LibraryStore.java
+  V31 4b1b5438a1aabb476b097c7cf4f617884cb98360514cdd7239b0084bfc5bb60f
+  V33 4b1b5438a1aabb476b097c7cf4f617884cb98360514cdd7239b0084bfc5bb60f
+PASS  app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
+  V31 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
+  V33 9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
+PASS  app/src/main/assets/source/huibq-latest.js
+  V31 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
+  V33 a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
+
+Exact stable-core result: 14/14 PASS
+
+SourceCoordinator.java is intentionally not byte-identical to V31 only because V32 introduced an isolated early-return branch for source=local, required to play downloaded MediaStore/file URIs.
+That local branch is before the network matrix, never invokes Huibq/QDY, and markPlaybackSuccess/Failure/invalidate ignore providerId=offline. The normal tx/wy network matrix below that branch remains the V31 code path.
+Song.java differs from V31 only by providerLabel("local") = "离线" for UI labeling.
+
+V33 emergency fix: DownloadSourceResolver and OfflineDownloadManager are no longer source resolvers. They are cache-only consumers of PlaybackUrlStore URLs already proven by Media3 READY. Download code has zero LxSourceRuntime / musicUrl / ResolverProvider calls.

@@ -1,0 +1,13 @@
+Sunflower Music V4.4 Gradle build attempt
+=========================================
+
+Command attempted:
+  ./gradlew :app:assembleDebug
+
+Result:
+  Could not complete in this container.
+  The project wrapper attempted to download Gradle 9.5.0, but DNS resolution for services.gradle.org failed repeatedly (curl: (6) Could not resolve host).
+  The command was stopped by the execution timeout while the wrapper was retrying.
+
+This is an environment/network limitation, not reported as a successful Android build.
+No Android SDK / real-device Context Coach test was performed here.

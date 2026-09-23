@@ -1,0 +1,177 @@
+--- V45/app/src/main/java/com/xingyu/music/MainActivity.java
++++ V46/app/src/main/java/com/xingyu/music/MainActivity.java
+@@ -95,11 +95,11 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V45.0 – Playback core locked; commercial-style search paging and playlist lazy rendering.
++ * Lunaxy Music V46.0 – Playback core locked; smoother playlist prefetch buffering.
+  *
+  * The optional music download/offline subsystem remains removed. Playback resolution, Media3 READY
+  * validation, URL cache and the V41 fixed source scheduling/health policy are treated as a locked zone;
+- * V45 changes only search/list rendering and navigation outside that zone.
++ * V46 changes only playlist-detail UI prefetch/rendering outside that zone.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(4);
+@@ -158,7 +158,14 @@
+     private Runnable homeLyricQuoteTicker;
+     private int homeLyricQuoteIndex;
+     private int homeLyricQuoteGeneration;
+-    private int playlistVisibleCount = 40;
++    // V46 playlist-detail rendering buffer. Keep enough rows ahead of the viewport so local UI
++    // construction happens well before the user reaches the current tail, while keeping each
++    // append small enough to avoid a large main-thread spike. Playback always receives the full
++    // playlist; these constants affect presentation only.
++    private static final int PLAYLIST_INITIAL_RENDER_COUNT = 72;
++    private static final int PLAYLIST_APPEND_BATCH = 24;
++    private static final int PLAYLIST_PREFETCH_DISTANCE_DP = 1900;
++    private int playlistVisibleCount = PLAYLIST_INITIAL_RENDER_COUNT;
+     private int playlistScrollRestoreY;
+     private boolean restorePlaylistPosition;
+     private boolean suppressNextPageAnimation;
+@@ -3029,10 +3036,11 @@
+         body.addView(sortableSongsHeader("歌曲", p.songs.size(), () -> showManualSongOrder(p.name, p.songs, p.id)), marginTop(22));
+         final LinearLayout[] lazySongHost = new LinearLayout[1];
+         final int[] lazyLoaded = new int[]{0};
++        final boolean[] lazyAppendScheduled = new boolean[]{false};
+         if (p.songs.isEmpty()) {
+             body.addView(compactEmpty("这个歌单还没有歌曲，点上方 + 从收藏、搜索或其他歌单添加"), marginTop(6));
+         } else {
+-            int visible = Math.min(Math.max(40, playlistVisibleCount), p.songs.size());
++            int visible = Math.min(Math.max(PLAYLIST_INITIAL_RENDER_COUNT, playlistVisibleCount), p.songs.size());
+             LinearLayout host = Ui.column(this);
+             lazySongHost[0] = host;
+             lazyLoaded[0] = visible;
+@@ -3068,7 +3076,7 @@
+         if (page instanceof ScrollView && lazySongHost[0] != null && lazyLoaded[0] < p.songs.size()) {
+             ScrollView scroll = (ScrollView) page;
+             scroll.setOnScrollChangeListener((v, scrollX, scrollY, oldScrollX, oldScrollY) ->
+-                    maybeAppendPlaylistRows(scroll, lazySongHost[0], p, lazyLoaded));
++                    maybeAppendPlaylistRows(scroll, lazySongHost[0], p, lazyLoaded, lazyAppendScheduled));
+         }
+         return page;
+     }
+@@ -3077,23 +3085,34 @@
+         if (host == null || playlist == null || playlist.songs == null || from < 0 || to <= from) return;
+         int safeTo = Math.min(to, playlist.songs.size());
+         if (safeTo <= from) return;
+-        List<Song> chunk = new ArrayList<>(playlist.songs.subList(from, safeTo));
+         LinearLayout.LayoutParams lp = marginTop(from == 0 ? 0 : 7);
+-        host.addView(playlistSongList(chunk, playlist.songs, playlist.id), lp);
++        host.addView(playlistSongListRange(playlist.songs, from, safeTo, playlist.id), lp);
+     }
+ 
+-    private void maybeAppendPlaylistRows(ScrollView scroll, LinearLayout host, ImportedPlaylist playlist, int[] loadedRef) {
+-        if (scroll == null || host == null || playlist == null || loadedRef == null || loadedRef.length == 0) return;
++    private void maybeAppendPlaylistRows(ScrollView scroll, LinearLayout host, ImportedPlaylist playlist,
++                                         int[] loadedRef, boolean[] scheduledRef) {
++        if (scroll == null || host == null || playlist == null || loadedRef == null || loadedRef.length == 0
++                || scheduledRef == null || scheduledRef.length == 0 || scheduledRef[0]) return;
+         int loaded = loadedRef[0];
+         if (loaded >= playlist.songs.size()) return;
+         View content = scroll.getChildCount() > 0 ? scroll.getChildAt(0) : null;
+         if (content == null) return;
+         int remainingPx = content.getHeight() - (scroll.getScrollY() + scroll.getHeight());
+-        if (remainingPx > Ui.dp(this, 620)) return;
+-        int next = Math.min(playlist.songs.size(), loaded + 40);
+-        appendPlaylistRows(host, playlist, loaded, next);
+-        loadedRef[0] = next;
+-        playlistVisibleCount = next;
++        if (remainingPx > Ui.dp(this, PLAYLIST_PREFETCH_DISTANCE_DP)) return;
++
++        // Do the smaller append on the next UI turn instead of inside the active scroll callback.
++        // The large prefetch distance leaves plenty of rows on screen while this local-only work runs.
++        scheduledRef[0] = true;
++        scroll.post(() -> {
++            int currentLoaded = loadedRef[0];
++            if (currentLoaded < playlist.songs.size()) {
++                int next = Math.min(playlist.songs.size(), currentLoaded + PLAYLIST_APPEND_BATCH);
++                appendPlaylistRows(host, playlist, currentLoaded, next);
++                loadedRef[0] = next;
++                playlistVisibleCount = next;
++            }
++            host.postOnAnimation(() -> scheduledRef[0] = false);
++        });
+     }
+ 
+     /** V15: local, instant search inside one playlist by title or artist. */
+@@ -3238,6 +3257,26 @@
+         return box;
+     }
+ 
++    /**
++     * V46 playlist lazy-render fast path. The slice already comes from the full playlist, so its
++     * queue index is known and does not need the legacy identity/key scan used by generic slices.
++     * This changes view construction cost only; the click still installs the complete playlist.
++     */
++    private View playlistSongListRange(List<Song> fullPlaylist, int from, int to, String playlistId) {
++        LinearLayout box = Ui.column(this);
++        if (fullPlaylist == null || fullPlaylist.isEmpty()) return box;
++        int safeFrom = Math.max(0, from);
++        int safeTo = Math.min(to, fullPlaylist.size());
++        for (int i = safeFrom; i < safeTo; i++) {
++            final int queueIndex = i;
++            Song song = fullPlaylist.get(i);
++            View row = songRow(song, fullPlaylist, queueIndex, playlistId);
++            row.setOnClickListener(v -> playQueue(fullPlaylist, queueIndex));
++            box.addView(row, marginTop(i == safeFrom ? 0 : 7));
++        }
++        return box;
++    }
++
+     private int indexByKey(List<Song> list, String key) {
+         for (int i = 0; i < list.size(); i++) if (list.get(i).key().equals(key)) return i;
+         return -1;
+@@ -3337,7 +3376,7 @@
+                 ArrayList<String> keys = new ArrayList<>(); keys.add(song.key());
+                 playlists = store.removeSongsFromPlaylist(playlistId, keys);
+                 openPlaylist = playlistById(playlistId);
+-                playlistVisibleCount = Math.max(40, Math.min(playlistVisibleCount, openPlaylist == null ? 40 : openPlaylist.songs.size()));
++                playlistVisibleCount = Math.max(PLAYLIST_INITIAL_RENDER_COUNT, Math.min(playlistVisibleCount, openPlaylist == null ? PLAYLIST_INITIAL_RENDER_COUNT : openPlaylist.songs.size()));
+                 suppressNextPageAnimation = true;
+                 renderTab();
+                 toast("已从歌单删除");
+@@ -4337,7 +4376,7 @@
+         IconView arrow = new IconView(this, IconView.Type.BACK, Ui.DIM);
+         arrow.setRotation(180f);
+         row.addView(arrow, Ui.lp(Ui.dp(this, 30), Ui.dp(this, 30)));
+-        row.setOnClickListener(v -> { tab = 2; openPlaylist = p; playlistVisibleCount = 40; refreshNav(); renderTab(); });
++        row.setOnClickListener(v -> { tab = 2; openPlaylist = p; playlistVisibleCount = PLAYLIST_INITIAL_RENDER_COUNT; refreshNav(); renderTab(); });
+         return row;
+     }
+ 
+--- V45/app/build.gradle.kts
++++ V46/app/build.gradle.kts
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 48
+-        versionName = "45.0.0"
++        versionCode = 49
++        versionName = "46.0.0"
+     }
+ 
+     buildTypes {
+--- V45/BUILD_APK.bat
++++ V46/BUILD_APK.bat
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   LunaxyMusic V45 - Debug APK Build
++echo   LunaxyMusic V46 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V45-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V46-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\LunaxyMusic-V45-debug.apk
++echo [OK] APK: %CD%\dist\LunaxyMusic-V46-debug.apk
+ pause

@@ -1,0 +1,18 @@
+Lunaxy Music V65 — Static Check
+
+PASS Java delimiter 79/79
+PASS XML 17/17
+PASS PNG 2/2
+PASS DownloadPlanStore + OfflineDownloadService synthetic Android/app stub javac
+PASS DownloadResolver + DownloadDiscoveryResolver synthetic Android/data stub javac
+PASS MainActivity javac syntax-error pattern hits = 0
+
+PASS V65 discovery max routes = 8
+PASS V65 discovery round budget = 15000ms
+PASS V65 stale HTTP fallback includes 403/404
+PASS V65 fixed 160KB/s throttle removed
+PASS V65 playback cache not invalidated by download
+PASS V65 attempted routes persisted plan-song
+PASS V65 onboarding/context coach synced
+
+REAL ANDROID BUILD: attempted ./gradlew :app:assembleDebug; environment could not resolve services.gradle.org for Gradle 9.5.0, so real Android build is NOT claimed as passed.

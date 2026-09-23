@@ -1,0 +1,29 @@
+Lunaxy Music V33 · DOWNLOAD ISOLATION GUARD
+
+Goal
+- Download must never request Huibq/QDY or any resolver.
+- Download failures must never alter playback health/cooldown/order/cache.
+
+Implementation
+1. DownloadSourceResolver is CACHE-ONLY. It can only read PlaybackUrlStore.
+2. OfflineDownloadManager does one cache-based attempt only. No fresh-resolve retry.
+3. Pure QQ without a usable cached URL, or with an expired CDN URL, returns:
+   当前音源暂不支持下载，可尝试在线播放
+4. For other songs with no proven cached URL:
+   请先在线播放一次，成功后再下载
+5. If a cached non-QQ download URL expired:
+   下载地址已失效，请先在线播放一次刷新后再下载
+6. Downloader is single-threaded to avoid burst requests to audio CDNs.
+
+Static invariants
+- DownloadSourceResolver.java: no LxSourceRuntime object, no ResolverProvider object, no musicUrl() call.
+- OfflineDownloadManager.java: no SourceCoordinator / MultiSourceManager / SourceHealthStore use.
+- The downloader never calls PlaybackUrlStore.invalidate().
+
+Important
+V33 prevents NEW download actions from causing Huibq resolver rate limits. It cannot cancel a Huibq/IP restriction that the remote service already imposed while V32 was running. Existing remote cooldown/block must expire on the service side; after that, normal playback uses the unchanged stable V31 network chain.
+
+UI entry-point guard
+- All three-dot download actions and the new now-playing download button converge on MainActivity.startSongDownload().
+- The now-playing button is UI-only and does not access SourceCoordinator/LxSourceRuntime/Huibq/QDY directly.
+

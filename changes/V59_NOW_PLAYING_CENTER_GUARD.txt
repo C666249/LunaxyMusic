@@ -1,0 +1,1 @@
+PASS: now-playing title is geometrically centered against full header width.

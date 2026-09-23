@@ -1,0 +1,35 @@
+Lunaxy Music V41 - PLAYBACK PIPELINE GUARD
+
+V41 intentionally changes only MultiSourceManager failure scheduling + explanatory UI text/version/docs.
+The objects below must remain byte-identical to V40.
+
+PASS  app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+PASS  app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java
+PASS  app/src/main/java/com/xingyu/music/data/SourceCoordinator.java
+PASS  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java
+PASS  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java
+PASS  app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java
+PASS  app/src/main/java/com/xingyu/music/data/ResolverProvider.java
+PASS  app/src/main/java/com/xingyu/music/data/SourceScriptStore.java
+PASS  app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java
+PASS  app/src/main/java/com/xingyu/music/data/PlaybackTrace.java
+PASS  app/src/main/java/com/xingyu/music/data/QQMusicApi.java
+PASS  app/src/main/java/com/xingyu/music/data/NeteaseApi.java
+PASS  app/src/main/java/com/xingyu/music/data/Http.java
+PASS  app/src/main/java/com/xingyu/music/model/Song.java
+PASS  app/src/main/java/com/xingyu/music/model/SourceVariant.java
+PASS  app/src/main/assets/source/huibq-latest.js
+PASS  app/src/main/java/com/xingyu/music/data/SourceHealthStore.java
+PASS  app/src/main/java/com/xingyu/music/data/ResolverHttpDiagnostics.java
+
+V40 unchanged protected playback/diagnostic objects: 18/18 PASS
+
+INTENTIONAL CODE CHANGE:
+- app/src/main/java/com/xingyu/music/data/MultiSourceManager.java
+  * qdy|tx 401/403/409 short breaker: 120s -> 30s
+  * failure-class trace labels only
+  * Huibq 5xx remains 60s service breaker
+- app/src/main/java/com/xingyu/music/MainActivity.java: explanatory copy only
+
+UNCHANGED SUCCESS PATH:
+READY cache -> fixed primary -> fallback -> candidate probe -> Media3 -> READY -> cache/statistics.

@@ -1,0 +1,282 @@
+--- /mnt/data/lunaxy_v73_base/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-19 09:59:08.000000000 +0000
++++ app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-19 10:29:41.139670632 +0000
+@@ -391,7 +391,6 @@
+     private ImageView nowCoverLoader;
+     private TextView nowTitle;
+     private TextView nowArtist;
+-    private LinearLayout nowSource;
+     private TextView nowTime;
+     private TextView nowDuration;
+     private IconView nowModeIcon;
+@@ -3536,9 +3535,9 @@
+     }
+ 
+     /**
+-     * V73 UI-only catalog presentation. Song rows deliberately hide source identity so the
+-     * title/artist/album own the available width. Source identities remain discoverable in
+-     * Song Info and are shown as restrained coloured text on the Now Playing page.
++     * V74 catalog presentation: song rows and Now Playing stay source-free so music metadata
++     * and playback controls own the visual hierarchy. Catalog identities remain available in
++     * Song Info and the search page's explicit platform filters.
+      */
+     private List<String> catalogSourceCodes(Song song) {
+         ArrayList<String> out = new ArrayList<>();
+@@ -3569,35 +3568,6 @@
+         return text.length() == 0 ? "未知来源" : text.toString();
+     }
+ 
+-    private int catalogSourceColor(String source) {
+-        if ("wy".equals(source)) return Ui.PURPLE;
+-        if ("tx".equals(source)) return Ui.BLUE;
+-        if ("kw".equals(source)) return Ui.GREEN;
+-        if ("kg".equals(source)) return Ui.GOLD;
+-        return Ui.TEXT_2;
+-    }
+-
+-    private void bindNowPlayingSourceText(LinearLayout strip, Song song) {
+-        if (strip == null) return;
+-        strip.removeAllViews();
+-        strip.setGravity(Gravity.CENTER);
+-        List<String> codes = catalogSourceCodes(song);
+-        for (int i = 0; i < codes.size(); i++) {
+-            String code = codes.get(i);
+-            int color = catalogSourceColor(code);
+-            TextView label = Ui.text(this, Song.providerLabel(code), 10.4f, color, false);
+-            label.setGravity(Gravity.CENTER);
+-            label.setAlpha(.90f);
+-            if (Build.VERSION.SDK_INT >= 21) label.setLetterSpacing(.025f);
+-            label.setShadowLayer(Ui.dp(this, 1.2f), 0f, 0f,
+-                    Color.argb(72, Color.red(color), Color.green(color), Color.blue(color)));
+-            LinearLayout.LayoutParams lp = Ui.lp(-2, Ui.dp(this, 24));
+-            if (i > 0) lp.leftMargin = Ui.dp(this, 12);
+-            strip.addView(label, lp);
+-        }
+-        strip.setContentDescription("可用来源：" + catalogSourcesText(song));
+-    }
+-
+     /**
+      * V3.1 UI-only fix: multi-catalog labels can grow from one platform to four or more.
+      * Keep the pill content-complete without giving it an unbounded width that would crush
+@@ -7723,8 +7693,13 @@
+         nowArtist.setEllipsize(TextUtils.TruncateAt.END);
+         content.addView(nowArtist, Ui.lp(-1, Ui.dp(this, 28)));
+ 
+-        FrameLayout metaRow = new FrameLayout(this);
++        // V74: Now Playing is playback-first. Catalog source labels live only in Song Info;
++        // this row is reserved for the three actions the user actually needs while listening.
++        // Equal-width slots keep the composition geometrically balanced: lyrics / favorite / add.
++        LinearLayout metaRow = Ui.row(this);
++        metaRow.setGravity(Gravity.CENTER_VERTICAL);
+ 
++        FrameLayout lyricSlot = new FrameLayout(this);
+         FrameLayout desktopLyricQuick = new FrameLayout(this);
+         desktopLyricQuick.setBackground(Ui.round(Color.argb(12, 255, 255, 255), 21, this));
+         ImageView desktopLyricGlyph = new ImageView(this);
+@@ -7736,24 +7711,12 @@
+         desktopLyricQuick.setClickable(true);
+         Ui.applyRipple(desktopLyricQuick, Color.TRANSPARENT);
+         desktopLyricQuick.setOnClickListener(v -> enableDesktopLyricsDirectly());
+-        metaRow.addView(desktopLyricQuick, Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.START | Gravity.CENTER_VERTICAL));
++        lyricSlot.addView(desktopLyricQuick, Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.CENTER));
++        metaRow.addView(lyricSlot, new LinearLayout.LayoutParams(0, Ui.dp(this, 44), 1f));
+         desktopLyricQuick.postDelayed(() -> maybeShowContextCoach(COACH_DESKTOP_LYRIC, desktopLyricQuick,
+                 "桌面歌词", "点这里可以直接把当前歌词显示到桌面。"), 260L);
+ 
+-        nowSource = Ui.row(this);
+-        nowSource.setGravity(Gravity.CENTER);
+-        nowSource.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
+-        metaRow.addView(nowSource, Ui.frame(-2, Ui.dp(this, 30), Gravity.CENTER));
+-        FrameLayout addToPlaylist = Ui.iconButton(this, IconView.Type.PLUS, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
+-        addToPlaylist.setContentDescription("添加到歌单");
+-        addToPlaylist.setOnClickListener(v -> {
+-            Song song = playback == null ? null : playback.currentSong();
+-            if (song != null) showAddToPlaylist(song);
+-        });
+-        FrameLayout.LayoutParams addMeta = Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.END | Gravity.CENTER_VERTICAL);
+-        addMeta.rightMargin = Ui.dp(this, 46);
+-        metaRow.addView(addToPlaylist, addMeta);
+-
++        FrameLayout favoriteSlot = new FrameLayout(this);
+         nowFavoriteButton = Ui.iconButton(this, IconView.Type.HEART, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
+         nowFavoriteIcon = (IconView) nowFavoriteButton.getChildAt(0);
+         nowFavoriteButton.setContentDescription("收藏");
+@@ -7766,8 +7729,19 @@
+                 toast(isFavorite(song) ? "已收藏" : "已取消收藏");
+             }
+         });
+-        FrameLayout.LayoutParams favMeta = Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.END | Gravity.CENTER_VERTICAL);
+-        metaRow.addView(nowFavoriteButton, favMeta);
++        favoriteSlot.addView(nowFavoriteButton, Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.CENTER));
++        metaRow.addView(favoriteSlot, new LinearLayout.LayoutParams(0, Ui.dp(this, 44), 1f));
++
++        FrameLayout addSlot = new FrameLayout(this);
++        FrameLayout addToPlaylist = Ui.iconButton(this, IconView.Type.PLUS, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
++        addToPlaylist.setContentDescription("添加到歌单");
++        addToPlaylist.setOnClickListener(v -> {
++            Song song = playback == null ? null : playback.currentSong();
++            if (song != null) showAddToPlaylist(song);
++        });
++        addSlot.addView(addToPlaylist, Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.CENTER));
++        metaRow.addView(addSlot, new LinearLayout.LayoutParams(0, Ui.dp(this, 44), 1f));
++
+         LinearLayout.LayoutParams metaP = Ui.lp(-1, Ui.dp(this, 44)); metaP.topMargin = Ui.dp(this, 5);
+         content.addView(metaRow, metaP);
+ 
+@@ -7979,7 +7953,6 @@
+         if (playerOverlay == null || playerOverlay.getVisibility() != View.VISIBLE || s.song == null) return;
+         nowTitle.setText(s.song.title);
+         nowArtist.setText(s.song.artist + (s.song.album.isEmpty() ? "" : "  ·  " + s.song.album));
+-        bindNowPlayingSourceText(nowSource, s.song);
+         int sourceTint = s.song.variants().size() > 1 ? Ui.CYAN : ("tx".equals(s.song.source) ? Ui.GREEN : Ui.GOLD);
+         nowPlayIcon.setType(s.playing ? IconView.Type.PAUSE : IconView.Type.PLAY);
+         nowFavoriteIcon.setIconColor(isFavorite(s.song) ? Ui.PINK : Ui.TEXT_2);
+--- /mnt/data/lunaxy_v73_base/app/build.gradle.kts	2026-08-19 09:59:47.000000000 +0000
++++ app/build.gradle.kts	2026-08-19 10:29:03.616451388 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 730
+-        versionName = "73.0.0"
++        versionCode = 740
++        versionName = "74.0.0"
+     }
+ 
+     buildTypes {
+@@ -35,12 +35,12 @@
+ 
+ // Keep AGP's internal APK name intact for Android Studio install/run tasks, then export a
+ // share-ready copy with the product name after assembly. This avoids relying on deprecated
+-// internal VariantOutput APIs while ensuring the file users share is named "Lunaxy Music V73.apk".
++// internal VariantOutput APIs while ensuring the file users share is named "Lunaxy Music V74.apk".
+ tasks.matching { it.name == "assembleDebug" }.configureEach {
+     doLast {
+         val apkDir = project.layout.buildDirectory.dir("outputs/apk/debug").get().asFile
+         val source = apkDir.resolve("app-debug.apk")
+-        if (source.isFile) source.copyTo(apkDir.resolve("Lunaxy Music V73.apk"), overwrite = true)
++        if (source.isFile) source.copyTo(apkDir.resolve("Lunaxy Music V74.apk"), overwrite = true)
+     }
+ }
+ 
+@@ -49,6 +49,6 @@
+         val apkDir = project.layout.buildDirectory.dir("outputs/apk/release").get().asFile
+         val source = listOf(apkDir.resolve("app-release.apk"), apkDir.resolve("app-release-unsigned.apk"))
+             .firstOrNull { it.isFile }
+-        if (source != null) source.copyTo(apkDir.resolve("Lunaxy Music V73.apk"), overwrite = true)
++        if (source != null) source.copyTo(apkDir.resolve("Lunaxy Music V74.apk"), overwrite = true)
+     }
+ }
+--- /mnt/data/lunaxy_v73_base/BUILD_APK.bat	2026-08-19 09:59:47.000000000 +0000
++++ BUILD_APK.bat	2026-08-19 10:29:03.616503335 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   Lunaxy Music V73 - Debug APK Build
++echo   Lunaxy Music V74 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\Lunaxy Music V73.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\Lunaxy Music V74.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\Lunaxy Music V73.apk
++echo [OK] APK: %CD%\dist\Lunaxy Music V74.apk
+ pause
+--- "/mnt/data/lunaxy_v73_base/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-19 09:59:47.000000000 +0000
++++ "README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-19 10:29:41.143414887 +0000
+@@ -1,31 +1,30 @@
+-【当前版本】Lunaxy Music V73 — Clean Song Rows + Source Info + Now Playing Source Text
++【当前版本】Lunaxy Music V74 — Clean Now Playing Actions
+ 
+ 【基线】
+-严格基于上一轮实际交付的 LunaxyMusic-V72-Full.zip 增量修改；V72 的精确睡眠定时完整保留。
++严格基于上一轮实际交付的 LunaxyMusic-V73-Full.zip 增量修改；V73 的列表去来源化、歌曲信息页与 V72 精确睡眠定时完整保留。
+ V60 完整源码继续永久保留为 Golden Recovery。
+ 
+ 【本轮核心】
+-1. 所有主要歌曲列表彻底移除平台球：搜索结果、普通歌单/导入歌单/收藏/最近播放等通用歌曲行、手动排序列表不再占用横向来源区域，释放空间给歌名/歌手/专辑。
+-2. 搜索页顶部“全部 / 网易 / QQ / 酷我 / 酷狗”平台筛选仍保留；筛选能力与 Catalog/SearchRanker/搜索合并完全不改。
+-3. 每首歌曲右侧“更多”新增“歌曲信息”，可查看歌名、歌手、专辑、时长和“可用来源”。
+-4. 播放详情页保留来源展示，但由 V72 3D 光泽球改为无底框、无胶囊的轻量彩色文字：网易淡紫、QQ淡蓝、酷我淡绿、酷狗淡金；仅展示该歌曲实际拥有的来源。
+-5. V72 PlatformOrbView 已从 runtime 删除，不再维护任何列表平台球动画。
+-6. V72 精确睡眠定时逻辑/UI/PlaybackService 保持不变。
+-7. APK 分享产物：Lunaxy Music V73.apk。
++1. 播放详情页彻底移除平台来源文字，不恢复圆点、球、胶囊或来源框。
++2. 歌名/歌手下方操作行重排为“歌词 / 收藏 / 添加”，严格使用三个等宽槽位，三枚 42dp 圆形按钮各自居中，形成均匀三等分布局。
++3. 左侧歌词按钮仍保持原桌面歌词快捷功能；中间爱心仍保持收藏/取消收藏；右侧“+”仍保持添加到歌单。功能语义不变，只调整展示位置。
++4. 歌曲 Catalog 来源没有删除：继续在“更多 → 歌曲信息 → 可用来源”中完整查看；搜索页顶部平台筛选继续保留。
++5. V73 所有歌曲列表去来源化保持不变，继续优先把横向空间留给歌名/歌手/专辑。
++6. V72 精确睡眠定时、播放核心、搜索核心、Provider Matrix、下载链、桌面歌词核心均不改。
++7. APK 分享产物：Lunaxy Music V74.apk。
+ 
+ 【重点真机验收】
+-A. 搜索结果：平台球完全消失，歌名区域明显变宽，长歌名比 V72 更少被省略。
+-B. 歌单详情、收藏、最近播放、导入歌单等通用歌曲列表：均不再显示平台球，收藏/+ /更多等原操作保持。
+-C. 手动排序页：平台球消失，拖动排序功能与状态不变。
+-D. 任意歌曲“更多 → 歌曲信息”：应显示该歌曲实际可用来源，例如“网易 · QQ · 酷我 · 酷狗”。
+-E. 播放详情：歌名/歌手下方中间位置显示无底框的彩色来源文字，不显示球、圆点或胶囊。
+-F. 只有实际存在的来源才显示；平台文字仅为 Catalog 身份展示，不代表底层 Huibq/全豆要等 Audio Provider。
+-G. V72 定时关闭：秒级倒计时、自定义小时/分钟/秒、到点只暂停均不得回归。
+-H. V69 媒体兼容/桌面歌词、V66 Learning/下载矩阵以及播放/搜索/Provider Locked Core 不得回归。
+-I. Android Studio assemble 后额外 APK 名必须为 Lunaxy Music V73.apk。
++A. 播放详情：歌名/歌手下方不再出现“网易 / QQ / 酷我 / 酷狗”等任何平台展示。
++B. 同一行从左到右必须是：歌词图标 / 爱心 / 加号；三者横向均匀分布，爱心位于几何中心。
++C. 点击歌词仍直接开启桌面歌词；点击爱心收藏状态与颜色正常；点击加号仍打开添加到歌单。
++D. 任意歌曲“更多 → 歌曲信息”仍能查看实际可用来源。
++E. 搜索页顶部“全部 / 网易 / QQ / 酷我 / 酷狗”筛选保持；列表继续不显示平台球。
++F. V72 定时关闭的秒级倒计时、自定义小时/分钟/秒、到点只暂停均不得回归。
++G. 播放/搜索/Provider/下载/桌面歌词 Locked Core 不得回归。
++H. Android Studio assemble 后额外 APK 名必须为 Lunaxy Music V74.apk。
+ 
+ 【版本】
+ - applicationId / namespace：com.xingyu.music
+-- versionCode：730
+-- versionName：73.0.0
+-- assembleDebug 后继续额外生成：Lunaxy Music V73.apk
++- versionCode：740
++- versionName：74.0.0
++- assembleDebug 后继续额外生成：Lunaxy Music V74.apk
+--- /dev/null	2026-08-19 09:16:43.211570654 +0000
++++ "LUNAXY_V74_\346\222\255\346\224\276\350\257\246\346\203\205\344\270\211\346\214\211\351\222\256\345\235\207\345\210\206.md"	2026-08-19 10:29:41.143488576 +0000
+@@ -0,0 +1,36 @@
++# Lunaxy Music V74：播放详情三按钮均分
++
++V74 严格基于上一轮实际交付的 V73 完整源码增量修改；V60 继续永久保留为 Golden Recovery。
++
++## 1. 播放详情去平台化
++
++播放详情页不再展示网易 / QQ / 酷我 / 酷狗来源文字，也不恢复圆点、3D 球、胶囊或来源框。播放页只保留播放时真正需要的音乐信息与操作。
++
++Catalog 来源能力本身没有删除：
++
++- 搜索页顶部平台筛选继续保留；
++- “更多 → 歌曲信息”继续显示当前 Canonical Song 的全部可用 Catalog 来源；
++- Huibq / 全豆要 / juhe 等 Audio Provider 仍保持后台实现，不暴露到播放详情。
++
++## 2. 操作顺序与布局
++
++歌名 / 歌手下方操作行固定为：
++
++`歌词　　　　　　♡　　　　　　＋`
++
++代码使用三个等权重槽位，每个槽位内部居中一个 42dp 操作按钮，因此在不同屏宽下仍保持几何均分，而不是依赖写死 margin。
++
++- 左：桌面歌词快捷按钮，功能不变；
++- 中：收藏 / 取消收藏，状态与粉色高亮逻辑不变；
++- 右：添加到歌单，功能不变。
++
++## 3. Locked Core
++
++本轮只允许修改 MainActivity 的播放详情展示层，以及版本 / 说明 / Guard 元数据。PlaybackService、Catalog、SearchRanker、Provider/READY 路线、下载链、桌面歌词 Service、睡眠定时逻辑均不得修改。
++
++## 4. 版本
++
++- versionCode = 740
++- versionName = 74.0.0
++- applicationId / namespace = com.xingyu.music
++- assembleDebug / assembleRelease / BUILD_APK.bat 额外输出：`Lunaxy Music V74.apk`

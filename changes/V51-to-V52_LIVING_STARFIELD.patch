@@ -1,0 +1,788 @@
+--- /mnt/data/lunaxy_v51_orig/LunaxyMusic-V51/app/src/main/java/com/xingyu/music/ui/Starfield3DView.java	2026-08-12 10:33:11.000000000 +0000
++++ /mnt/data/lunaxy_v52_work/LunaxyMusic-V51/app/src/main/java/com/xingyu/music/ui/Starfield3DView.java	2026-08-12 10:51:36.826278788 +0000
+@@ -14,56 +14,67 @@
+ import java.util.Random;
+ 
+ /**
+- * Lunaxy V51 hybrid 3D fly-through star-volume renderer for the now-playing page.
++ * Lunaxy V52 living 3D star-volume renderer for the now-playing page.
+  *
+- * Unlike the legacy StarfieldView's small screen-space tilt parallax, this view
+- * creates one deterministic 360-degree star volume around the listener and treats
+- * the phone as a camera/window into that volume.  TYPE_GAME_ROTATION_VECTOR drives
+- * a full 3D quaternion camera, so yaw/pitch/roll can reveal completely new star
+- * regions and a physical 360-degree turn returns to the original sky.
++ * V52 keeps the physical 360-degree quaternion camera introduced in V50/V51, but
++ * completely decouples camera motion from particle life.  Every star has intrinsic
++ * world-space motion at all times.  Turning the phone only changes where the camera
++ * looks; it can never pause, restart or "wait for" the particle simulation.
+  *
+- * V51 deliberately keeps both sensations instead of trading one for the other:
+- *  - a deterministic 360-degree world sphere gives physical yaw/pitch/roll look-around;
+- *  - a camera-relative world-space flight layer restores V49's continuous far-to-near
+- *    travel, perspective growth, pulsing and glow even while the phone is perfectly still.
++ * The scene intentionally mixes several coherent motion personalities instead of a
++ * single warp-speed effect: deep approach, curved drift, slow orbital arcs, breathing
++ * pulses and rare comet-like foreground streaks.  Long, incommensurate scene waves
++ * gently change which behaviour is dominant, so the sky feels alive and non-repeating
++ * without becoming chaotic.
+  *
+- * Rendering deliberately stays inside an ordinary non-clickable hardware Canvas View.
+- * That keeps lyric gestures, player controls, window insets and animation stacking
+- * untouched while still using the GPU-backed display list for point/glow drawing.
++ * Rendering remains a non-clickable hardware Canvas View.  Playback, lyrics, queue,
++ * download, ringtone and all other app interaction layers stay completely independent.
+  */
+ public final class Starfield3DView extends View implements SensorEventListener {
+     private static final int LAYER_FAR = 0;
+     private static final int LAYER_MID = 1;
+     private static final int LAYER_NEAR = 2;
+ 
+-    // Full sphere counts.  Only the current camera frustum is drawn, so roughly
+-    // 7-10% of these points are visible in portrait at once.
+-    private static final int FAR_COUNT = 1500;
+-    private static final int MID_COUNT = 650;
+-    private static final int NEAR_COUNT = 250;
++    private static final int MOTION_FLOW = 0;
++    private static final int MOTION_CURVE = 1;
++    private static final int MOTION_ORBIT = 2;
++    private static final int MOTION_PULSE = 3;
++    private static final int MOTION_COMET = 4;
++
++    // A complete 360-degree volume.  Only the current camera frustum is rendered.
++    private static final int FAR_COUNT = 1450;
++    private static final int MID_COUNT = 700;
++    private static final int NEAR_COUNT = 300;
+     private static final int STAR_COUNT = FAR_COUNT + MID_COUNT + NEAR_COUNT;
+ 
+     private static final float BASE_VERTICAL_FOV_DEG = 74f;
+     private static final float NEAR_PLANE = .28f;
+-    private static final long UNIVERSE_SEED = 0x4C554E4158595032L; // "LUNAXYP2"
++    private static final long UNIVERSE_SEED = 0x4C554E4158595632L; // "LUNAXYV2"
+ 
+-    // V51 foreground/midground flight stream.  This intentionally mirrors the visual
+-    // rhythm that made V49 feel alive: stars keep approaching the camera, fan outward
+-    // under perspective, grow, brighten and bloom before being recycled into deep space.
+-    private static final int FLOW_COUNT = 430;
+-    private static final float FLOW_NEAR_DEPTH = .72f;
+-    private static final float FLOW_FAR_DEPTH = 46f;
+-    private static final long FLOW_SEED = 0x564934464C4F5731L; // "VI9FLOW1"
++    // Foreground camera-volume stream.  It is deliberately independent from the 360
++    // world stars and is replenished immediately in the current view while rotating.
++    private static final int FLOW_COUNT = 420;
++    private static final float FLOW_NEAR_DEPTH = .68f;
++    private static final float FLOW_FAR_DEPTH = 49f;
++    private static final long FLOW_SEED = 0x4C554E4158594632L; // "LUNAXYF2"
+ 
+     private static final class Star {
+         float x, y, z;
+         float distance;
++        float farDistance;
++        float nearDistance;
+         float worldRadius;
+         float brightness;
+         float phase;
+         float twinkleSpeed;
++        float pulseSpeed;
+         float tintWeight;
++        float radialSpeed;
++        float angularSpeed;
++        float wobbleSpeed;
++        float axisX, axisY, axisZ;
+         int layer;
++        int motionType;
+         boolean flare;
+         boolean previousVisible;
+         float previousX, previousY;
+@@ -80,11 +91,13 @@
+         float twinkleSpeed;
+         float pulseSpeed;
+         float tintWeight;
++        float curveStrength;
++        float axisX, axisY, axisZ;
++        int motionType;
+         boolean coolWhite;
+         boolean flare;
+         boolean previousVisible;
+         float previousX, previousY;
+-        float invisibleSeconds;
+     }
+ 
+     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+@@ -154,7 +167,6 @@
+         if (running) postInvalidateOnAnimation();
+     }
+ 
+-    /** True when the device exposes a rotation-vector sensor for physical camera tracking. */
+     public boolean hasRotationTracking() {
+         return rotationSensor != null;
+     }
+@@ -166,6 +178,87 @@
+         for (int i = 0; i < NEAR_COUNT; i++) stars[index++] = createStar(LAYER_NEAR);
+     }
+ 
++    private Star createStar(int layer) {
++        Star s = new Star();
++        s.layer = layer;
++        if (layer == LAYER_FAR) {
++            s.farDistance = lerp(72f, 104f, random.nextFloat());
++            s.nearDistance = lerp(3.0f, 4.6f, random.nextFloat());
++            s.worldRadius = lerp(.095f, .225f, random.nextFloat());
++            s.brightness = lerp(.38f, .78f, random.nextFloat());
++            s.tintWeight = lerp(.04f, .13f, random.nextFloat());
++            s.radialSpeed = lerp(1.35f, 2.35f, random.nextFloat());
++            s.angularSpeed = lerp(.020f, .060f, random.nextFloat());
++            s.flare = random.nextFloat() < .008f;
++        } else if (layer == LAYER_MID) {
++            s.farDistance = lerp(48f, 78f, random.nextFloat());
++            s.nearDistance = lerp(1.9f, 3.1f, random.nextFloat());
++            s.worldRadius = lerp(.055f, .145f, random.nextFloat());
++            s.brightness = lerp(.50f, .94f, random.nextFloat());
++            s.tintWeight = lerp(.08f, .24f, random.nextFloat());
++            s.radialSpeed = lerp(1.55f, 2.85f, random.nextFloat());
++            s.angularSpeed = lerp(.032f, .086f, random.nextFloat());
++            s.flare = random.nextFloat() < .018f;
++        } else {
++            s.farDistance = lerp(30f, 54f, random.nextFloat());
++            s.nearDistance = lerp(1.05f, 1.75f, random.nextFloat());
++            s.worldRadius = lerp(.028f, .085f, random.nextFloat());
++            s.brightness = lerp(.62f, 1.0f, random.nextFloat());
++            s.tintWeight = lerp(.12f, .36f, random.nextFloat());
++            s.radialSpeed = lerp(1.85f, 3.45f, random.nextFloat());
++            s.angularSpeed = lerp(.045f, .120f, random.nextFloat());
++            s.flare = random.nextFloat() < .048f;
++        }
++        s.phase = random.nextFloat() * (float) (Math.PI * 2.0);
++        s.twinkleSpeed = lerp(.48f, 1.42f, random.nextFloat());
++        s.pulseSpeed = lerp(.22f, .78f, random.nextFloat());
++        s.wobbleSpeed = lerp(.18f, .72f, random.nextFloat());
++        s.motionType = chooseMotionType(random.nextFloat());
++        randomUnitVector(random, spawnDirection);
++        randomUnitVector(random, spawnWorld);
++        s.axisX = spawnWorld[0];
++        s.axisY = spawnWorld[1];
++        s.axisZ = spawnWorld[2];
++        float initialDepth = lerp(s.nearDistance + .4f, s.farDistance, random.nextFloat());
++        placeStar(s, spawnDirection[0], spawnDirection[1], spawnDirection[2], initialDepth);
++        return s;
++    }
++
++    private int chooseMotionType(float r) {
++        if (r < .42f) return MOTION_FLOW;
++        if (r < .66f) return MOTION_CURVE;
++        if (r < .80f) return MOTION_ORBIT;
++        if (r < .94f) return MOTION_PULSE;
++        return MOTION_COMET;
++    }
++
++    private void recycleStar(Star s) {
++        randomUnitVector(random, spawnDirection);
++        randomUnitVector(random, spawnWorld);
++        s.axisX = spawnWorld[0];
++        s.axisY = spawnWorld[1];
++        s.axisZ = spawnWorld[2];
++        s.motionType = chooseMotionType(random.nextFloat());
++        s.phase = random.nextFloat() * (float) (Math.PI * 2.0);
++        s.flare = random.nextFloat() < (s.layer == LAYER_NEAR ? .05f : s.layer == LAYER_MID ? .02f : .009f);
++        placeStar(s, spawnDirection[0], spawnDirection[1], spawnDirection[2],
++                lerp(s.farDistance * .90f, s.farDistance, random.nextFloat()));
++        s.previousVisible = false;
++    }
++
++    private static void placeStar(Star s, float dx, float dy, float dz, float distance) {
++        float n = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
++        if (n < 1.0e-6f) {
++            dx = 0f; dy = 0f; dz = -1f; n = 1f;
++        }
++        float inv = 1f / n;
++        dx *= inv; dy *= inv; dz *= inv;
++        s.distance = distance;
++        s.x = dx * distance;
++        s.y = dy * distance;
++        s.z = dz * distance;
++    }
++
+     private void createFlightField() {
+         for (int i = 0; i < FLOW_COUNT; i++) {
+             FlowStar s = new FlowStar();
+@@ -180,18 +273,16 @@
+ 
+     private void resetFlowStar(FlowStar s, boolean randomDepth) {
+         float depth = randomDepth
+-                ? lerp(3.2f, FLOW_FAR_DEPTH, flowRandom.nextFloat())
+-                : lerp(FLOW_FAR_DEPTH * .90f, FLOW_FAR_DEPTH, flowRandom.nextFloat());
++                ? lerp(2.8f, FLOW_FAR_DEPTH, flowRandom.nextFloat())
++                : lerp(FLOW_FAR_DEPTH * .86f, FLOW_FAR_DEPTH, flowRandom.nextFloat());
+ 
+-        // Preserve V49's wide off-axis volume: lateral offsets stay approximately fixed
+-        // while depth shrinks, therefore perspective naturally fans the particle outward.
+-        float localX = (flowRandom.nextFloat() * 2f - 1f) * 8.8f;
+-        float localY = (flowRandom.nextFloat() * 2f - 1f) * 14.2f;
+-        if (Math.abs(localX) < .42f) localX += localX < 0f ? -.72f : .72f;
+-        if (Math.abs(localY) < .48f) localY += localY < 0f ? -.82f : .82f;
++        float localX = (flowRandom.nextFloat() * 2f - 1f) * 9.2f;
++        float localY = (flowRandom.nextFloat() * 2f - 1f) * 15.0f;
++        if (Math.abs(localX) < .40f) localX += localX < 0f ? -.74f : .74f;
++        if (Math.abs(localY) < .44f) localY += localY < 0f ? -.84f : .84f;
+ 
+         cameraToWorld(localX, localY, -depth, spawnWorld);
+-        cameraToWorld(0f, 0f, 1f, spawnDirection); // move from deep space toward the lens
++        cameraToWorld(0f, 0f, 1f, spawnDirection);
+         s.x = spawnWorld[0];
+         s.y = spawnWorld[1];
+         s.z = spawnWorld[2];
+@@ -199,22 +290,26 @@
+         s.dirY = spawnDirection[1];
+         s.dirZ = spawnDirection[2];
+         s.remainingDepth = depth;
+-        s.speed = lerp(1.55f, 2.55f, flowRandom.nextFloat());
+-        s.size = lerp(.34f, 1.12f, flowRandom.nextFloat());
++        s.speed = lerp(1.70f, 3.05f, flowRandom.nextFloat());
++        s.size = lerp(.34f, 1.18f, flowRandom.nextFloat());
+         s.brightness = lerp(.72f, 1.0f, flowRandom.nextFloat());
+         s.phase = flowRandom.nextFloat() * (float) (Math.PI * 2.0);
+-        s.twinkleSpeed = lerp(.65f, 1.48f, flowRandom.nextFloat());
+-        s.pulseSpeed = lerp(.42f, 1.05f, flowRandom.nextFloat());
+-        s.tintWeight = lerp(.08f, .31f, flowRandom.nextFloat());
++        s.twinkleSpeed = lerp(.70f, 1.60f, flowRandom.nextFloat());
++        s.pulseSpeed = lerp(.36f, 1.12f, flowRandom.nextFloat());
++        s.tintWeight = lerp(.08f, .33f, flowRandom.nextFloat());
+         s.coolWhite = flowRandom.nextFloat() < .20f;
+-        s.flare = flowRandom.nextFloat() < .045f;
++        s.flare = flowRandom.nextFloat() < .055f;
++        s.motionType = chooseMotionType(flowRandom.nextFloat());
++        s.curveStrength = lerp(.012f, .052f, flowRandom.nextFloat());
++        randomUnitVector(flowRandom, spawnWorld);
++        s.axisX = spawnWorld[0];
++        s.axisY = spawnWorld[1];
++        s.axisZ = spawnWorld[2];
+         s.previousVisible = false;
+-        s.invisibleSeconds = 0f;
+     }
+ 
+-    /** Convert a camera-local vector into the persistent baseline/world coordinate system. */
++    /** Convert a camera-local vector into the persistent world coordinate system. */
+     private void cameraToWorld(float x, float y, float z, float[] out) {
+-        // cameraQ maps world -> current camera.  Its conjugate maps current camera -> world.
+         inverseCameraQ[0] = cameraQ[0];
+         inverseCameraQ[1] = -cameraQ[1];
+         inverseCameraQ[2] = -cameraQ[2];
+@@ -222,46 +317,6 @@
+         Starfield3DMath.rotateVector(inverseCameraQ, x, y, z, out);
+     }
+ 
+-    private Star createStar(int layer) {
+-        Star s = new Star();
+-        // Uniform direction over the full sphere.  The universe is fixed by seed;
+-        // switching songs changes color only, never the star locations.
+-        float u = random.nextFloat() * 2f - 1f;
+-        float theta = random.nextFloat() * (float) (Math.PI * 2.0);
+-        float ring = (float) Math.sqrt(Math.max(0f, 1f - u * u));
+-        float dx = ring * (float) Math.cos(theta);
+-        float dy = u;
+-        float dz = ring * (float) Math.sin(theta);
+-
+-        s.layer = layer;
+-        if (layer == LAYER_FAR) {
+-            s.distance = lerp(52f, 94f, random.nextFloat());
+-            s.worldRadius = lerp(.105f, .255f, random.nextFloat());
+-            s.brightness = lerp(.34f, .76f, random.nextFloat());
+-            s.tintWeight = lerp(.04f, .13f, random.nextFloat());
+-            s.flare = random.nextFloat() < .005f;
+-        } else if (layer == LAYER_MID) {
+-            s.distance = lerp(22f, 44f, random.nextFloat());
+-            s.worldRadius = lerp(.055f, .145f, random.nextFloat());
+-            s.brightness = lerp(.48f, .92f, random.nextFloat());
+-            s.tintWeight = lerp(.08f, .22f, random.nextFloat());
+-            s.flare = random.nextFloat() < .012f;
+-        } else {
+-            s.distance = lerp(7.5f, 17f, random.nextFloat());
+-            s.worldRadius = lerp(.022f, .062f, random.nextFloat());
+-            s.brightness = lerp(.58f, 1f, random.nextFloat());
+-            s.tintWeight = lerp(.12f, .34f, random.nextFloat());
+-            s.flare = random.nextFloat() < .035f;
+-        }
+-
+-        s.x = dx * s.distance;
+-        s.y = dy * s.distance;
+-        s.z = dz * s.distance;
+-        s.phase = random.nextFloat() * (float) (Math.PI * 2.0);
+-        s.twinkleSpeed = lerp(.38f, 1.15f, random.nextFloat());
+-        return s;
+-    }
+-
+     @Override protected void onAttachedToWindow() {
+         super.onAttachedToWindow();
+         startMotion();
+@@ -282,8 +337,6 @@
+     @Override protected void onVisibilityChanged(View changedView, int visibility) {
+         super.onVisibilityChanged(changedView, visibility);
+         if (!isAttachedToWindow()) return;
+-        // Ancestor visibility matters too: when the now-playing overlay is GONE, stop
+-        // sensors/rendering even though this child's own visibility flag is still VISIBLE.
+         if (visibility == VISIBLE) startMotion();
+         else stopMotion();
+     }
+@@ -339,21 +392,18 @@
+         canvas.drawColor(Color.BLACK);
+ 
+         long nowMs = SystemClock.uptimeMillis();
+-        float dt = Math.min(.05f, Math.max(.001f, (nowMs - lastFrameMs) / 1000f));
++        float dt = Math.min(.045f, Math.max(.001f, (nowMs - lastFrameMs) / 1000f));
+         lastFrameMs = nowMs;
+         float time = nowMs / 1000f;
+ 
+         updateAudio(dt);
+ 
+-        // Responsive but damped quaternion camera: large deliberate turns follow quickly,
+-        // tiny hand jitter is filtered before it reaches the stars.
+-        float orientationBlend = 1f - (float) Math.exp(-11.0f * dt);
++        // Camera tracking is intentionally independent from the simulation.  Even while
++        // targetCameraQ changes rapidly, every particle below keeps advancing every frame.
++        float orientationBlend = 1f - (float) Math.exp(-11.5f * dt);
+         Starfield3DMath.slerp(cameraQ, targetCameraQ, orientationBlend, nextCameraQ);
+         Starfield3DMath.copy(nextCameraQ, cameraQ);
+ 
+-        // Linear-acceleration input is intentionally tiny and heavily damped.  It does
+-        // not pretend to be AR/6DoF tracking; it only gives nearby dust a short physical
+-        // translation cue when the phone itself is nudged.
+         float shiftBlend = 1f - (float) Math.exp(-7.0f * dt);
+         cameraShiftX += (targetShiftX - cameraShiftX) * shiftBlend;
+         cameraShiftY += (targetShiftY - cameraShiftY) * shiftBlend;
+@@ -365,114 +415,238 @@
+         angularSpeed *= (float) Math.exp(-2.6f * dt);
+ 
+         float density = getResources().getDisplayMetrics().density;
+-        float speedFov = Math.min(2.0f, angularSpeed * .65f);
++        float speedFov = Math.min(1.7f, angularSpeed * .52f);
+         float fovRad = (float) Math.toRadians(BASE_VERTICAL_FOV_DEG + speedFov);
+         float focal = (height * .5f) / (float) Math.tan(fovRad * .5f);
+         float centerX = width * .5f;
+         float centerY = height * .5f;
+ 
+-        // A sub-pixel-scale observer sway creates a gentle near/mid/far depth cue even
+-        // while the phone is still.  Because the same translation is applied in world
+-        // units, nearby stars move naturally more than far stars under perspective.
+         float observerX = cameraShiftX + (float) Math.sin(time * .27f) * .018f;
+         float observerY = cameraShiftY + (float) Math.cos(time * .23f) * .013f;
+         float observerZ = cameraShiftZ + (float) Math.sin(time * .19f) * .009f;
+ 
+-        for (Star s : stars) {
+-            Starfield3DMath.rotateVector(cameraQ, s.x, s.y, s.z, rotated);
+-            float x = rotated[0] - observerX;
+-            float y = rotated[1] - observerY;
+-            float z = rotated[2] - observerZ;
++        // Long incommensurate waves produce coherent scene chapters without a hard loop:
++        // sometimes the field feels like deep forward travel, sometimes curved orbital
++        // drift becomes more visible, then the whole scene gently breathes and blooms.
++        float surgeWave = .5f + .5f * (float) Math.sin(time * .205f + .45f * (float) Math.sin(time * .071f));
++        float swirlWave = .5f + .5f * (float) Math.sin(time * .137f + 1.13f);
++        float bloomWave = .5f + .5f * (float) Math.sin(time * .097f + 2.20f);
++        float surge = lerp(.86f, 1.34f, smoothstep(.05f, .95f, surgeWave));
++        float swirl = smoothstep(.34f, .88f, swirlWave);
++        float bloom = smoothstep(.18f, .92f, bloomWave);
++
++        // Slowly wandering shared vortex axis.  It gives periods of readable coordinated
++        // movement while each star still carries its own local axis and phase.
++        float sceneAxisX = (float) Math.sin(time * .041f) * .68f + .22f;
++        float sceneAxisY = (float) Math.cos(time * .033f + .7f) * .54f + .18f;
++        float sceneAxisZ = (float) Math.sin(time * .027f + 1.9f) * .72f;
++        float sceneAxisN = (float) Math.sqrt(sceneAxisX * sceneAxisX + sceneAxisY * sceneAxisY + sceneAxisZ * sceneAxisZ);
++        sceneAxisX /= sceneAxisN;
++        sceneAxisY /= sceneAxisN;
++        sceneAxisZ /= sceneAxisN;
+ 
+-            // Android device +Z points out of the screen, therefore the virtual camera
+-            // looks along -Z into the star volume.
+-            if (z >= -NEAR_PLANE) {
+-                s.previousVisible = false;
+-                continue;
+-            }
++        for (Star s : stars) {
++            updateStarMotion(s, time, dt, surge, swirl, sceneAxisX, sceneAxisY, sceneAxisZ);
++            drawWorldStar(canvas, s, width, height, density, focal, centerX, centerY,
++                    observerX, observerY, observerZ, time, bloom);
++        }
+ 
+-            float invDepth = 1f / -z;
+-            float sx = centerX + x * focal * invDepth;
+-            float sy = centerY - y * focal * invDepth;
+-            if (sx < -48f || sx > width + 48f || sy < -48f || sy > height + 48f) {
+-                s.previousVisible = false;
+-                continue;
+-            }
++        drawFlightField(canvas, width, height, density, focal, centerX, centerY,
++                observerX, observerY, observerZ, time, dt, surge, swirl, bloom);
+ 
+-            float facing = clamp((-z) / s.distance, 0f, 1f);
+-            float twinkle = .83f + .17f * (float) Math.sin(time * s.twinkleSpeed + s.phase);
+-            float radius = s.worldRadius * focal * invDepth;
+-            radius = clamp(radius, .36f * density, 4.2f * density);
+-            radius *= 1f + visualEnergy * .06f + visualBeat * .11f;
+-
+-            float layerAlpha = s.layer == LAYER_FAR ? .72f : s.layer == LAYER_MID ? .88f : 1f;
+-            int alpha = (int) (255f * s.brightness * layerAlpha * twinkle * (.72f + facing * .28f));
+-            alpha = Math.max(34, Math.min(255, alpha));
++        // Never throttle because the phone is moving.  Particle time always advances while
++        // the player is visible; sensors merely alter cameraQ on top of that simulation.
++        if (running) postInvalidateOnAnimation();
++    }
+ 
+-            int neutralR = s.layer == LAYER_FAR ? 228 : 246;
+-            int neutralG = s.layer == LAYER_FAR ? 238 : 248;
+-            int neutralB = 255;
+-            float tint = clamp(s.tintWeight + visualEnergy * .08f + visualBeat * .11f, .03f, .48f);
+-            int r = mix(neutralR, Color.red(accent), tint);
+-            int g = mix(neutralG, Color.green(accent), tint);
+-            int b = mix(neutralB, Color.blue(accent), tint);
++    private void updateStarMotion(Star s, float time, float dt, float surge, float swirl,
++                                  float sceneAxisX, float sceneAxisY, float sceneAxisZ) {
++        if (!running) return;
++
++        float ux = s.x / Math.max(.0001f, s.distance);
++        float uy = s.y / Math.max(.0001f, s.distance);
++        float uz = s.z / Math.max(.0001f, s.distance);
++
++        float typeRadial;
++        float typeAngular;
++        switch (s.motionType) {
++            case MOTION_CURVE:
++                typeRadial = .92f;
++                typeAngular = 1.28f;
++                break;
++            case MOTION_ORBIT:
++                typeRadial = .62f;
++                typeAngular = 1.92f;
++                break;
++            case MOTION_PULSE:
++                typeRadial = .88f + .36f * (.5f + .5f * (float) Math.sin(time * s.pulseSpeed + s.phase));
++                typeAngular = .96f;
++                break;
++            case MOTION_COMET:
++                typeRadial = 1.48f;
++                typeAngular = .52f;
++                break;
++            case MOTION_FLOW:
++            default:
++                typeRadial = 1.16f;
++                typeAngular = .72f;
++                break;
++        }
+ 
+-            // Real screen-space displacement under fast camera rotation provides a tiny
+-            // physically coherent streak instead of a synthetic warp-speed effect.
+-            if (s.previousVisible && angularSpeed > .62f) {
+-                float dx = sx - s.previousX;
+-                float dy = sy - s.previousY;
+-                float displacement = (float) Math.sqrt(dx * dx + dy * dy);
+-                if (displacement > .8f && displacement < 34f * density) {
+-                    float trail = clamp(.16f + (angularSpeed - .62f) * .10f, .16f, .38f);
+-                    paint.setStrokeWidth(Math.max(.45f * density, radius * .52f));
+-                    paint.setColor(Color.argb((int) (alpha * .22f), r, g, b));
+-                    canvas.drawLine(sx - dx * trail, sy - dy * trail, sx, sy, paint);
+-                }
+-            }
++        // Every star always approaches.  Orbit/curve personalities only redistribute the
++        // radial/tangential balance; none of them can become a static decorative point.
++        float localPulse = .90f + .16f * (float) Math.sin(time * s.wobbleSpeed + s.phase * 1.71f);
++        float audioDrive = 1f + visualEnergy * .08f + visualBeat * .08f;
++        s.distance -= s.radialSpeed * typeRadial * surge * localPulse * audioDrive * dt;
++        if (s.distance <= s.nearDistance) {
++            recycleStar(s);
++            return;
++        }
+ 
+-            if (s.layer != LAYER_FAR && (radius > 1.05f * density || s.flare)) {
+-                float glow = radius * (s.layer == LAYER_NEAR ? 3.8f : 2.9f);
+-                paint.setColor(Color.argb((int) (alpha * (s.layer == LAYER_NEAR ? .12f : .075f)), r, g, b));
+-                canvas.drawCircle(sx, sy, glow, paint);
+-            }
++        // Local curved motion around each star's private axis.
++        float tx = s.axisY * uz - s.axisZ * uy;
++        float ty = s.axisZ * ux - s.axisX * uz;
++        float tz = s.axisX * uy - s.axisY * ux;
++
++        // Shared scene vortex, blended in and out over tens of seconds.
++        float gx = sceneAxisY * uz - sceneAxisZ * uy;
++        float gy = sceneAxisZ * ux - sceneAxisX * uz;
++        float gz = sceneAxisX * uy - sceneAxisY * ux;
++
++        float localAngle = s.angularSpeed * typeAngular
++                * (.42f + .58f * (.5f + .5f * (float) Math.sin(time * s.wobbleSpeed + s.phase))) * dt;
++        float globalAngle = (.008f + .031f * swirl) * dt
++                * (s.motionType == MOTION_ORBIT ? 1.45f : 1f);
++        float micro = .0022f * (float) Math.sin(time * (s.wobbleSpeed * .73f + .11f) + s.phase * 2.13f) * dt;
++
++        ux += tx * localAngle + gx * globalAngle + gy * micro;
++        uy += ty * localAngle + gy * globalAngle - gx * micro;
++        uz += tz * localAngle + gz * globalAngle + tx * micro;
++        float n = (float) Math.sqrt(ux * ux + uy * uy + uz * uz);
++        if (n < 1.0e-6f) {
++            recycleStar(s);
++            return;
++        }
++        float inv = 1f / n;
++        ux *= inv; uy *= inv; uz *= inv;
++        s.x = ux * s.distance;
++        s.y = uy * s.distance;
++        s.z = uz * s.distance;
++    }
++
++    private void drawWorldStar(Canvas canvas, Star s, float width, float height, float density,
++                               float focal, float centerX, float centerY,
++                               float observerX, float observerY, float observerZ,
++                               float time, float bloom) {
++        Starfield3DMath.rotateVector(cameraQ, s.x, s.y, s.z, rotated);
++        float x = rotated[0] - observerX;
++        float y = rotated[1] - observerY;
++        float z = rotated[2] - observerZ;
++        if (z >= -NEAR_PLANE) {
++            s.previousVisible = false;
++            return;
++        }
+ 
+-            paint.setColor(Color.argb(alpha, r, g, b));
+-            canvas.drawCircle(sx, sy, radius, paint);
++        float invDepth = 1f / -z;
++        float sx = centerX + x * focal * invDepth;
++        float sy = centerY - y * focal * invDepth;
++        if (sx < -72f || sx > width + 72f || sy < -72f || sy > height + 72f) {
++            s.previousVisible = false;
++            return;
++        }
+ 
+-            if (s.flare && facing > .78f && radius > .85f * density) {
+-                paint.setStrokeWidth(Math.max(.45f * density, radius * .22f));
+-                paint.setColor(Color.argb((int) (alpha * .34f), r, g, b));
+-                float arm = radius * (s.layer == LAYER_NEAR ? 3.6f : 2.8f);
+-                canvas.drawLine(sx - arm, sy, sx + arm, sy, paint);
+-                canvas.drawLine(sx, sy - arm, sx, sy + arm, paint);
++        float life = clamp((s.farDistance - s.distance)
++                / Math.max(.001f, s.farDistance - s.nearDistance), 0f, 1f);
++        float twinkle = .76f + .24f * (float) Math.sin(time * s.twinkleSpeed + s.phase);
++        float breath = .88f + .14f * (float) Math.sin(time * s.pulseSpeed + s.phase * 1.31f);
++        float modeBloom = s.motionType == MOTION_PULSE ? .13f : s.motionType == MOTION_COMET ? .07f : .035f;
++        float radius = s.worldRadius * focal * invDepth;
++        radius *= breath * (1f + life * .34f + bloom * modeBloom + visualEnergy * .07f + visualBeat * .13f);
++        radius = clamp(radius, .34f * density, 5.1f * density);
++
++        float layerAlpha = s.layer == LAYER_FAR ? .74f : s.layer == LAYER_MID ? .90f : 1f;
++        int alpha = (int) ((46f + 209f * life) * s.brightness * layerAlpha * twinkle);
++        alpha = Math.max(28, Math.min(255, alpha));
++
++        int neutralR = s.layer == LAYER_FAR ? 226 : 248;
++        int neutralG = s.layer == LAYER_FAR ? 237 : 249;
++        int neutralB = 255;
++        float tint = clamp(s.tintWeight + life * .13f + bloom * .035f
++                + visualEnergy * .08f + visualBeat * .12f, .03f, .52f);
++        int r = mix(neutralR, Color.red(accent), tint);
++        int g = mix(neutralG, Color.green(accent), tint);
++        int b = mix(neutralB, Color.blue(accent), tint);
++
++        // Intrinsic motion and camera motion both contribute to the same physical screen
++        // displacement.  Trails are therefore never gated on angularSpeed.
++        if (s.previousVisible) {
++            float dx = sx - s.previousX;
++            float dy = sy - s.previousY;
++            float displacement = (float) Math.sqrt(dx * dx + dy * dy);
++            if (displacement > .45f && displacement < 36f * density && life > .34f) {
++                float tail = clamp(.10f + life * .20f + Math.min(.12f, angularSpeed * .025f), .10f, .34f);
++                float trailAlpha = s.motionType == MOTION_COMET ? .24f : .12f + life * .06f;
++                paint.setStrokeWidth(Math.max(.40f * density, radius * .40f));
++                paint.setColor(Color.argb((int) (alpha * trailAlpha), r, g, b));
++                canvas.drawLine(sx - dx * tail, sy - dy * tail, sx, sy, paint);
+             }
++        }
+ 
+-            s.previousX = sx;
+-            s.previousY = sy;
+-            s.previousVisible = true;
++        if (life > .38f || s.flare || bloom > .70f) {
++            float glow = radius * lerp(2.25f, 5.25f, life);
++            float glowAlpha = lerp(.045f, .17f, life) + bloom * .018f;
++            paint.setColor(Color.argb((int) (alpha * glowAlpha), r, g, b));
++            canvas.drawCircle(sx, sy, glow, paint);
+         }
+ 
+-        // V51 foreground/midground flight stream.  Unlike the surrounding sphere these
+-        // particles have actual world-space velocity toward the camera.  The same full
+-        // quaternion still rotates them, so turning the phone and forward flight coexist.
+-        drawFlightField(canvas, width, height, density, focal, centerX, centerY,
+-                observerX, observerY, observerZ, time, dt);
++        paint.setColor(Color.argb(alpha, r, g, b));
++        canvas.drawCircle(sx, sy, radius, paint);
+ 
+-        // Forward motion exists even with a perfectly stationary handset, so the player
+-        // page intentionally stays animation-rate while visible.  Sensors still unregister
+-        // and rendering stops completely when the player overlay/app leaves the foreground.
+-        if (running) postInvalidateOnAnimation();
++        if ((s.flare || s.motionType == MOTION_COMET) && life > .76f && radius > .78f * density) {
++            paint.setStrokeWidth(Math.max(.44f * density, radius * .20f));
++            paint.setColor(Color.argb((int) (alpha * .34f), r, g, b));
++            float arm = radius * lerp(2.7f, 4.2f, life);
++            canvas.drawLine(sx - arm, sy, sx + arm, sy, paint);
++            canvas.drawLine(sx, sy - arm, sx, sy + arm, paint);
++        }
++
++        s.previousX = sx;
++        s.previousY = sy;
++        s.previousVisible = true;
+     }
+ 
+     private void drawFlightField(Canvas canvas, float width, float height, float density,
+                                  float focal, float centerX, float centerY,
+                                  float observerX, float observerY, float observerZ,
+-                                 float time, float dt) {
+-        float audioDrive = 1f + visualEnergy * .11f + visualBeat * .08f;
++                                 float time, float dt, float surge, float swirl, float bloom) {
++        float audioDrive = 1f + visualEnergy * .11f + visualBeat * .09f;
+         for (FlowStar s : flowStars) {
+             if (running) {
+-                float advance = s.speed * audioDrive * dt;
++                // Flow particles also never pause while the device rotates.  Some bend into
++                // graceful arcs; others surge or pulse, but every one continues advancing.
++                float typeSpeed = s.motionType == MOTION_ORBIT ? .76f
++                        : s.motionType == MOTION_COMET ? 1.38f
++                        : s.motionType == MOTION_PULSE
++                        ? (.88f + .28f * (.5f + .5f * (float) Math.sin(time * s.pulseSpeed + s.phase)))
++                        : 1f;
++                float advance = s.speed * typeSpeed * surge * audioDrive * dt;
++
++                if (s.motionType == MOTION_CURVE || s.motionType == MOTION_ORBIT || s.motionType == MOTION_PULSE) {
++                    float cx = s.axisY * s.dirZ - s.axisZ * s.dirY;
++                    float cy = s.axisZ * s.dirX - s.axisX * s.dirZ;
++                    float cz = s.axisX * s.dirY - s.axisY * s.dirX;
++                    float bend = s.curveStrength * (s.motionType == MOTION_ORBIT ? 1.65f : 1f)
++                            * (.45f + .55f * swirl) * dt;
++                    s.dirX += cx * bend;
++                    s.dirY += cy * bend;
++                    s.dirZ += cz * bend;
++                    float n = (float) Math.sqrt(s.dirX * s.dirX + s.dirY * s.dirY + s.dirZ * s.dirZ);
++                    if (n > 1.0e-6f) {
++                        float inv = 1f / n;
++                        s.dirX *= inv; s.dirY *= inv; s.dirZ *= inv;
++                    }
++                }
++
+                 s.x += s.dirX * advance;
+                 s.y += s.dirY * advance;
+                 s.z += s.dirZ * advance;
+@@ -488,66 +662,61 @@
+             float y = rotated[1] - observerY;
+             float z = rotated[2] - observerZ;
+             if (z >= -NEAR_PLANE) {
+-                s.previousVisible = false;
+-                s.invisibleSeconds += dt;
+-                if (s.invisibleSeconds > .62f) resetFlowStar(s, false);
++                // Replenish immediately in the current view instead of waiting 600-800 ms.
++                // This is the V51 rotation-pause bug fix.
++                resetFlowStar(s, false);
+                 continue;
+             }
+ 
+             float invDepth = 1f / -z;
+             float sx = centerX + x * focal * invDepth;
+             float sy = centerY - y * focal * invDepth;
+-            if (sx < -96f || sx > width + 96f || sy < -96f || sy > height + 96f) {
+-                s.previousVisible = false;
+-                s.invisibleSeconds += dt;
+-                if (s.invisibleSeconds > .78f) resetFlowStar(s, false);
++            if (sx < -104f || sx > width + 104f || sy < -104f || sy > height + 104f) {
++                resetFlowStar(s, false);
+                 continue;
+             }
+-            s.invisibleSeconds = 0f;
+ 
+             float progress = clamp((FLOW_FAR_DEPTH - s.remainingDepth)
+                     / (FLOW_FAR_DEPTH - FLOW_NEAR_DEPTH), 0f, 1f);
+-            float twinkle = .72f + .28f * (float) Math.sin(time * s.twinkleSpeed + s.phase);
+-            float pulse = .88f + .16f * (float) Math.sin(time * s.pulseSpeed + s.phase * 1.37f);
+-            float radius = s.size * (.50f + progress * 1.92f) * density;
+-            radius *= pulse * (1f + visualEnergy * .09f + visualBeat * .17f);
+-            radius = Math.max(.42f * density, radius);
++            float twinkle = .70f + .30f * (float) Math.sin(time * s.twinkleSpeed + s.phase);
++            float pulse = .86f + .18f * (float) Math.sin(time * s.pulseSpeed + s.phase * 1.37f);
++            float radius = s.size * (.48f + progress * 2.08f) * density;
++            radius *= pulse * (1f + bloom * .045f + visualEnergy * .09f + visualBeat * .17f);
++            radius = Math.max(.40f * density, radius);
+ 
+-            int alpha = (int) ((66f + 196f * progress) * s.brightness * twinkle);
+-            alpha = Math.max(42, Math.min(255, alpha));
++            int alpha = (int) ((58f + 197f * progress) * s.brightness * twinkle);
++            alpha = Math.max(38, Math.min(255, alpha));
+             int neutralR = s.coolWhite ? 224 : 250;
+             int neutralG = s.coolWhite ? 236 : 250;
+             int neutralB = 255;
+-            float tint = clamp(s.tintWeight + progress * .11f
+-                    + visualEnergy * .10f + visualBeat * .15f, .05f, .52f);
++            float tint = clamp(s.tintWeight + progress * .12f
++                    + visualEnergy * .10f + visualBeat * .15f, .05f, .54f);
+             int r = mix(neutralR, Color.red(accent), tint);
+             int g = mix(neutralG, Color.green(accent), tint);
+             int b = mix(neutralB, Color.blue(accent), tint);
+ 
+-            // A tiny displacement tail makes close particles read as true approach motion,
+-            // not merely size animation.  It is deliberately much subtler than warp-speed.
+-            if (s.previousVisible && progress > .58f) {
++            if (s.previousVisible) {
+                 float dx = sx - s.previousX;
+                 float dy = sy - s.previousY;
+                 float displacement = (float) Math.sqrt(dx * dx + dy * dy);
+-                if (displacement > .55f && displacement < 28f * density) {
+-                    float tail = lerp(.18f, .38f, progress);
++                if (displacement > .50f && displacement < 34f * density) {
++                    float tail = lerp(.14f, .38f, progress);
+                     paint.setStrokeWidth(Math.max(.42f * density, radius * .42f));
+-                    paint.setColor(Color.argb((int) (alpha * .15f), r, g, b));
++                    paint.setColor(Color.argb((int) (alpha * (s.motionType == MOTION_COMET ? .23f : .14f)), r, g, b));
+                     canvas.drawLine(sx - dx * tail, sy - dy * tail, sx, sy, paint);
+                 }
+             }
+ 
+-            if (progress > .58f) {
+-                float glowRadius = radius * lerp(2.7f, 5.1f, progress);
+-                paint.setColor(Color.argb((int) (alpha * lerp(.07f, .17f, progress)), r, g, b));
++            if (progress > .42f || bloom > .74f) {
++                float glowRadius = radius * lerp(2.55f, 5.35f, progress);
++                paint.setColor(Color.argb((int) (alpha * lerp(.055f, .18f, progress)), r, g, b));
+                 canvas.drawCircle(sx, sy, glowRadius, paint);
+             }
+ 
+             paint.setColor(Color.argb(alpha, r, g, b));
+             canvas.drawCircle(sx, sy, radius, paint);
+ 
+-            if (s.flare && progress > .86f && radius > .82f * density) {
++            if (s.flare && progress > .82f && radius > .80f * density) {
+                 paint.setStrokeWidth(Math.max(.48f * density, radius * .23f));
+                 paint.setColor(Color.argb((int) (alpha * .42f), r, g, b));
+                 float arm = radius * 3.9f;
+@@ -579,7 +748,6 @@
+         if (event.sensor == rotationSensor) {
+             updateRotation(event);
+         } else if (event.sensor == linearAccelerationSensor && event.values.length >= 3) {
+-            // Device X right, Y up, Z out of screen.  Keep this deliberately tiny.
+             targetShiftX = clamp(-event.values[0] * .030f, -.18f, .18f);
+             targetShiftY = clamp(-event.values[1] * .026f, -.16f, .16f);
+             targetShiftZ = clamp(event.values[2] * .018f, -.10f, .10f);
+@@ -620,6 +788,21 @@
+ 
+     @Override public void onAccuracyChanged(Sensor sensor, int accuracy) { }
+ 
++    private static void randomUnitVector(Random r, float[] out3) {
++        float u = r.nextFloat() * 2f - 1f;
++        float theta = r.nextFloat() * (float) (Math.PI * 2.0);
++        float ring = (float) Math.sqrt(Math.max(0f, 1f - u * u));
++        out3[0] = ring * (float) Math.cos(theta);
++        out3[1] = u;
++        out3[2] = ring * (float) Math.sin(theta);
++    }
++
++    private static float smoothstep(float edge0, float edge1, float x) {
++        if (edge1 <= edge0) return x >= edge1 ? 1f : 0f;
++        float t = clamp((x - edge0) / (edge1 - edge0), 0f, 1f);
++        return t * t * (3f - 2f * t);
++    }
++
+     private static float lerp(float a, float b, float t) {
+         return a + (b - a) * t;
+     }

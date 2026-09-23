@@ -1,0 +1,579 @@
+--- /mnt/data/LunaxyMusic-V42/LunaxyMusic-V42/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 07:18:52.373146631 +0000
++++ /mnt/data/LunaxyMusic-V43/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 07:53:48.341385325 +0000
+@@ -94,11 +94,11 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V42.0 – Playback core locked; library UX + lyric search.
++ * Lunaxy Music V43.0 – Playback core locked; denser library UI + lyric-first search routing.
+  *
+  * The optional music download/offline subsystem remains removed. Playback resolution, Media3 READY
+  * validation, URL cache and the V41 fixed source scheduling/health policy are treated as a locked zone;
+- * V42 changes only library/search UI behavior outside that zone.
++ * V43 changes only library/search UI behavior outside that zone.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(4);
+@@ -205,6 +205,11 @@
+     private List<Song> lastTxSearchSongs = new ArrayList<>();
+     private List<LyricSearchResult> lyricSearchResults = new ArrayList<>();
+     private String searchSourceFilter = ""; // ""=all, wy, tx
++    private boolean searchMetadataExpanded = true;
++    private boolean searchLyricsExpanded = false;
++    private boolean searchLyricFirst;
++    private boolean searchMetadataPending;
++    private boolean lyricSearchPending;
+     private int searchRequestToken;
+ 
+     private static final class LyricSearchResult {
+@@ -818,11 +823,13 @@
+             titleRow.addView(titleAction, actionLp);
+             root.addView(titleRow, Ui.lp(-1, Ui.dp(this, 48)));
+         }
+-        TextView s = Ui.text(this, subtitle, 13.5f, Ui.TEXT_2, false);
+-        s.setSingleLine(true);
+-        s.setEllipsize(TextUtils.TruncateAt.END);
+-        root.addView(s, Ui.lp(-1, Ui.dp(this, 31)));
+-        if (rotatingHomeLyric) startHomeLyricQuoteTicker(s);
++        if (rotatingHomeLyric || subtitle != null) {
++            TextView s = Ui.text(this, subtitle == null ? "" : subtitle, 13.5f, Ui.TEXT_2, false);
++            s.setSingleLine(true);
++            s.setEllipsize(TextUtils.TruncateAt.END);
++            root.addView(s, Ui.lp(-1, Ui.dp(this, 31)));
++            if (rotatingHomeLyric) startHomeLyricQuoteTicker(s);
++        }
+ 
+         if (body != null) {
+             LinearLayout.LayoutParams bp = Ui.lp(-1, -2);
+@@ -1502,11 +1509,6 @@
+         sgp.rightMargin = Ui.dp(this, 70); // same visual width as the text field above
+         body.addView(suggestionHost, sgp);
+ 
+-        TextView sourceLine = Ui.text(this, "原唱优先  ·  歌名/歌手即时搜索  ·  长句自动匹配歌词", 12.3f, Ui.TEXT_2, false);
+-        LinearLayout.LayoutParams slp = Ui.lp(-1, Ui.dp(this, 30));
+-        slp.topMargin = Ui.dp(this, 10);
+-        body.addView(sourceLine, slp);
+-
+         LinearLayout resultsHolder = Ui.column(this);
+         LinearLayout.LayoutParams rh = marginTop(18);
+         body.addView(resultsHolder, rh);
+@@ -1546,7 +1548,7 @@
+                 resultsHolder.addView(songList(history.subList(0, Math.min(5, history.size())), history), marginTop(8));
+             }
+         }
+-        return pageScaffold("发现音乐", "歌名、歌手或一句歌词都可以搜索", body);
++        return pageScaffold("发现音乐", null, body);
+     }
+ 
+     private void scheduleSearchSuggestions(String raw, EditText input, LinearLayout host, LinearLayout resultsHolder) {
+@@ -1747,9 +1749,41 @@
+         lastQuery = keyword;
+         searchSourceFilter = "";
+         lyricSearchResults = new ArrayList<>();
++        // V43 search intent: 8+ normalized Chinese characters defaults to lyric-first; shorter
++        // queries default to title/artist-first. Both sections remain manually collapsible.
++        searchLyricFirst = normalizeSuggestion(keyword).length() >= 8;
++        searchLyricsExpanded = searchLyricFirst;
++        searchMetadataExpanded = !searchLyricFirst;
++        lyricSearchPending = shouldSearchLyrics(keyword, 0);
++        searchMetadataPending = true;
++        // Clear previous-query presentation state before any eager lyric result can repaint.
++        searchResults = new ArrayList<>();
++        lastWySearchSongs = new ArrayList<>();
++        lastTxSearchSongs = new ArrayList<>();
++        lastWyCount = 0; lastTxCount = 0; lastWyError = ""; lastTxError = "";
+         searchHistory = store.addSearchHistory(keyword);
+         showBusy(true);
+ 
++        // For an 8+ character query, lyric discovery starts immediately in parallel with the two
++        // metadata providers. This preserves fast short-query search while making remembered-chorus
++        // queries genuinely lyric-first instead of waiting for unrelated title results to finish.
++        if (searchLyricFirst) {
++            io.submit(() -> {
++                List<NeteaseLyricSearchApi.Hit> remoteLyrics;
++                try { remoteLyrics = neteaseLyricSearch.search(keyword, 16); }
++                catch (Exception ignored) { remoteLyrics = new ArrayList<>(); }
++                List<LyricSearchResult> localLyrics = findLocalLyricMatches(keyword, 12, null, null);
++                final List<LyricSearchResult> combined = mergeLyricHits(keyword, localLyrics, remoteLyrics, 16);
++                main.post(() -> {
++                    if (requestToken != searchRequestToken || isFinishing()) return;
++                    lyricSearchResults = combined;
++                    lyricSearchPending = false;
++                    showBusy(false);
++                    renderSearchResults(holder);
++                });
++            });
++        }
++
+         Future<SearchOutcome> wyFuture = io.submit(() -> {
+             try {
+                 List<Song> songs = netease.search(keyword, 30);
+@@ -1787,13 +1821,20 @@
+             // Render ordinary title/artist results first. Lyric matching (including the local cache scan)
+             // is intentionally kept out of this critical path so adding lyric search cannot make normal
+             // searches feel slower.
++            final boolean runLyrics = shouldSearchLyrics(keyword, merged.size());
+             main.post(() -> {
+                 if (requestToken != searchRequestToken) return;
+                 showBusy(false);
++                searchMetadataPending = false;
+                 lastWySearchSongs = new ArrayList<>(wyResult.songs);
+                 lastTxSearchSongs = new ArrayList<>(txResult.songs);
+                 searchResults = merged;
+-                lyricSearchResults = new ArrayList<>();
++                if (!searchLyricFirst) {
++                    lyricSearchResults = new ArrayList<>();
++                    lyricSearchPending = runLyrics;
++                } else if (!lyricSearchResults.isEmpty()) {
++                    lyricSearchResults = enrichAndRerankLyricResults(keyword, lyricSearchResults);
++                }
+                 lastWyCount = wyResult.total;
+                 lastTxCount = txResult.total;
+                 lastWyError = wyResult.error;
+@@ -1801,10 +1842,10 @@
+                 renderSearchResults(holder);
+             });
+ 
+-            // Commercial-style split search: only phrases that look like lyrics (or searches with very
+-            // few metadata hits) trigger the second phase. This phase never blocks the normal result list
+-            // and it does not touch playback/source routing.
+-            if (!shouldSearchLyrics(keyword, merged.size())) return;
++            // Commercial-style split search: lyric matching is a second, independent phase. For an
++            // 8+ character query its section is shown first and ordinary metadata results stay collapsed
++            // by default, so a remembered chorus does not bury the intended song under unrelated titles.
++            if (!runLyrics || searchLyricFirst) return;
+             Future<List<NeteaseLyricSearchApi.Hit>> lyricFuture = io.submit(() -> {
+                 try { return neteaseLyricSearch.search(keyword, 16); }
+                 catch (Exception ignored) { return new ArrayList<>(); }
+@@ -1817,6 +1858,7 @@
+             main.post(() -> {
+                 if (requestToken != searchRequestToken || isFinishing()) return;
+                 lyricSearchResults = combined;
++                lyricSearchPending = false;
+                 renderSearchResults(holder);
+             });
+         });
+@@ -1829,7 +1871,7 @@
+     private boolean shouldSearchLyrics(String keyword, int normalResultCount) {
+         String normalized = normalizeSuggestion(keyword);
+         int len = normalized.length();
+-        if (len >= 10) return true;
++        if (len >= 8) return true;
+         if (len >= 5 && containsSentenceCue(keyword)) return true;
+         return len >= 4 && normalResultCount <= 3;
+     }
+@@ -1892,9 +1934,56 @@
+             out.putIfAbsent(song.key(), new LyricSearchResult(song, snippet));
+         }
+         ArrayList<LyricSearchResult> list = new ArrayList<>(out.values());
++        // Preserve the lyric engine's relevance order as the stable tie-breaker, but make exact
++        // phrase hits dominate and apply the same original-recording / quality preference used
++        // by ordinary search. This is search-only ranking; it never changes provider routing.
++        list.sort((a, b) -> Integer.compare(lyricMatchScore(keyword, b), lyricMatchScore(keyword, a)));
+         return list.size() <= max ? list : new ArrayList<>(list.subList(0, max));
+     }
+ 
++    private int lyricMatchScore(String keyword, LyricSearchResult hit) {
++        if (hit == null || hit.song == null) return Integer.MIN_VALUE / 4;
++        String needle = normalizeSuggestion(keyword);
++        String snippet = normalizeSuggestion(hit.snippet);
++        int score = SearchRanker.recordingQualityBias(hit.song);
++        if (!needle.isEmpty() && !snippet.isEmpty()) {
++            if (snippet.contains(needle)) score += 10000;
++            else {
++                int matched = lyricCharacterCoverage(needle, snippet);
++                score += (int) Math.round(4200.0 * matched / Math.max(1, needle.length()));
++            }
++        }
++        // For a long lyric query, a coincidental title containing the sentence is not evidence
++        // that this is the intended recording. Let true lyric evidence outrank it.
++        if (needle.length() >= 8 && metadataContainsQuery(hit.song, keyword) && !snippet.contains(needle)) score -= 1200;
++        return score;
++    }
++
++    private int lyricCharacterCoverage(String needle, String haystack) {
++        if (needle == null || haystack == null || needle.isEmpty() || haystack.isEmpty()) return 0;
++        int matched = 0;
++        int from = 0;
++        for (int i = 0; i < needle.length(); i++) {
++            int at = haystack.indexOf(needle.charAt(i), from);
++            if (at < 0) continue;
++            matched++;
++            from = at + 1;
++        }
++        return matched;
++    }
++
++    private List<LyricSearchResult> enrichAndRerankLyricResults(String keyword, List<LyricSearchResult> input) {
++        ArrayList<LyricSearchResult> out = new ArrayList<>();
++        if (input != null) {
++            for (LyricSearchResult hit : input) {
++                if (hit == null || hit.song == null) continue;
++                out.add(new LyricSearchResult(enrichWithKnownVariant(hit.song), hit.snippet));
++            }
++        }
++        out.sort((a, b) -> Integer.compare(lyricMatchScore(keyword, b), lyricMatchScore(keyword, a)));
++        return out;
++    }
++
+     private Song enrichWithKnownVariant(Song incoming) {
+         if (incoming == null) return null;
+         String identity = normalizeSuggestion(incoming.title) + "|" + normalizeSuggestion(incoming.artist);
+@@ -1903,6 +1992,11 @@
+         for (ImportedPlaylist p : playlists) if (p != null && p.songs != null)
+             for (Song song : p.songs) if (song != null) known.put(song.key(), song);
+         for (Song song : history) if (song != null) known.put(song.key(), song);
++        // Search-only enrichment: if metadata search already found the same recording on another
++        // provider, merge that identity into the lyric result without touching playback routing.
++        for (Song song : searchResults) if (song != null) known.put(song.key(), song);
++        for (Song song : lastWySearchSongs) if (song != null) known.put(song.key(), song);
++        for (Song song : lastTxSearchSongs) if (song != null) known.put(song.key(), song);
+         for (Song song : known.values()) {
+             String other = normalizeSuggestion(song.title) + "|" + normalizeSuggestion(song.artist);
+             if (identity.equals(other)) return song.withVariant(incoming);
+@@ -1945,7 +2039,7 @@
+ 
+         List<Song> visibleSongs = visibleSearchSongs();
+         List<LyricSearchResult> visibleLyrics = visibleLyricSearchResults();
+-        if (visibleSongs.isEmpty() && visibleLyrics.isEmpty()) {
++        if (visibleSongs.isEmpty() && visibleLyrics.isEmpty() && !lyricSearchPending && !searchMetadataPending) {
+             LinearLayout empty = Ui.column(this);
+             empty.setGravity(Gravity.CENTER_HORIZONTAL);
+             empty.setPadding(Ui.dp(this, 10), Ui.dp(this, 42), Ui.dp(this, 10), Ui.dp(this, 30));
+@@ -1967,25 +2061,108 @@
+             return;
+         }
+ 
+-        if (!visibleSongs.isEmpty()) {
+-            String suffix = "wy".equals(searchSourceFilter) ? " · 网易" : ("tx".equals(searchSourceFilter) ? " · QQ" : "");
+-            TextView count = Ui.text(this, "歌曲 / 歌手匹配  " + visibleSongs.size() + " 首" + suffix, 12, Ui.TEXT_2, true);
+-            holder.addView(count, marginTop(14));
+-            holder.addView(songList(visibleSongs, visibleSongs), marginTop(6));
+-        }
+-
+-        if (!visibleLyrics.isEmpty()) {
+-            LinearLayout lyricHead = Ui.row(this);
+-            TextView title = Ui.text(this, "歌词匹配", 13.2f, Ui.TEXT, true);
+-            lyricHead.addView(title, new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
+-            TextView tip = Ui.text(this, "根据你记得的句子找到", 10.5f, Ui.DIM, false);
+-            tip.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+-            lyricHead.addView(tip, Ui.lp(-2, Ui.dp(this, 34)));
+-            holder.addView(lyricHead, marginTop(20));
+-            holder.addView(lyricSearchResultList(visibleLyrics), marginTop(4));
++        // 8+ characters => lyric-first. Shorter queries => title/artist-first. The alternate
++        // section still remains one tap away and both sections can be independently collapsed.
++        if (searchLyricFirst) {
++            addLyricSearchSection(holder, visibleLyrics, true);
++            addMetadataSearchSection(holder, visibleSongs, true);
++        } else {
++            addMetadataSearchSection(holder, visibleSongs, true);
++            if (lyricSearchPending || !visibleLyrics.isEmpty()) addLyricSearchSection(holder, visibleLyrics, true);
+         }
+     }
+ 
++    private void addMetadataSearchSection(LinearLayout holder, List<Song> songs, boolean allowEmpty) {
++        List<Song> safeSongs = songs == null ? new ArrayList<>() : songs;
++        if (safeSongs.isEmpty() && !allowEmpty) return;
++        String suffix = "wy".equals(searchSourceFilter) ? " · 网易" : ("tx".equals(searchSourceFilter) ? " · QQ" : "");
++        String status = searchMetadataPending ? "匹配中…" : safeSongs.size() + " 首" + suffix;
++        LinearLayout content = Ui.column(this);
++        if (searchMetadataPending && safeSongs.isEmpty()) {
++            TextView pending = Ui.text(this, "正在匹配歌名 / 歌手…", 11.2f, Ui.TEXT_2, false);
++            pending.setGravity(Gravity.CENTER_VERTICAL);
++            content.addView(pending, Ui.lp(-1, Ui.dp(this, 40)));
++        } else if (safeSongs.isEmpty()) {
++            TextView empty = Ui.text(this, "没有更合适的歌名 / 歌手结果", 11.2f, Ui.DIM, false);
++            empty.setGravity(Gravity.CENTER_VERTICAL);
++            content.addView(empty, Ui.lp(-1, Ui.dp(this, 40)));
++        } else {
++            content.addView(songList(safeSongs, safeSongs), Ui.lp(-1, -2));
++        }
++        LinearLayout header = searchSectionHeader("歌曲 / 歌手匹配", status,
++                searchMetadataExpanded, expanded -> {
++                    searchMetadataExpanded = expanded;
++                    setSearchSectionExpanded(content, expanded);
++                });
++        LinearLayout.LayoutParams hp = marginTop(14);
++        holder.addView(header, hp);
++        holder.addView(content, marginTop(4));
++        setSearchSectionExpanded(content, searchMetadataExpanded);
++    }
++
++    private void addLyricSearchSection(LinearLayout holder, List<LyricSearchResult> hits, boolean allowEmpty) {
++        List<LyricSearchResult> safeHits = hits == null ? new ArrayList<>() : hits;
++        if (safeHits.isEmpty() && !lyricSearchPending && !allowEmpty) return;
++        String suffix = "wy".equals(searchSourceFilter) ? " · 网易" : ("tx".equals(searchSourceFilter) ? " · QQ" : "");
++        String status = lyricSearchPending ? "匹配中…" : safeHits.size() + " 首" + suffix;
++        LinearLayout content = Ui.column(this);
++        if (lyricSearchPending && safeHits.isEmpty()) {
++            TextView pending = Ui.text(this, "正在从歌词索引中找最接近的原唱版本…", 11.2f, Ui.TEXT_2, false);
++            pending.setGravity(Gravity.CENTER_VERTICAL);
++            content.addView(pending, Ui.lp(-1, Ui.dp(this, 42)));
++        } else if (safeHits.isEmpty()) {
++            TextView empty = Ui.text(this, "没有找到足够精准的歌词匹配", 11.2f, Ui.DIM, false);
++            empty.setGravity(Gravity.CENTER_VERTICAL);
++            content.addView(empty, Ui.lp(-1, Ui.dp(this, 40)));
++        } else {
++            content.addView(lyricSearchResultList(safeHits), Ui.lp(-1, -2));
++        }
++        LinearLayout header = searchSectionHeader("歌词匹配", status, searchLyricsExpanded, expanded -> {
++            searchLyricsExpanded = expanded;
++            setSearchSectionExpanded(content, expanded);
++        });
++        LinearLayout.LayoutParams hp = marginTop(searchLyricFirst ? 14 : 18);
++        holder.addView(header, hp);
++        holder.addView(content, marginTop(4));
++        setSearchSectionExpanded(content, searchLyricsExpanded);
++    }
++
++    private interface SearchSectionToggle { void onToggle(boolean expanded); }
++
++    private LinearLayout searchSectionHeader(String title, String meta, boolean expanded, SearchSectionToggle toggle) {
++        LinearLayout row = Ui.row(this);
++        row.setGravity(Gravity.CENTER_VERTICAL);
++        TextView t = Ui.text(this, title, 13.3f, Ui.TEXT, true);
++        t.setGravity(Gravity.CENTER_VERTICAL);
++        row.addView(t, Ui.lp(-2, Ui.dp(this, 36)));
++        TextView m = Ui.text(this, meta == null ? "" : meta, 10.7f, Ui.DIM, false);
++        m.setGravity(Gravity.CENTER_VERTICAL);
++        LinearLayout.LayoutParams mp = Ui.lp(-2, Ui.dp(this, 36));
++        mp.leftMargin = Ui.dp(this, 8);
++        row.addView(m, mp);
++        Space fill = new Space(this);
++        row.addView(fill, new LinearLayout.LayoutParams(0, Ui.dp(this, 36), 1f));
++        TextView arrow = Ui.text(this, "▾", 18f, Ui.TEXT_2, true);
++        arrow.setGravity(Gravity.CENTER);
++        arrow.setRotation(expanded ? 0f : -90f);
++        arrow.setContentDescription(expanded ? "收起" + title : "展开" + title);
++        row.addView(arrow, Ui.lp(Ui.dp(this, 36), Ui.dp(this, 36)));
++        row.setClickable(true); row.setFocusable(true); Ui.applyRipple(row, Color.TRANSPARENT);
++        row.setOnClickListener(v -> {
++            boolean next = arrow.getRotation() < -45f;
++            arrow.animate().rotation(next ? 0f : -90f).setDuration(150).start();
++            arrow.setContentDescription(next ? "收起" + title : "展开" + title);
++            if (toggle != null) toggle.onToggle(next);
++        });
++        return row;
++    }
++
++    private void setSearchSectionExpanded(View content, boolean expanded) {
++        if (content == null) return;
++        content.setVisibility(expanded ? View.VISIBLE : View.GONE);
++        content.setAlpha(expanded ? 1f : 0f);
++    }
++
+     private View lyricSearchResultList(List<LyricSearchResult> hits) {
+         LinearLayout box = Ui.column(this);
+         for (int i = 0; i < hits.size(); i++) {
+@@ -2071,12 +2248,10 @@
+             if (p == null) continue;
+             if ("local".equals(p.source)) mine.add(p); else importedLists.add(p);
+         }
+-        body.addView(playlistCategorySection("mine", "我的歌单",
+-                mine.isEmpty() ? "还没有自己创建的歌单" : mine.size() + " 个",
++        body.addView(playlistCategorySection("mine", "我的歌单", mine.size() + " 个",
+                 mine), marginTop(24));
+-        body.addView(playlistCategorySection("imported", "导入歌单",
+-                importedLists.isEmpty() ? "还没有从平台导入的歌单" : importedLists.size() + " 个",
+-                importedLists), marginTop(10));
++        body.addView(playlistCategorySection("imported", "导入歌单", importedLists.size() + " 个",
++                importedLists), marginTop(8));
+         return pageScaffold("歌单", "本地创建与平台导入", body);
+     }
+ 
+@@ -2086,15 +2261,21 @@
+         LinearLayout header = Ui.row(this);
+         header.setGravity(Gravity.CENTER_VERTICAL);
+         header.setPadding(Ui.dp(this, 2), 0, Ui.dp(this, 4), 0);
+-        LinearLayout texts = Ui.column(this);
+-        texts.addView(Ui.text(this, title, 17.5f, Ui.TEXT, true), new LinearLayout.LayoutParams(-1, 0, 1f));
+-        texts.addView(Ui.text(this, subtitle, 10.8f, Ui.DIM, false), new LinearLayout.LayoutParams(-1, 0, 1f));
+-        header.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f));
++        TextView titleView = Ui.text(this, title, 17.5f, Ui.TEXT, true);
++        titleView.setGravity(Gravity.CENTER_VERTICAL);
++        header.addView(titleView, Ui.lp(-2, Ui.dp(this, 40)));
++        TextView countView = Ui.text(this, subtitle, 10.8f, Ui.DIM, false);
++        countView.setGravity(Gravity.CENTER_VERTICAL);
++        LinearLayout.LayoutParams countLp = Ui.lp(-2, Ui.dp(this, 40));
++        countLp.leftMargin = Ui.dp(this, 10);
++        header.addView(countView, countLp);
++        Space headerFill = new Space(this);
++        header.addView(headerFill, new LinearLayout.LayoutParams(0, Ui.dp(this, 40), 1f));
+         TextView arrow = Ui.text(this, "▾", 20f, Ui.TEXT_2, true);
+         arrow.setGravity(Gravity.CENTER);
+         header.addView(arrow, Ui.lp(Ui.dp(this, 38), Ui.dp(this, 38)));
+         header.setClickable(true); header.setFocusable(true); Ui.applyRipple(header, Color.TRANSPARENT);
+-        section.addView(header, Ui.lp(-1, Ui.dp(this, 48)));
++        section.addView(header, Ui.lp(-1, Ui.dp(this, 40)));
+ 
+         LinearLayout content = Ui.column(this);
+         if (entries == null || entries.isEmpty()) {
+@@ -3800,19 +3981,17 @@
+         LinearLayout row = Ui.row(this);
+         row.setGravity(Gravity.CENTER_VERTICAL);
+ 
+-        LinearLayout left = Ui.column(this);
+         TextView t = Ui.text(this, title, 16.5f, Ui.TEXT, true);
+-        left.addView(t, Ui.lp(-1, Ui.dp(this, 27)));
+-        LinearLayout meta = Ui.row(this);
+-        meta.setGravity(Gravity.CENTER_VERTICAL);
+-        View accent = new View(this);
+-        accent.setBackground(Ui.premiumGradient(Ui.GREEN, Ui.CYAN, 3, this));
+-        meta.addView(accent, Ui.lp(Ui.dp(this, 30), Ui.dp(this, 4)));
++        t.setGravity(Gravity.CENTER_VERTICAL);
++        row.addView(t, Ui.lp(-2, Ui.dp(this, 42)));
+         TextView amount = Ui.text(this, count + " 首", 10.8f, Ui.DIM, false);
+-        LinearLayout.LayoutParams ap = Ui.lp(-2, Ui.dp(this, 22)); ap.leftMargin = Ui.dp(this, 8);
+-        meta.addView(amount, ap);
+-        left.addView(meta, Ui.lp(-1, Ui.dp(this, 23)));
+-        row.addView(left, new LinearLayout.LayoutParams(0, Ui.dp(this, 50), 1f));
++        amount.setGravity(Gravity.CENTER_VERTICAL);
++        LinearLayout.LayoutParams ap = Ui.lp(-2, Ui.dp(this, 42));
++        ap.leftMargin = Ui.dp(this, 10);
++        row.addView(amount, ap);
++
++        Space fill = new Space(this);
++        row.addView(fill, new LinearLayout.LayoutParams(0, Ui.dp(this, 42), 1f));
+ 
+         FrameLayout sort = Ui.iconButton(this, IconView.Type.DRAG, 42, Ui.TEXT_2,
+                 Color.argb(20, 255, 255, 255));
+--- /mnt/data/LunaxyMusic-V42/LunaxyMusic-V42/app/src/main/java/com/xingyu/music/data/SearchRanker.java	2026-08-09 18:50:44.000000000 +0000
++++ /mnt/data/LunaxyMusic-V43/app/src/main/java/com/xingyu/music/data/SearchRanker.java	2026-08-11 07:50:43.805864805 +0000
+@@ -1,6 +1,7 @@
+ package com.xingyu.music.data;
+ 
+ import com.xingyu.music.model.Song;
++import com.xingyu.music.model.SourceVariant;
+ 
+ import java.text.Normalizer;
+ import java.util.ArrayList;
+@@ -37,6 +38,7 @@
+     private static final Map<String, String[]> AMBIGUITY_HINTS = new HashMap<>();
+     static {
+         AMBIGUITY_HINTS.put(normalize("晴天"), new String[]{"周杰伦", "周杰倫"});
++        AMBIGUITY_HINTS.put(normalize("不能说的秘密"), new String[]{"周杰伦", "周杰倫"});
+         AMBIGUITY_HINTS.put(normalize("一样的月光"), new String[]{"徐佳莹", "徐佳瑩"});
+     }
+ 
+@@ -147,14 +149,50 @@
+         if (s.durationMs >= 90_000L && s.durationMs <= 8 * 60_000L) score += 180;
+         if (s.durationMs > 0 && s.durationMs < 55_000L) score -= 900;
+ 
++        score += recordingQualityBias(s);
++
++        String[] preferred = AMBIGUITY_HINTS.get(queryTitle);
++        if (preferred != null) for (String a : preferred) {
++            if (artist.contains(normalize(a))) { score += 5400; break; }
++        }
++        return score;
++    }
++
++    /**
++     * Provider-neutral preference shared by title search and lyric search. Original/standard
++     * recordings outrank obvious live/cover/remix variants; among otherwise similar recordings,
++     * a real 320k-capable provider identity receives a small quality bonus. The bonus is
++     * intentionally much smaller than the alternate-version penalty, so quality can never make
++     * a cover beat the likely original merely because it advertises a higher bitrate.
++     */
++    public static int recordingQualityBias(Song s) {
++        if (s == null) return 0;
++        String rawTitle = normalize(s.title);
++        String artist = normalize(s.artist);
++        String album = normalize(s.album);
+         String all = rawTitle + "|" + artist + "|" + album;
++        int score = 0;
+         for (String marker : BAD_VERSION_MARKERS) if (all.contains(normalize(marker))) score -= 2300;
+         for (String marker : SUSPICIOUS_ALBUM_MARKERS) if (album.contains(normalize(marker))) score -= 700;
+         if (artist.contains(normalize("未知歌手")) || artist.contains(normalize("群星"))) score -= 800;
+ 
+-        String[] preferred = AMBIGUITY_HINTS.get(queryTitle);
+-        if (preferred != null) for (String a : preferred) {
+-            if (artist.contains(normalize(a))) { score += 5400; break; }
++        boolean q320 = false;
++        boolean q128 = false;
++        for (SourceVariant v : s.variants()) {
++            if (v == null) continue;
++            q320 |= v.quality320;
++            q128 |= v.quality128;
++        }
++        if (q320) score += 360;
++        else if (q128) score += 90;
++
++        // A tiny title-level canonical hint is used only for historically ambiguous acceptance
++        // cases; it complements, rather than replaces, the generic live/cover/remix penalties.
++        String[] canonicalArtists = AMBIGUITY_HINTS.get(normalize(stripVersionSuffix(s.title)));
++        if (canonicalArtists != null) {
++            for (String a : canonicalArtists) {
++                if (artist.contains(normalize(a))) { score += 2700; break; }
++            }
+         }
+         return score;
+     }
+--- /mnt/data/LunaxyMusic-V42/LunaxyMusic-V42/app/build.gradle.kts	2026-08-11 07:13:31.574328798 +0000
++++ /mnt/data/LunaxyMusic-V43/app/build.gradle.kts	2026-08-11 07:43:50.810293173 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 45
+-        versionName = "42.0.0"
++        versionCode = 46
++        versionName = "43.0.0"
+     }
+ 
+     buildTypes {
+--- /mnt/data/LunaxyMusic-V42/LunaxyMusic-V42/BUILD_APK.bat	2026-08-11 07:13:31.574472952 +0000
++++ /mnt/data/LunaxyMusic-V43/BUILD_APK.bat	2026-08-11 07:43:50.810421284 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   LunaxyMusic V42 - Debug APK Build
++echo   LunaxyMusic V43 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V42-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V43-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\LunaxyMusic-V42-debug.apk
++echo [OK] APK: %CD%\dist\LunaxyMusic-V43-debug.apk
+ pause
+--- "/mnt/data/LunaxyMusic-V42/LunaxyMusic-V42/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-11 07:21:30.267268357 +0000
++++ "/mnt/data/LunaxyMusic-V43/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-11 07:52:40.411021686 +0000
+@@ -1,15 +1,19 @@
+-LunaxyMusic V42.0 — 收藏/歌单手动排序 · 歌词搜索 · 来源筛选
++LunaxyMusic V43.0 — UI 密度整理 · 歌词优先搜索 · 可折叠搜索结果
+ 
+-1. V42 直接基于 V41 完整工程修改；可直接覆盖安装 V41，收藏、歌单、READY URL 缓存等本机数据继续保留。
+-2. 【核心锁定】播放链与调度不改：QQ 固定 Huibq 主源→QDY 备用；网易固定 QDY 主源→Huibq 备用；V41 短期健康/熔断策略保持原样。
++1. V43 直接基于 V42 完整工程修改；可直接覆盖安装 V42，收藏、歌单、READY URL 缓存等本机数据继续保留。
++2. 【核心锁定】播放链与调度完全不改：QQ 固定 Huibq 主源→QDY 备用；网易固定 QDY 主源→Huibq 备用；V41 短期健康/熔断策略保持原样。
+ 3. 【核心锁定】Media3 READY 真成功、READY URL 缓存/失效刷新、Huibq/QDY 请求与脚本、候选 URL Probe、HTTP 诊断均不改。
+-4. 收藏与所有保存歌单的“歌曲”标题右侧新增三横线排序入口；歌曲数量移到标题下方短线旁。
+-5. 点击排序进入虚拟化 ListView 管理面板，长按每首歌右侧三横线拖动；边缘可自动滚动；放下即保存顺序。
+-6. 手动排序不主动改变当前正在播放的队列；之后按收藏/歌单重新建立队列时使用保存后的新顺序。
+-7. 搜索支持歌名、歌手、歌词。普通歌名/歌手结果先渲染，歌词匹配作为独立第二阶段，不阻塞普通搜索速度。
+-8. 歌词命中单独显示“歌词匹配”与歌词片段，避免和歌名/歌手命中混淆。
+-9. 搜索顶部“网易 / QQ”统计胶囊可点击筛选对应来源；再次点击当前来源恢复全部；长按异常来源可看网络详情。
+-10. BUILD_APK.bat 成功后输出 dist\LunaxyMusic-V42-debug.apk。
++4. 搜索页删除两条解释性文案，页面更紧凑；搜索框本身仍保留“歌名、歌手或一句歌词…”提示。
++5. 歌单页“我的歌单 / 导入歌单”的“X 个”数量与标题同一排显示，不再额外占一行。
++6. 收藏/歌单详情“歌曲 X 首”改为同一排显示，移除渐变短条；右侧三横线手动排序键与单行标题垂直空间匹配。
++7. 搜索意图规则：规范化后 8 个字及以上默认“歌词匹配”优先并展开，“歌曲/歌手匹配”默认收起；8 字以下默认歌曲/歌手优先。
++8. 8 字以上歌词搜索与网易/QQ普通元数据搜索并行执行，不等待普通结果结束；短关键词仍保持普通歌名/歌手搜索优先，避免歌词功能拖慢日常搜索。
++9. “歌词匹配”“歌曲 / 歌手匹配”标题右侧均有三角按钮，可随时手动展开/收起；即使长句搜出大量同名字样的无关歌曲，也不会把歌词结果压到下面。
++10. 歌词结果加入精确句子命中优先、原唱/标准版本优先、明显 Live/翻唱/Remix/伴奏降权；同等录音再参考可用音质。周杰伦《不能说的秘密》加入歧义原唱保护。
++11. 普通搜索继续保持原唱优先；SearchRanker 增加小幅 320k 可用性加分，但加分远小于翻唱/现场版本惩罚，不会出现“高码率翻唱压过原唱”。
++12. 搜索顶部“网易 / QQ”统计胶囊继续可点击筛选对应来源；再次点击当前来源恢复全部；长按异常来源可看网络详情。
++13. 收藏与所有保存歌单的手动拖拽排序功能保持 V42 原样，不会主动修改正在播放的队列；以后重新从该歌单播放时使用保存后的顺序。
++14. BUILD_APK.bat 成功后输出 dist\LunaxyMusic-V43-debug.apk。
+ 
+-锁定核验：changes\PLAYBACK_SCHEDULING_LOCK_GUARD_V42.txt
+-结果：19/19 播放/调度核心对象与 V41 SHA-256 字节一致。
++锁定核验：changes\PLAYBACK_SCHEDULING_LOCK_GUARD_V43.txt
++结果：19/19 播放/调度核心对象与 V42 SHA-256 字节一致。

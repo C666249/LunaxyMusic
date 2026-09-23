@@ -1,0 +1,680 @@
+diff -ruN /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/build.gradle.kts /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/build.gradle.kts
+--- /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/build.gradle.kts	2026-08-10 05:12:33.000000000 +0000
++++ /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/build.gradle.kts	2026-08-10 06:03:57.910544444 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 20
+-        versionName = "17.0.0"
++        versionCode = 21
++        versionName = "18.0.0"
+     }
+ 
+     buildTypes {
+diff -ruN /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/MainActivity.java /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/MainActivity.java
+--- /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 05:14:41.000000000 +0000
++++ /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 06:05:48.727948492 +0000
+@@ -79,11 +79,11 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Xingyu Music V17.0 – frozen V14/V15 playback core + interactive synced lyrics.
++ * Xingyu Music V18.0 – guarded playback core + nested karaoke lyrics.
+  *
+- * V17 keeps the proven Huibq/QDY routing and Media3 READY rules untouched. The work
+- * in this Activity is presentation/interaction only: album-colour rhythm rings,
+- * NetEase-style lyric scrubbing/selection, customizable highlights and restored capsule tabs.
++ * V18 keeps Huibq/QDY routing, health learning and Media3 READY rules untouched. Playback
++ * changes are deliberately limited to sequential end-of-queue wraparound; UI changes add
++ * a dedicated lyric gesture region, karaoke word timing, and recent-play all.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(4);
+@@ -182,6 +182,15 @@
+     private List<LyricLine> lyricLines = new ArrayList<>();
+     private int activeLyric = -2;
+     private String lyricSongKey = "";
++    private final Runnable lyricKaraokeTicker = new Runnable() {
++        @Override public void run() {
++            if (playerOverlay != null && playerOverlay.getVisibility() == View.VISIBLE
++                    && playback != null && !lyricLines.isEmpty()) {
++                updateLyricKaraokeProgress(playback.snapshot().positionMs);
++            }
++            main.postDelayed(this, 72L);
++        }
++    };
+     private int nowAccent = Ui.PURPLE;
+     private String nowArtworkKey = "";
+ 
+@@ -232,6 +241,7 @@
+         buildShell();
+         renderTab();
+         bindService(new Intent(this, PlaybackService.class), connection, BIND_AUTO_CREATE);
++        main.post(lyricKaraokeTicker);
+     }
+ 
+     private void loadUiPreferences() {
+@@ -729,11 +739,14 @@
+         sourceCard.setOnClickListener(v -> showSourceStatus());
+         body.addView(sourceCard, marginTop(10));
+ 
+-        body.addView(sectionHeader("最近播放", history.isEmpty() ? "" : "继续听"), marginTop(24));
++        List<Song> recent = history.subList(0, Math.min(10, history.size()));
++        body.addView(history.isEmpty()
++                ? sectionHeader("最近播放", "")
++                : sectionHeaderAction("最近播放", "全部播放", () -> playQueue(new ArrayList<>(recent), 0)), marginTop(24));
+         if (history.isEmpty()) {
+             body.addView(compactEmpty("播放过的歌曲会出现在这里"), marginTop(7));
+         } else {
+-            body.addView(recentCarousel(history.subList(0, Math.min(10, history.size()))), marginTop(8));
++            body.addView(recentCarousel(recent), marginTop(8));
+         }
+ 
+         body.addView(sectionHeader("你的音乐", "全部保存在本机"), marginTop(24));
+@@ -2398,6 +2411,21 @@
+         return row;
+     }
+ 
++    private View sectionHeaderAction(String title, String action, Runnable onClick) {
++        LinearLayout row = Ui.row(this);
++        TextView t = Ui.text(this, title, 16.5f, Ui.TEXT, true);
++        row.addView(t, new LinearLayout.LayoutParams(0, Ui.dp(this, 36), 1f));
++        TextView button = Ui.text(this, action + "  ›", 11.2f, Ui.CYAN, true);
++        button.setGravity(Gravity.CENTER);
++        button.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 10), 0);
++        button.setBackground(Ui.tintedGlass(Ui.CYAN, 14, this));
++        button.setClickable(true);
++        Ui.applyRipple(button, Color.argb(34, 255, 255, 255));
++        button.setOnClickListener(v -> { if (onClick != null) onClick.run(); });
++        row.addView(button, Ui.lp(-2, Ui.dp(this, 32)));
++        return row;
++    }
++
+     private View compactEmpty(String message) {
+         LinearLayout card = Ui.row(this);
+         card.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12));
+@@ -2736,6 +2764,9 @@
+         lyricScroll.setOnTouchListener((v, e) -> {
+             int action = e.getActionMasked();
+             if (action == MotionEvent.ACTION_DOWN) {
++                // The lyric viewport owns vertical gestures that begin inside it. This
++                // explicitly prevents the outer now-playing page from stealing the drag.
++                if (v.getParent() != null) v.getParent().requestDisallowInterceptTouchEvent(true);
+                 lyricManualGesture = true;
+                 lyricGestureMoved = false;
+                 lyricTouchDownY = e.getY();
+@@ -2746,6 +2777,7 @@
+                 showLyricSeekGuide(true);
+                 updateLyricSeekCandidate();
+             } else if (action == MotionEvent.ACTION_MOVE) {
++                if (v.getParent() != null) v.getParent().requestDisallowInterceptTouchEvent(true);
+                 if (!lyricGestureMoved && Math.abs(e.getY() - lyricTouchDownY) > Ui.dp(this, 7)) {
+                     lyricGestureMoved = true;
+                     clearManualLyricSelection(false);
+@@ -2755,6 +2787,7 @@
+                 updateLyricSeekCandidate();
+             } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                 lyricManualGesture = false;
++                if (v.getParent() != null) v.getParent().requestDisallowInterceptTouchEvent(false);
+                 if (lyricGestureMoved) {
+                     scheduleLyricManualSelection();
+                 } else {
+@@ -2914,8 +2947,8 @@
+         if (wyVariant == null) return;
+         io.submit(() -> {
+             try {
+-                String raw = netease.lyric(wyVariant.sourceId);
+-                List<LyricLine> parsed = LyricParser.parse(raw);
++                NeteaseApi.LyricData lyricData = netease.lyricData(wyVariant.sourceId);
++                List<LyricLine> parsed = LyricParser.parseEnhanced(lyricData.lrc, lyricData.yrc);
+                 main.post(() -> {
+                     if (!lyricSongKey.equals(song.key())) return;
+                     lyricLines = parsed;
+@@ -3054,17 +3087,33 @@
+     private void updateLyricHighlight(long pos) {
+         if (lyricBox == null || lyricLines.isEmpty()) return;
+         int idx = LyricParser.activeIndex(lyricLines, pos);
+-        if (idx == activeLyric) return;
+-        activeLyric = idx;
+-        for (int i = 0; i < lyricBox.getChildCount(); i++) {
+-            View v = lyricBox.getChildAt(i);
+-            if (v instanceof LyricLineView) {
+-                LyricLineView line = (LyricLineView) v;
+-                line.setGradientColors(lyricGradientStart, lyricGradientEnd);
+-                line.setActiveLine(i == idx);
++        boolean changed = idx != activeLyric;
++        if (changed) {
++            activeLyric = idx;
++            for (int i = 0; i < lyricBox.getChildCount(); i++) {
++                View v = lyricBox.getChildAt(i);
++                if (v instanceof LyricLineView) {
++                    LyricLineView line = (LyricLineView) v;
++                    line.setGradientColors(lyricGradientStart, lyricGradientEnd);
++                    line.setActiveLine(i == idx);
++                    if (i != idx) line.setKaraokeProgress(0f);
++                }
+             }
++            scrollLyricToActive(false);
+         }
+-        scrollLyricToActive(false);
++        updateLyricKaraokeProgress(pos);
++    }
++
++    private void updateLyricKaraokeProgress(long pos) {
++        if (lyricBox == null || activeLyric < 0 || activeLyric >= lyricLines.size()
++                || activeLyric >= lyricBox.getChildCount()) return;
++        View view = lyricBox.getChildAt(activeLyric);
++        if (!(view instanceof LyricLineView)) return;
++        LyricLine line = lyricLines.get(activeLyric);
++        long fallbackEnd = activeLyric + 1 < lyricLines.size()
++                ? lyricLines.get(activeLyric + 1).timeMs : line.timeMs + 4200L;
++        ((LyricLineView) view).setKaraokeProgress(
++                LyricParser.characterProgress(line, pos, fallbackEnd));
+     }
+ 
+     private void scrollLyricToActive(boolean force) {
+@@ -3247,6 +3296,7 @@
+         if (pendingSuggestionRunnable != null) main.removeCallbacks(pendingSuggestionRunnable);
+         if (lyricsResumeRunnable != null) main.removeCallbacks(lyricsResumeRunnable);
+         if (lyricScrollSettleRunnable != null) main.removeCallbacks(lyricScrollSettleRunnable);
++        main.removeCallbacks(lyricKaraokeTicker);
+         suggestionRequestToken++;
+         if (bound && playback != null) playback.clearListener(this);
+         if (bound) try { unbindService(connection); } catch (Exception ignored) { }
+diff -ruN /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/data/LibraryStore.java /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/data/LibraryStore.java
+--- /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/data/LibraryStore.java	2026-08-09 17:44:06.000000000 +0000
++++ /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/data/LibraryStore.java	2026-08-10 06:05:48.725605769 +0000
+@@ -23,7 +23,10 @@
+     public LibraryStore(Context c){ prefs=c.getSharedPreferences("xingyu_library_v3", Context.MODE_PRIVATE); }
+ 
+     public List<Song> favorites(){ return decodeSongs(prefs.getString("favorites","[]")); }
+-    public List<Song> history(){ return decodeSongs(prefs.getString("history","[]")); }
++    public List<Song> history(){
++        List<Song> all=decodeSongs(prefs.getString("history","[]"));
++        return all.size()<=10?all:new ArrayList<>(all.subList(0,10));
++    }
+     public List<ImportedPlaylist> playlists(){ return decodePlaylists(prefs.getString("playlists","[]")); }
+     public List<String> searchHistory(){ return decodeStrings(prefs.getString("search_history","[]")); }
+ 
+@@ -38,7 +41,13 @@
+         saveSongs("favorites",out); return out;
+     }
+ 
+-    public List<Song> addHistory(Song song){ List<Song> src=history(), out=new ArrayList<>(); out.add(song); for(Song s:src) if(!s.key().equals(song.key())&&out.size()<100) out.add(s); saveSongs("history",out); return out; }
++    public List<Song> addHistory(Song song){
++        List<Song> src=history(), out=new ArrayList<>();
++        out.add(song);
++        // Home only exposes a compact recent shelf; keep persistence compact too.
++        for(Song s:src) if(!s.key().equals(song.key())&&out.size()<10) out.add(s);
++        saveSongs("history",out); return out;
++    }
+     public List<String> addSearchHistory(String query){
+         String clean=query==null?"":query.trim();
+         List<String> src=searchHistory(), out=new ArrayList<>();
+@@ -125,8 +134,9 @@
+     /**
+      * Merge two playlists into a new local playlist while preserving both originals.
+      * Duplicate canonical tracks are collapsed. Provider identities are combined so the
+-     * resolver can still choose the healthy route. When two variants are otherwise equal,
+-     * QQ (tx) is preferred as requested; 320k support outranks 128k-only support.
++     * resolver can still choose the healthy route. When two variants are otherwise equal, NetEase (wy) is preferred so the merged
++     * canonical song keeps the provider identity that can supply synced lyrics. 320k
++     * support still outranks 128k-only support, and all fallback provider identities remain.
+      */
+     public List<ImportedPlaylist> mergePlaylists(String firstId,String secondId,String mergedName){
+         if(firstId==null||secondId==null||firstId.equals(secondId)) return playlists();
+@@ -171,9 +181,9 @@
+         String best=""; int bestScore=Integer.MIN_VALUE;
+         for(SourceVariant v:song.variants()){
+             int score=(v.quality320?200:(v.quality128?100:0));
+-            // Tie-break: QQ > NetEase > others. This does not discard fallbacks.
+-            if("tx".equals(v.source)) score+=9;
+-            else if("wy".equals(v.source)) score+=8;
++            // Tie-break: NetEase > QQ > others. This does not discard fallbacks.
++            if("wy".equals(v.source)) score+=9;
++            else if("tx".equals(v.source)) score+=8;
+             else if("kw".equals(v.source)) score+=5;
+             else if("kg".equals(v.source)) score+=4;
+             else if("mg".equals(v.source)) score+=3;
+diff -ruN /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/data/LyricParser.java /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/data/LyricParser.java
+--- /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/data/LyricParser.java	2026-08-07 08:13:35.000000000 +0000
++++ /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/data/LyricParser.java	2026-08-10 06:04:26.602316571 +0000
+@@ -1,10 +1,155 @@
+ package com.xingyu.music.data;
++
+ import com.xingyu.music.model.LyricLine;
+-import java.util.*;
+-import java.util.regex.*;
++import com.xingyu.music.model.LyricWord;
++
++import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.List;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
+ public final class LyricParser {
+-    private static final Pattern TAG=Pattern.compile("\\[(\\d{1,2}):(\\d{1,2})(?:[.:](\\d{1,3}))?]");
+-    private LyricParser(){}
+-    public static List<LyricLine> parse(String raw){List<LyricLine> out=new ArrayList<>();if(raw==null)return out;for(String line:raw.split("\\r?\\n")){Matcher m=TAG.matcher(line);List<Long> times=new ArrayList<>();int end=0;while(m.find()){long min=Long.parseLong(m.group(1)),sec=Long.parseLong(m.group(2)),frac=0;String f=m.group(3);if(f!=null){if(f.length()==1)frac=Long.parseLong(f)*100;else if(f.length()==2)frac=Long.parseLong(f)*10;else frac=Long.parseLong(f.substring(0,3));}times.add((min*60+sec)*1000+frac);end=m.end();}String text=end<line.length()?line.substring(end).trim():"";if(!text.isEmpty())for(Long t:times)out.add(new LyricLine(t,text));}out.sort(Comparator.comparingLong(a->a.timeMs));return out;}
+-    public static int activeIndex(List<LyricLine> lines,long pos){int idx=-1;for(int i=0;i<lines.size();i++){if(lines.get(i).timeMs<=pos)idx=i;else break;}return idx;}
++    private static final Pattern TAG = Pattern.compile("\\[(\\d{1,2}):(\\d{1,2})(?:[.:](\\d{1,3}))?]");
++    private static final Pattern YRC_LINE_MS = Pattern.compile("^\\[(\\d+),(\\d+)](.*)$");
++    private static final Pattern YRC_LINE_CLOCK = Pattern.compile("^\\[(\\d{1,2}):(\\d{1,2})(?:[.:](\\d{1,3}))?,(\\d+)](.*)$");
++    private static final Pattern YRC_WORD = Pattern.compile("\\((\\d+),(\\d+),(?:-?\\d+)\\)");
++
++    private LyricParser() {}
++
++    public static List<LyricLine> parse(String raw) {
++        List<LyricLine> out = new ArrayList<>();
++        if (raw == null) return out;
++        for (String line : raw.split("\\r?\\n")) {
++            Matcher m = TAG.matcher(line);
++            List<Long> times = new ArrayList<>();
++            int end = 0;
++            while (m.find()) {
++                long min = Long.parseLong(m.group(1));
++                long sec = Long.parseLong(m.group(2));
++                long frac = fractionMs(m.group(3));
++                times.add((min * 60 + sec) * 1000 + frac);
++                end = m.end();
++            }
++            String text = end < line.length() ? line.substring(end).trim() : "";
++            if (!text.isEmpty()) for (Long t : times) out.add(new LyricLine(t, text));
++        }
++        out.sort(Comparator.comparingLong(a -> a.timeMs));
++        return withDerivedEnds(out);
++    }
++
++    /** Prefer NetEase YRC word timing when available, otherwise keep normal LRC. */
++    public static List<LyricLine> parseEnhanced(String lrc, String yrc) {
++        List<LyricLine> karaoke = parseYrc(yrc);
++        if (!karaoke.isEmpty()) return withDerivedEnds(karaoke);
++        return parse(lrc);
++    }
++
++    public static List<LyricLine> parseYrc(String raw) {
++        List<LyricLine> out = new ArrayList<>();
++        if (raw == null || raw.trim().isEmpty()) return out;
++        for (String source : raw.split("\\r?\\n")) {
++            String line = source == null ? "" : source.trim();
++            if (line.isEmpty() || line.startsWith("{")) continue; // metadata rows
++            long lineStart;
++            long lineDuration;
++            String body;
++            Matcher ms = YRC_LINE_MS.matcher(line);
++            Matcher clock = YRC_LINE_CLOCK.matcher(line);
++            if (ms.matches()) {
++                lineStart = parseLong(ms.group(1));
++                lineDuration = parseLong(ms.group(2));
++                body = ms.group(3);
++            } else if (clock.matches()) {
++                lineStart = (parseLong(clock.group(1)) * 60L + parseLong(clock.group(2))) * 1000L
++                        + fractionMs(clock.group(3));
++                lineDuration = parseLong(clock.group(4));
++                body = clock.group(5);
++            } else continue;
++
++            List<LyricWord> words = new ArrayList<>();
++            StringBuilder text = new StringBuilder();
++            Matcher wm = YRC_WORD.matcher(body);
++            while (wm.find()) {
++                long rawStart = parseLong(wm.group(1));
++                long duration = Math.max(1L, parseLong(wm.group(2)));
++                int textStart = wm.end();
++                int next = body.indexOf('(', textStart);
++                String word = (next < 0 ? body.substring(textStart) : body.substring(textStart, next));
++                if (word.isEmpty()) continue;
++                // Current NCM YRC normally uses absolute millisecond starts. Some
++                // compatible exporters use line-relative offsets, so accept both.
++                long absoluteStart = rawStart < lineStart ? lineStart + rawStart : rawStart;
++                words.add(new LyricWord(absoluteStart, duration, word));
++                text.append(word);
++            }
++            String clean = text.toString().trim();
++            if (clean.isEmpty()) continue;
++            long endMs = lineDuration > 0 ? lineStart + lineDuration : 0L;
++            out.add(new LyricLine(lineStart, endMs, clean, words));
++        }
++        out.sort(Comparator.comparingLong(a -> a.timeMs));
++        return out;
++    }
++
++    public static int activeIndex(List<LyricLine> lines, long pos) {
++        int idx = -1;
++        for (int i = 0; i < lines.size(); i++) {
++            if (lines.get(i).timeMs <= pos) idx = i;
++            else break;
++        }
++        return idx;
++    }
++
++    /**
++     * Character-level karaoke progress. With YRC this follows word/syllable timestamps.
++     * Plain LRC falls back to a conservative interpolation until the next line.
++     */
++    public static float characterProgress(LyricLine line, long positionMs, long fallbackEndMs) {
++        if (line == null || line.text.isEmpty()) return 0f;
++        if (positionMs <= line.timeMs) return 0f;
++        if (line.hasWordTiming()) {
++            int doneChars = 0;
++            for (LyricWord word : line.words) {
++                int chars = Math.max(1, word.text.length());
++                if (positionMs >= word.endMs()) {
++                    doneChars += chars;
++                    continue;
++                }
++                if (positionMs <= word.startMs) break;
++                float within = Math.min(1f, Math.max(0f,
++                        (float) (positionMs - word.startMs) / Math.max(1L, word.durationMs)));
++                return clamp((doneChars + chars * within) / Math.max(1f, line.text.length()));
++            }
++            return clamp(doneChars / Math.max(1f, line.text.length()));
++        }
++        long end = line.endMs > line.timeMs ? line.endMs : fallbackEndMs;
++        if (end <= line.timeMs) end = line.timeMs + 3600L;
++        return clamp((float) (positionMs - line.timeMs) / Math.max(1L, end - line.timeMs));
++    }
++
++    private static List<LyricLine> withDerivedEnds(List<LyricLine> input) {
++        List<LyricLine> out = new ArrayList<>();
++        for (int i = 0; i < input.size(); i++) {
++            LyricLine line = input.get(i);
++            long next = i + 1 < input.size() ? input.get(i + 1).timeMs : line.timeMs + 4200L;
++            long end = line.endMs > line.timeMs ? line.endMs : next;
++            out.add(new LyricLine(line.timeMs, end, line.text, line.words));
++        }
++        return out;
++    }
++
++    private static long fractionMs(String f) {
++        if (f == null || f.isEmpty()) return 0L;
++        if (f.length() == 1) return parseLong(f) * 100L;
++        if (f.length() == 2) return parseLong(f) * 10L;
++        return parseLong(f.substring(0, Math.min(3, f.length())));
++    }
++
++    private static long parseLong(String value) {
++        try { return Long.parseLong(value == null ? "0" : value); }
++        catch (Exception ignored) { return 0L; }
++    }
++
++    private static float clamp(float v) { return Math.max(0f, Math.min(1f, v)); }
+ }
+diff -ruN /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/data/NeteaseApi.java /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/data/NeteaseApi.java
+--- /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/data/NeteaseApi.java	2026-08-09 18:50:44.000000000 +0000
++++ /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/data/NeteaseApi.java	2026-08-10 06:04:43.007647250 +0000
+@@ -146,13 +146,65 @@
+         return new ImportedPlaylist("wy:" + id, p.optString("name", "网易云歌单"), "wy", direct);
+     }
+ 
+-    public String lyric(String id) throws Exception {
++    public static final class LyricData {
++        public final String lrc;
++        public final String yrc;
++        public LyricData(String lrc, String yrc) {
++            this.lrc = lrc == null ? "" : lrc;
++            this.yrc = yrc == null ? "" : yrc;
++        }
++        public boolean hasWordTiming() { return !yrc.trim().isEmpty(); }
++    }
++
++    /**
++     * V18 lyric-only metadata path. It is completely separate from audio URL routing.
++     * Prefer the mobile lyric/v1 EAPI because it can include YRC word timestamps, then
++     * fall back to the long-proven public LRC endpoint when the mobile endpoint rejects.
++     */
++    public LyricData lyricData(String id) throws Exception {
++        Exception firstError = null;
++        try {
++            JSONObject payload = new JSONObject();
++            payload.put("id", id);
++            payload.put("cp", false);
++            payload.put("tv", 0);
++            payload.put("lv", 0);
++            payload.put("rv", 0);
++            payload.put("kv", 0);
++            payload.put("yv", 0);
++            payload.put("ytv", 0);
++            payload.put("yrv", 0);
++            String route = "/api/song/lyric/v1";
++            Map<String,String> form = new LinkedHashMap<>();
++            form.put("params", NeteaseCrypto.eapi(route, payload.toString()));
++            Map<String,String> h = headers();
++            h.put("User-Agent", "NeteaseMusic/9.3.60 (Linux; Android 14; zh_CN)");
++            h.put("Cookie", "os=android; appver=9.3.60; channel=netease;");
++            Http.Response r = Http.postForm("https://interface.music.163.com/eapi/song/lyric/v1", h, form);
++            if (r.code >= 200 && r.code < 300) {
++                JSONObject root = new JSONObject(r.body);
++                String lrc = lyricField(root, "lrc");
++                String yrc = lyricField(root, "yrc");
++                if (!lrc.isEmpty() || !yrc.isEmpty()) return new LyricData(lrc, yrc);
++            }
++        } catch (Exception e) { firstError = e; }
++
+         String url = "https://music.163.com/api/song/lyric?os=pc&id="
+                 + URLEncoder.encode(id, StandardCharsets.UTF_8.name()) + "&lv=-1&kv=-1&tv=-1";
+         Http.Response r = Http.get(url, headers());
+-        if (r.code < 200 || r.code >= 300) return "";
+-        JSONObject lrc = new JSONObject(r.body).optJSONObject("lrc");
+-        return lrc == null ? "" : lrc.optString("lyric", "");
++        if (r.code < 200 || r.code >= 300) {
++            if (firstError != null) throw firstError;
++            return new LyricData("", "");
++        }
++        JSONObject root = new JSONObject(r.body);
++        return new LyricData(lyricField(root, "lrc"), lyricField(root, "yrc"));
++    }
++
++    public String lyric(String id) throws Exception { return lyricData(id).lrc; }
++
++    private static String lyricField(JSONObject root, String key) {
++        JSONObject block = root == null ? null : root.optJSONObject(key);
++        return block == null ? "" : block.optString("lyric", "");
+     }
+ 
+     private List<Song> songDetails(List<String> ids) throws Exception {
+diff -ruN /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/model/LyricLine.java /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/model/LyricLine.java
+--- /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/model/LyricLine.java	2026-08-07 08:13:35.000000000 +0000
++++ /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/model/LyricLine.java	2026-08-10 06:04:26.601186792 +0000
+@@ -1,5 +1,26 @@
+ package com.xingyu.music.model;
++
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.List;
++
+ public final class LyricLine {
+-    public final long timeMs; public final String text;
+-    public LyricLine(long timeMs,String text){this.timeMs=timeMs;this.text=text==null?"":text;}
++    public final long timeMs;
++    public final long endMs;
++    public final String text;
++    public final List<LyricWord> words;
++
++    public LyricLine(long timeMs, String text) {
++        this(timeMs, 0L, text, Collections.emptyList());
++    }
++
++    public LyricLine(long timeMs, long endMs, String text, List<LyricWord> words) {
++        this.timeMs = Math.max(0L, timeMs);
++        this.endMs = Math.max(this.timeMs, endMs);
++        this.text = text == null ? "" : text;
++        this.words = words == null ? Collections.emptyList() :
++                Collections.unmodifiableList(new ArrayList<>(words));
++    }
++
++    public boolean hasWordTiming() { return !words.isEmpty(); }
+ }
+diff -ruN /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/model/LyricWord.java /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/model/LyricWord.java
+--- /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/model/LyricWord.java	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/model/LyricWord.java	2026-08-10 06:04:26.600000252 +0000
+@@ -0,0 +1,16 @@
++package com.xingyu.music.model;
++
++/** One karaoke-timed word / syllable inside a lyric line. */
++public final class LyricWord {
++    public final long startMs;
++    public final long durationMs;
++    public final String text;
++
++    public LyricWord(long startMs, long durationMs, String text) {
++        this.startMs = Math.max(0L, startMs);
++        this.durationMs = Math.max(1L, durationMs);
++        this.text = text == null ? "" : text;
++    }
++
++    public long endMs() { return startMs + durationMs; }
++}
+diff -ruN /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/playback/PlaybackService.java /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/playback/PlaybackService.java
+--- /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-09 20:45:44.000000000 +0000
++++ /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-10 06:03:57.911304819 +0000
+@@ -386,10 +386,12 @@
+             return;
+         }
+         if (fromCompletion && playMode == MODE_SEQUENTIAL && index >= queue.size() - 1) {
+-            // True sequential mode stops at the end instead of silently looping.
+-            preparing = false;
+-            updateNotification(false);
+-            notifyState();
++            // V18: sequential means ordered continuous playback. After the final item,
++            // continue from the first item while preserving the exact same resolve path.
++            index = 0;
++            resetAttempts();
++            currentArtwork = null;
++            resolveCurrent();
+             return;
+         }
+         if (queue.size() == 1) {
+diff -ruN /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/ui/LyricLineView.java /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/ui/LyricLineView.java
+--- /mnt/data/XingyuMusic-V17-BASELINE-for-diff/app/src/main/java/com/xingyu/music/ui/LyricLineView.java	2026-08-10 05:12:33.000000000 +0000
++++ /mnt/data/XingyuMusic-V18/XingyuMusic-V18/app/src/main/java/com/xingyu/music/ui/LyricLineView.java	2026-08-10 06:05:07.276219176 +0000
+@@ -1,24 +1,29 @@
+ package com.xingyu.music.ui;
+ 
+ import android.content.Context;
++import android.graphics.Canvas;
+ import android.graphics.Color;
+ import android.graphics.LinearGradient;
++import android.graphics.Path;
+ import android.graphics.Shader;
+ import android.graphics.Typeface;
+ import android.graphics.drawable.GradientDrawable;
++import android.text.Layout;
+ import android.view.Gravity;
+ import android.view.View;
+ import android.widget.TextView;
+ 
+ /**
+- * One synced lyric row. Active rows use the user's gradient. During manual lyric
+- * scrubbing, the released candidate gets a faint dashed rounded selection frame.
++ * One synced lyric row. The active row is painted twice: a subdued base pass and
++ * a clipped gradient pass whose reveal position follows karaoke timing. That gives
++ * true word/character-progress rendering while still supporting wrapped lines.
+  */
+ public final class LyricLineView extends TextView {
+     private boolean active;
+     private boolean seekSelected;
+     private int gradientStart = Ui.LYRIC_ICE_START;
+     private int gradientEnd = Ui.LYRIC_ICE_END;
++    private float karaokeProgress;
+ 
+     public LyricLineView(Context context) {
+         super(context);
+@@ -41,9 +46,17 @@
+     public void setActiveLine(boolean value) {
+         if (active == value) return;
+         active = value;
++        if (!active) karaokeProgress = 0f;
+         refreshState();
+     }
+ 
++    public void setKaraokeProgress(float value) {
++        float next = Math.max(0f, Math.min(1f, value));
++        if (Math.abs(next - karaokeProgress) < .002f) return;
++        karaokeProgress = next;
++        if (active) invalidate();
++    }
++
+     public void setSeekSelected(boolean value) {
+         if (seekSelected == value) return;
+         seekSelected = value;
+@@ -54,7 +67,9 @@
+         setTextSize(active ? 16.2f : (seekSelected ? 14.6f : 14f));
+         setTypeface(active ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+         setAlpha(active ? 1f : (seekSelected ? .94f : .72f));
+-        setTextColor(active ? Color.WHITE : (seekSelected ? Ui.TEXT_2 : Ui.DIM));
++        // The not-yet-sung portion stays visible but quieter. The gradient overlay
++        // progressively replaces it from left to right / line to line.
++        setTextColor(active ? Color.rgb(150, 157, 170) : (seekSelected ? Ui.TEXT_2 : Ui.DIM));
+         if (seekSelected) {
+             GradientDrawable box = new GradientDrawable();
+             box.setColor(Color.argb(12, 220, 229, 246));
+@@ -65,20 +80,57 @@
+         } else {
+             setBackground(null);
+         }
+-        if (!active) getPaint().setShader(null);
++        getPaint().setShader(null);
+         invalidate();
+     }
+ 
+-    @Override protected void onDraw(android.graphics.Canvas canvas) {
+-        if (active && getWidth() > 0) {
+-            int middle = Ui.mix(gradientStart, Color.WHITE, .24f);
+-            getPaint().setShader(new LinearGradient(
+-                    0f, 0f, Math.max(1f, getWidth()), 0f,
+-                    new int[]{gradientStart, middle, gradientEnd},
+-                    new float[]{0f, .52f, 1f}, Shader.TileMode.CLAMP));
+-        } else {
++    @Override protected void onDraw(Canvas canvas) {
++        if (!active || getWidth() <= 0 || getLayout() == null) {
+             getPaint().setShader(null);
++            super.onDraw(canvas);
++            return;
++        }
++
++        // Base (future) lyric.
++        getPaint().setShader(null);
++        super.onDraw(canvas);
++        if (karaokeProgress <= .001f) return;
++
++        Layout layout = getLayout();
++        CharSequence value = getText();
++        int length = value == null ? 0 : value.length();
++        if (length <= 0) return;
++
++        float charPos = Math.min(length, karaokeProgress * length);
++        int whole = Math.min(length, (int) Math.floor(charPos));
++        float partial = charPos - whole;
++        Path reveal = new Path();
++        if (whole > 0) layout.getSelectionPath(0, whole, reveal);
++
++        if (whole < length && partial > .001f) {
++            int line = layout.getLineForOffset(whole);
++            float x1 = layout.getPrimaryHorizontal(whole);
++            float x2 = layout.getPrimaryHorizontal(Math.min(length, whole + 1));
++            float left = Math.min(x1, x2);
++            float right = Math.max(x1, x2);
++            if (right - left < 1f) right = left + Math.max(1f, getTextSize() * .45f);
++            reveal.addRect(left, layout.getLineTop(line), left + (right - left) * partial,
++                    layout.getLineBottom(line), Path.Direction.CW);
+         }
++
++        int xOffset = getCompoundPaddingLeft();
++        int yOffset = getExtendedPaddingTop();
++        reveal.offset(xOffset, yOffset);
++
++        int save = canvas.save();
++        canvas.clipPath(reveal);
++        int middle = Ui.mix(gradientStart, Color.WHITE, .24f);
++        getPaint().setShader(new LinearGradient(
++                0f, 0f, Math.max(1f, getWidth()), 0f,
++                new int[]{gradientStart, middle, gradientEnd},
++                new float[]{0f, .52f, 1f}, Shader.TileMode.CLAMP));
+         super.onDraw(canvas);
++        getPaint().setShader(null);
++        canvas.restoreToCount(save);
+     }
+ }

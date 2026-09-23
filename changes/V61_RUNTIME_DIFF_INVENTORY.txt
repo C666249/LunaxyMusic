@@ -1,0 +1,28 @@
+V61 RUNTIME DIFF INVENTORY (V60 baseline)
+
+V60 files: 83
+V61 files: 99
+
+MODIFIED	AndroidManifest.xml
+MODIFIED	java/com/xingyu/music/MainActivity.java
+NEW	java/com/xingyu/music/data/KugouPlaylistImportApi.java
+NEW	java/com/xingyu/music/data/KuwoPlaylistImportApi.java
+NEW	java/com/xingyu/music/data/LunaxyPlaylistCodec.java
+NEW	java/com/xingyu/music/desktop/DesktopLyricService.java
+NEW	java/com/xingyu/music/download/DownloadDiscoveryResolver.java
+NEW	java/com/xingyu/music/download/DownloadPlanStore.java
+MODIFIED	java/com/xingyu/music/download/OfflineDownloadService.java
+MODIFIED	java/com/xingyu/music/download/OfflineStore.java
+NEW	java/com/xingyu/music/local/LocalMusicScanner.java
+MODIFIED	java/com/xingyu/music/playback/PlaybackService.java
+NEW	java/com/xingyu/music/ui/DesktopLyricLaneView.java
+MODIFIED	java/com/xingyu/music/ui/IconView.java
+MODIFIED	java/com/xingyu/music/ui/ImageLoader.java
+NEW	res/drawable/ic_lyric_close.xml
+NEW	res/drawable/ic_lyric_lock.xml
+NEW	res/drawable/ic_lyric_toggle.xml
+NEW	res/drawable/ic_lyric_unlock.xml
+NEW	res/drawable/ic_media_next.xml
+NEW	res/drawable/ic_media_pause.xml
+NEW	res/drawable/ic_media_play.xml
+NEW	res/drawable/ic_media_prev.xml

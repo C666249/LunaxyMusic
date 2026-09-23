@@ -1,0 +1,715 @@
+diff -ruN /mnt/data/v19baseline/XingyuMusic-V19/app/build.gradle.kts /mnt/data/v20work/XingyuMusic-V20/app/build.gradle.kts
+--- /mnt/data/v19baseline/XingyuMusic-V19/app/build.gradle.kts	2026-08-10 07:00:55.000000000 +0000
++++ /mnt/data/v20work/XingyuMusic-V20/app/build.gradle.kts	2026-08-10 07:23:50.421661618 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 22
+-        versionName = "19.0.0"
++        versionCode = 23
++        versionName = "20.0.0"
+     }
+ 
+     buildTypes {
+diff -ruN /mnt/data/v19baseline/XingyuMusic-V19/app/src/main/java/com/xingyu/music/MainActivity.java /mnt/data/v20work/XingyuMusic-V20/app/src/main/java/com/xingyu/music/MainActivity.java
+--- /mnt/data/v19baseline/XingyuMusic-V19/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 07:03:03.000000000 +0000
++++ /mnt/data/v20work/XingyuMusic-V20/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 07:27:32.532470547 +0000
+@@ -45,9 +45,14 @@
+ import android.widget.TextView;
+ 
+ import com.xingyu.music.data.LibraryStore;
++import com.xingyu.music.data.LyricCacheStore;
++import com.xingyu.music.data.LyricMatchStore;
++import com.xingyu.music.data.LyricMatcher;
+ import com.xingyu.music.data.LyricParser;
+ import com.xingyu.music.data.NeteaseApi;
+ import com.xingyu.music.data.QQMusicApi;
++import com.xingyu.music.data.QQLyricApi;
++import com.xingyu.music.data.RecommendationEngine;
+ import com.xingyu.music.data.SearchRanker;
+ import com.xingyu.music.data.V14PlaybackStateMigration;
+ import com.xingyu.music.model.ImportedPlaylist;
+@@ -80,19 +85,23 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Xingyu Music V19.0 – guarded playback core + hard-isolated lyric gestures.
++ * Xingyu Music V20.0 – lyric coverage + local-first recommendations.
+  *
+- * V19 keeps the V18 playback/source chain untouched. The lyric viewport now observes touch
+- * dispatch before clickable lyric rows, so every gesture that starts inside the lyric panel
+- * belongs to lyrics while gestures outside the panel still scroll the whole page.
++ * V20 deliberately leaves the proven audio-resolution/playback core untouched. QQ lyric
++ * coverage is implemented as an isolated metadata path: NetEase cross-match first, direct
++ * QQ LRC fallback second. Recommendations only use local library data and metadata search.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(4);
+     private final Handler main = new Handler(Looper.getMainLooper());
+     private final NeteaseApi netease = new NeteaseApi();
+     private final QQMusicApi qq = new QQMusicApi();
++    private final QQLyricApi qqLyrics = new QQLyricApi();
+ 
+     private LibraryStore store;
++    private LyricCacheStore lyricCache;
++    private LyricMatchStore lyricMatches;
++    private RecommendationEngine recommendations;
+     private PlaybackService playback;
+     private boolean bound;
+ 
+@@ -235,13 +244,15 @@
+         // Restore V10 routing from a clean gate state before PlaybackService is bound.
+         V14PlaybackStateMigration.runOnce(this);
+         store = new LibraryStore(this);
++        lyricCache = new LyricCacheStore(this);
++        lyricMatches = new LyricMatchStore(this);
++        recommendations = new RecommendationEngine(this, netease, qq);
+         reloadLibrary();
+         loadUiPreferences();
+         configureWindow();
+         buildShell();
+         renderTab();
+         bindService(new Intent(this, PlaybackService.class), connection, BIND_AUTO_CREATE);
+-        main.post(lyricKaraokeTicker);
+     }
+ 
+     private void loadUiPreferences() {
+@@ -627,7 +638,7 @@
+ 
+     private void showSourceStatus() {
+         String status = playback == null ? "音源管理器正在启动…" : playback.sourceStatus();
+-        showGlassMessage("智能音源", status + "\n\nV16 继续冻结 V14/V15 稳定主链：只保留 Huibq 与全豆要聚合参与日常播放；QQ 默认优先 Huibq，网易默认优先全豆要。只有 Media3 READY 才记为真实成功，普通单曲 404 不会污染下一首。",
++        showGlassMessage("智能音源", status + "\n\nV20 继续冻结 V14/V15 稳定主链：只保留 Huibq 与全豆要聚合参与日常播放；QQ 默认优先 Huibq，网易默认优先全豆要。只有 Media3 READY 才记为真实成功，普通单曲 404 不会污染下一首。",
+                 "知道了", null, "", null);
+     }
+ 
+@@ -749,15 +760,15 @@
+             body.addView(recentCarousel(recent), marginTop(8));
+         }
+ 
+-        body.addView(sectionHeader("你的音乐", "全部保存在本机"), marginTop(24));
++        body.addView(sectionHeader("为你推荐", "本地口味 · 免费生成"), marginTop(24));
+         LinearLayout library = Ui.row(this);
+-        View liked = libraryActionCard(IconView.Type.HEART, "收藏", favorites.size() + " 首", Ui.PINK);
+-        liked.setOnClickListener(v -> { tab = 3; refreshNav(); renderTab(); });
+-        library.addView(liked, new LinearLayout.LayoutParams(0, Ui.dp(this, 106), 1f));
++        View daily = libraryActionCard(IconView.Type.MUSIC, "每日推荐", "为你选 20 首", Ui.PURPLE);
++        daily.setOnClickListener(v -> startDailyRecommendations());
++        library.addView(daily, new LinearLayout.LayoutParams(0, Ui.dp(this, 106), 1f));
+         Space gap = new Space(this); library.addView(gap, Ui.lp(Ui.dp(this, 10), 1));
+-        View lists = libraryActionCard(IconView.Type.PLAYLIST, "歌单", playlists.size() + " 个", Ui.CYAN);
+-        lists.setOnClickListener(v -> { tab = 2; refreshNav(); renderTab(); });
+-        library.addView(lists, new LinearLayout.LayoutParams(0, Ui.dp(this, 106), 1f));
++        View radio = libraryActionCard(IconView.Type.SHUFFLE, "私人电台", "从红心与歌单出发", Ui.CYAN);
++        radio.setOnClickListener(v -> startPrivateRadio());
++        library.addView(radio, new LinearLayout.LayoutParams(0, Ui.dp(this, 106), 1f));
+         body.addView(library, marginTop(8));
+ 
+         if (!playlists.isEmpty()) {
+@@ -783,6 +794,38 @@
+         return card;
+     }
+ 
++
++    private void startDailyRecommendations() {
++        if (recommendations == null || !recommendations.hasTaste(favorites, playlists, history)) {
++            toast("先收藏、导入歌单或听几首歌，推荐会更懂你");
++            return;
++        }
++        final List<Song> favSnapshot = new ArrayList<>(favorites);
++        final List<ImportedPlaylist> playlistSnapshot = new ArrayList<>(playlists);
++        final List<Song> historySnapshot = new ArrayList<>(history);
++        showBusy(true);
++        io.submit(() -> {
++            List<Song> songs = recommendations.daily(favSnapshot, playlistSnapshot, historySnapshot, 20);
++            main.post(() -> {
++                showBusy(false);
++                if (songs == null || songs.isEmpty()) { toast("今天暂时没有生成推荐"); return; }
++                playQueue(new ArrayList<>(songs), 0);
++                toast("今日推荐 · " + songs.size() + " 首");
++            });
++        });
++    }
++
++    private void startPrivateRadio() {
++        if (recommendations == null || !recommendations.hasTaste(favorites, playlists, history)) {
++            toast("先收藏、导入歌单或听几首歌，再开启私人电台");
++            return;
++        }
++        List<Song> songs = recommendations.privateRadio(favorites, playlists, history, 30);
++        if (songs.isEmpty()) { toast("私人电台还没有足够的歌曲"); return; }
++        playQueue(new ArrayList<>(songs), 0);
++        toast("私人电台 · " + songs.size() + " 首");
++    }
++
+     private String greetingTitle() {
+         int hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+         if (hour < 6) return "夜深了，听点喜欢的";
+@@ -2880,8 +2923,8 @@
+         });
+ 
+         if (!lyricLines.isEmpty()) rebuildLyrics();
+-        else if (playback != null && playback.currentSong() != null && !playback.currentSong().source.equals("wy")) {
+-            lyricEmpty.setText("当前音源暂未接入歌词");
++        else if (playback != null && playback.currentSong() != null && lyricEmpty != null) {
++            lyricEmpty.setText("歌词加载中…");
+         }
+     }
+ 
+@@ -2948,29 +2991,87 @@
+         lyricManualSelection = -1;
+         if (lyricBox != null) {
+             lyricBox.removeAllViews();
+-            lyricEmpty = Ui.text(this, song.variant("wy") != null ? "歌词加载中…" : "当前歌曲暂未找到网易歌词信息", 12.5f, Ui.DIM, false);
++            lyricEmpty = Ui.text(this, "歌词加载中…", 12.5f, Ui.DIM, false);
+             lyricEmpty.setGravity(Gravity.CENTER);
+             lyricBox.addView(lyricEmpty, Ui.lp(-1, Ui.dp(this, 138)));
+         }
+-        com.xingyu.music.model.SourceVariant wyVariant = song.variant("wy");
+-        if (wyVariant == null) return;
++
++        String cached = lyricCache == null ? "" : lyricCache.get(song);
++        if (!cached.trim().isEmpty()) {
++            lyricLines = LyricParser.parse(cached);
++            rebuildLyrics();
++            return;
++        }
++
+         io.submit(() -> {
++            String lrc = "";
++            String failure = "暂无歌词";
+             try {
+-                NeteaseApi.LyricData lyricData = netease.lyricData(wyVariant.sourceId);
+-                List<LyricLine> parsed = LyricParser.parseEnhanced(lyricData.lrc, lyricData.yrc);
+-                main.post(() -> {
+-                    if (!lyricSongKey.equals(song.key())) return;
+-                    lyricLines = parsed;
+-                    rebuildLyrics();
+-                });
++                com.xingyu.music.model.SourceVariant wy = song.variant("wy");
++                if (wy != null) {
++                    lrc = netease.lyricData(wy.sourceId).lrc;
++                    failure = "网易歌词获取失败";
++                } else {
++                    com.xingyu.music.model.SourceVariant tx = song.variant("tx");
++                    if (tx != null) {
++                        // 1) Reuse a previously proven QQ -> NetEase lyric mapping.
++                        String wyId = lyricMatches == null ? "" : lyricMatches.getNeteaseId(tx.sourceId);
++                        if (!wyId.isEmpty()) {
++                            try { lrc = netease.lyricData(wyId).lrc; }
++                            catch (Exception ignored) { lrc = ""; }
++                        }
++
++                        // 2) Conservative metadata-only cross-match. This never changes Song
++                        // variants, playback order, resolver health, or audio URL selection.
++                        if (lrc.trim().isEmpty()) {
++                            try {
++                                List<Song> candidates = netease.search(song.title + " " + primaryArtistForLyric(song.artist), 12);
++                                com.xingyu.music.model.SourceVariant match = LyricMatcher.bestNeteaseVariant(song, candidates);
++                                if (match != null) {
++                                    String candidateLrc = netease.lyricData(match.sourceId).lrc;
++                                    if (!candidateLrc.trim().isEmpty()) {
++                                        lrc = candidateLrc;
++                                        if (lyricMatches != null) lyricMatches.putNeteaseId(tx.sourceId, match.sourceId);
++                                    }
++                                }
++                            } catch (Exception ignored) { }
++                        }
++
++                        // 3) If NetEase has no trustworthy equivalent, fetch QQ's own LRC.
++                        if (lrc.trim().isEmpty()) {
++                            try { lrc = qqLyrics.lyric(tx.sourceId); }
++                            catch (Exception e) { failure = "QQ 歌词获取失败"; }
++                        }
++                    } else {
++                        failure = "当前歌曲暂未接入歌词";
++                    }
++                }
+             } catch (Exception e) {
+-                main.post(() -> {
+-                    if (lyricSongKey.equals(song.key()) && lyricEmpty != null) lyricEmpty.setText("歌词获取失败");
+-                });
++                failure = "歌词获取失败";
+             }
++
++            final String finalLrc = lrc == null ? "" : lrc;
++            final String finalFailure = failure;
++            final List<LyricLine> parsed = LyricParser.parse(finalLrc);
++            main.post(() -> {
++                if (!lyricSongKey.equals(song.key())) return;
++                if (!parsed.isEmpty()) {
++                    if (lyricCache != null) lyricCache.put(song, finalLrc);
++                    lyricLines = parsed;
++                    rebuildLyrics();
++                } else if (lyricEmpty != null) {
++                    lyricEmpty.setText(finalFailure);
++                }
++            });
+         });
+     }
+ 
++    private String primaryArtistForLyric(String artist) {
++        if (artist == null || artist.trim().isEmpty()) return "";
++        String[] parts = artist.split("[/、&,，·]+");
++        return parts.length == 0 ? artist.trim() : parts[0].trim();
++    }
++
+     private void rebuildLyrics() {
+         if (lyricBox == null) return;
+         lyricBox.removeAllViews();
+@@ -3105,24 +3206,16 @@
+                     LyricLineView line = (LyricLineView) v;
+                     line.setGradientColors(lyricGradientStart, lyricGradientEnd);
+                     line.setActiveLine(i == idx);
+-                    if (i != idx) line.setKaraokeProgress(0f);
++                    line.setKaraokeProgress(i == idx ? 1f : 0f);
+                 }
+             }
+             scrollLyricToActive(false);
+         }
+-        updateLyricKaraokeProgress(pos);
+     }
+ 
+     private void updateLyricKaraokeProgress(long pos) {
+-        if (lyricBox == null || activeLyric < 0 || activeLyric >= lyricLines.size()
+-                || activeLyric >= lyricBox.getChildCount()) return;
+-        View view = lyricBox.getChildAt(activeLyric);
+-        if (!(view instanceof LyricLineView)) return;
+-        LyricLine line = lyricLines.get(activeLyric);
+-        long fallbackEnd = activeLyric + 1 < lyricLines.size()
+-                ? lyricLines.get(activeLyric + 1).timeMs : line.timeMs + 4200L;
+-        ((LyricLineView) view).setKaraokeProgress(
+-                LyricParser.characterProgress(line, pos, fallbackEnd));
++        // V20 intentionally uses exact line timestamps instead of interpolated/word karaoke.
++        // Full-line highlighting is more reliable across NetEase LRC and QQ LRC.
+     }
+ 
+     private void scrollLyricToActive(boolean force) {
+diff -ruN /mnt/data/v19baseline/XingyuMusic-V19/app/src/main/java/com/xingyu/music/data/LyricCacheStore.java /mnt/data/v20work/XingyuMusic-V20/app/src/main/java/com/xingyu/music/data/LyricCacheStore.java
+--- /mnt/data/v19baseline/XingyuMusic-V19/app/src/main/java/com/xingyu/music/data/LyricCacheStore.java	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/v20work/XingyuMusic-V20/app/src/main/java/com/xingyu/music/data/LyricCacheStore.java	2026-08-10 07:22:43.466396087 +0000
+@@ -0,0 +1,27 @@
++package com.xingyu.music.data;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++
++import com.xingyu.music.model.Song;
++
++/** Permanent local cache for static line-synced lyrics. */
++public final class LyricCacheStore {
++    private final SharedPreferences prefs;
++
++    public LyricCacheStore(Context context) {
++        prefs = context.getSharedPreferences("xingyu_lyric_cache_v20", Context.MODE_PRIVATE);
++    }
++
++    public String get(Song song) {
++        if (song == null) return "";
++        return prefs.getString(key(song), "");
++    }
++
++    public void put(Song song, String lrc) {
++        if (song == null || lrc == null || lrc.trim().isEmpty()) return;
++        prefs.edit().putString(key(song), lrc).apply();
++    }
++
++    private static String key(Song song) { return "song:" + song.key(); }
++}
+diff -ruN /mnt/data/v19baseline/XingyuMusic-V19/app/src/main/java/com/xingyu/music/data/LyricMatchStore.java /mnt/data/v20work/XingyuMusic-V20/app/src/main/java/com/xingyu/music/data/LyricMatchStore.java
+--- /mnt/data/v19baseline/XingyuMusic-V19/app/src/main/java/com/xingyu/music/data/LyricMatchStore.java	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/v20work/XingyuMusic-V20/app/src/main/java/com/xingyu/music/data/LyricMatchStore.java	2026-08-10 07:22:43.474396087 +0000
+@@ -0,0 +1,23 @@
++package com.xingyu.music.data;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++
++/** Remembers a proven QQ songmid -> NetEase song id lyric-only mapping. */
++public final class LyricMatchStore {
++    private final SharedPreferences prefs;
++
++    public LyricMatchStore(Context context) {
++        prefs = context.getSharedPreferences("xingyu_lyric_match_v20", Context.MODE_PRIVATE);
++    }
++
++    public String getNeteaseId(String qqMid) {
++        if (qqMid == null || qqMid.trim().isEmpty()) return "";
++        return prefs.getString("tx:" + qqMid.trim(), "");
++    }
++
++    public void putNeteaseId(String qqMid, String wyId) {
++        if (qqMid == null || wyId == null || qqMid.trim().isEmpty() || wyId.trim().isEmpty()) return;
++        prefs.edit().putString("tx:" + qqMid.trim(), wyId.trim()).apply();
++    }
++}
+diff -ruN /mnt/data/v19baseline/XingyuMusic-V19/app/src/main/java/com/xingyu/music/data/LyricMatcher.java /mnt/data/v20work/XingyuMusic-V20/app/src/main/java/com/xingyu/music/data/LyricMatcher.java
+--- /mnt/data/v19baseline/XingyuMusic-V19/app/src/main/java/com/xingyu/music/data/LyricMatcher.java	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/v20work/XingyuMusic-V20/app/src/main/java/com/xingyu/music/data/LyricMatcher.java	2026-08-10 07:22:43.478396087 +0000
+@@ -0,0 +1,72 @@
++package com.xingyu.music.data;
++
++import com.xingyu.music.model.Song;
++import com.xingyu.music.model.SourceVariant;
++
++import java.text.Normalizer;
++import java.util.List;
++import java.util.Locale;
++
++/** Conservative cross-provider matcher used only to borrow NetEase lyrics for QQ tracks. */
++public final class LyricMatcher {
++    private LyricMatcher() { }
++
++    public static SourceVariant bestNeteaseVariant(Song target, List<Song> candidates) {
++        if (target == null || candidates == null) return null;
++        String targetTitle = normalize(stripVersion(target.title));
++        String targetArtist = normalizeArtist(target.artist);
++        if (targetTitle.isEmpty() || targetArtist.isEmpty()) return null;
++
++        Song best = null;
++        int bestScore = Integer.MIN_VALUE;
++        for (Song candidate : candidates) {
++            if (candidate == null || candidate.variant("wy") == null) continue;
++            String title = normalize(stripVersion(candidate.title));
++            String artist = normalizeArtist(candidate.artist);
++            if (!targetTitle.equals(title)) continue; // title must be exact after version suffix cleanup
++            if (!artistOverlap(targetArtist, artist)) continue; // artist must agree too
++
++            int score = 100;
++            long a = target.durationMs, b = candidate.durationMs;
++            if (a > 0 && b > 0) {
++                long diff = Math.abs(a - b);
++                if (diff <= 1800L) score += 40;
++                else if (diff <= 3800L) score += 22;
++                else if (diff <= 6500L) score += 5;
++                else continue; // wrong edit/live version risk is too high
++            }
++            if (!target.album.isEmpty() && !candidate.album.isEmpty()
++                    && normalize(target.album).equals(normalize(candidate.album))) score += 12;
++            if (score > bestScore) { bestScore = score; best = candidate; }
++        }
++        return best == null ? null : best.variant("wy");
++    }
++
++    private static boolean artistOverlap(String a, String b) {
++        if (a.equals(b) || a.contains(b) || b.contains(a)) return true;
++        for (String x : a.split("[/、&,，]+")) {
++            if (x.isEmpty()) continue;
++            for (String y : b.split("[/、&,，]+")) {
++                if (!y.isEmpty() && (x.equals(y) || x.contains(y) || y.contains(x))) return true;
++            }
++        }
++        return false;
++    }
++
++    private static String normalizeArtist(String s) {
++        return normalize(s).replace("feat", "").replace("ft", "");
++    }
++
++    private static String stripVersion(String s) {
++        String t = s == null ? "" : s.trim();
++        return t.replaceAll("(?i)\\s*[（(\\[]\\s*(live|现场|現場|翻唱|cover|remix|dj|伴奏|instrumental|demo|acoustic)[^）)\\]]*[）)\\]]\\s*$", "")
++                .replaceAll("(?i)\\s*[-–—]\\s*(live|现场|現場|翻唱|cover|remix|dj|伴奏|instrumental|demo|acoustic).*$", "")
++                .trim();
++    }
++
++    private static String normalize(String s) {
++        String v = s == null ? "" : s.toLowerCase(Locale.ROOT).trim();
++        v = Normalizer.normalize(v, Normalizer.Form.NFKC).replace("·", "").replace("•", "");
++        return v.replaceAll("[\\s\\p{Punct}，。！？：；、“”‘’《》【】（）()]+", "");
++    }
++}
+diff -ruN /mnt/data/v19baseline/XingyuMusic-V19/app/src/main/java/com/xingyu/music/data/QQLyricApi.java /mnt/data/v20work/XingyuMusic-V20/app/src/main/java/com/xingyu/music/data/QQLyricApi.java
+--- /mnt/data/v19baseline/XingyuMusic-V19/app/src/main/java/com/xingyu/music/data/QQLyricApi.java	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/v20work/XingyuMusic-V20/app/src/main/java/com/xingyu/music/data/QQLyricApi.java	2026-08-10 07:22:43.463098319 +0000
+@@ -0,0 +1,73 @@
++package com.xingyu.music.data;
++
++import org.json.JSONObject;
++
++import java.net.URLEncoder;
++import java.nio.charset.StandardCharsets;
++import java.util.Base64;
++import java.util.LinkedHashMap;
++import java.util.Map;
++
++/**
++ * Lyric-only QQ Music adapter.
++ *
++ * IMPORTANT: this class is deliberately separate from QQMusicApi and every audio
++ * resolver. A lyric failure must never alter playback routing, provider health,
++ * cached playback URLs, or Media3 state.
++ */
++public final class QQLyricApi {
++    private static final String UA = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/125 Safari/537.36";
++
++    public String lyric(String songMid) throws Exception {
++        String mid = songMid == null ? "" : songMid.trim();
++        if (mid.isEmpty()) throw new Exception("QQ songmid 为空");
++
++        String endpoint = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg"
++                + "?songmid=" + URLEncoder.encode(mid, StandardCharsets.UTF_8.name())
++                + "&format=json&nobase64=1&g_tk=5381&loginUin=0&hostUin=0"
++                + "&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0";
++        Http.Response r = Http.get(endpoint, headers());
++        if (r.code < 200 || r.code >= 300) throw new Exception("QQ 歌词 HTTP " + r.code);
++        JSONObject root = parseObject(r.body);
++        int code = root.optInt("code", 0);
++        if (code != 0) throw new Exception("QQ 歌词 code=" + code);
++        String raw = root.optString("lyric", "");
++        String lyric = decodeMaybeBase64(raw);
++        if (lyric.trim().isEmpty()) throw new Exception("QQ 暂无歌词");
++        return lyric;
++    }
++
++    private static Map<String,String> headers() {
++        Map<String,String> h = new LinkedHashMap<>();
++        h.put("User-Agent", UA);
++        h.put("Referer", "https://y.qq.com/");
++        h.put("Accept", "application/json,text/plain,*/*");
++        h.put("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.7");
++        return h;
++    }
++
++    private static JSONObject parseObject(String raw) throws Exception {
++        String t = raw == null ? "" : raw.trim();
++        if (t.startsWith("\uFEFF")) t = t.substring(1).trim();
++        if (t.startsWith("{")) return new JSONObject(t);
++        int first = t.indexOf('{');
++        int last = t.lastIndexOf('}');
++        if (first >= 0 && last > first) return new JSONObject(t.substring(first, last + 1));
++        throw new Exception("QQ 歌词响应不是 JSON");
++    }
++
++    private static String decodeMaybeBase64(String raw) {
++        if (raw == null) return "";
++        String text = raw.trim();
++        if (text.isEmpty()) return "";
++        // nobase64=1 normally returns LRC directly. Keep a conservative fallback for
++        // deployments that ignore the flag and still return base64.
++        if (text.indexOf('[') >= 0 || text.contains("\\n") || text.contains("\n")) return text;
++        try {
++            byte[] decoded = Base64.getDecoder().decode(text);
++            String candidate = new String(decoded, StandardCharsets.UTF_8);
++            if (candidate.indexOf('[') >= 0) return candidate;
++        } catch (Exception ignored) { }
++        return text;
++    }
++}
+diff -ruN /mnt/data/v19baseline/XingyuMusic-V19/app/src/main/java/com/xingyu/music/data/RecommendationEngine.java /mnt/data/v20work/XingyuMusic-V20/app/src/main/java/com/xingyu/music/data/RecommendationEngine.java
+--- /mnt/data/v19baseline/XingyuMusic-V19/app/src/main/java/com/xingyu/music/data/RecommendationEngine.java	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/v20work/XingyuMusic-V20/app/src/main/java/com/xingyu/music/data/RecommendationEngine.java	2026-08-10 07:26:15.152811715 +0000
+@@ -0,0 +1,212 @@
++package com.xingyu.music.data;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++
++import com.xingyu.music.model.ImportedPlaylist;
++import com.xingyu.music.model.Song;
++
++import org.json.JSONArray;
++import org.json.JSONObject;
++
++import java.util.ArrayList;
++import java.util.Calendar;
++import java.util.Collections;
++import java.util.Comparator;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Locale;
++import java.util.Map;
++import java.util.Random;
++import java.util.Set;
++
++/**
++ * Free, local-first recommendation helper.
++ *
++ * It never resolves audio URLs. Daily discovery only performs the same metadata search
++ * already used by the Search tab; Private Radio is entirely local from favorites,
++ * playlists and recent history. Nothing here can change source health or playback caches.
++ */
++public final class RecommendationEngine {
++    private final NeteaseApi netease;
++    private final QQMusicApi qq;
++    private final SharedPreferences prefs;
++
++    public RecommendationEngine(Context context, NeteaseApi netease, QQMusicApi qq) {
++        this.netease = netease;
++        this.qq = qq;
++        prefs = context.getSharedPreferences("xingyu_recommend_v20", Context.MODE_PRIVATE);
++    }
++
++    public List<Song> daily(List<Song> favorites, List<ImportedPlaylist> playlists,
++                            List<Song> history, int limit) {
++        int max = Math.max(1, Math.min(limit, 30));
++        String day = dayKey();
++        if (day.equals(prefs.getString("daily_day", ""))) {
++            List<Song> cached = decode(prefs.getString("daily_songs", "[]"));
++            if (!cached.isEmpty()) return trim(cached, max);
++        }
++
++        List<String> seeds = topArtists(favorites, playlists, history, 2);
++        if (seeds.isEmpty()) return privateRadio(favorites, playlists, history, max);
++
++        Set<String> known = new HashSet<>();
++        addKeys(known, favorites);
++        addKeys(known, history);
++        if (playlists != null) for (ImportedPlaylist p : playlists) addKeys(known, p == null ? null : p.songs);
++
++        LinkedHashMap<String,Song> discovery = new LinkedHashMap<>();
++        for (String artist : seeds) {
++            List<Song> wy = new ArrayList<>();
++            List<Song> tx = new ArrayList<>();
++            try { wy = netease.search(artist, 18); } catch (Exception ignored) { }
++            try { tx = qq.search(artist, 18); } catch (Exception ignored) { }
++            List<Song> merged = SearchRanker.mergeAndRank(artist, wy, tx, 24);
++            for (Song s : merged) {
++                if (s == null || known.contains(s.key()) || !artistMatches(s.artist, artist)) continue;
++                discovery.putIfAbsent(s.key(), s);
++            }
++        }
++
++        List<Song> out = new ArrayList<>(discovery.values());
++        // Stable daily shuffle: same date gives the same list order on the same cache miss.
++        Collections.shuffle(out, new Random(day.hashCode() * 1103515245L + seeds.toString().hashCode()));
++        if (out.size() < Math.min(8, max)) {
++            for (Song s : privateRadio(favorites, playlists, history, max)) {
++                if (!containsKey(out, s.key())) out.add(s);
++                if (out.size() >= max) break;
++            }
++        }
++        out = trim(out, max);
++        if (!out.isEmpty()) {
++            prefs.edit().putString("daily_day", day).putString("daily_songs", encode(out)).apply();
++        }
++        return out;
++    }
++
++    public List<Song> privateRadio(List<Song> favorites, List<ImportedPlaylist> playlists,
++                                   List<Song> history, int limit) {
++        int max = Math.max(1, Math.min(limit, 40));
++        Map<String,Weighted> weighted = new LinkedHashMap<>();
++        addWeighted(weighted, favorites, 7);
++        if (playlists != null) for (ImportedPlaylist p : playlists) addWeighted(weighted, p == null ? null : p.songs, 3);
++        addWeighted(weighted, history, 1);
++        List<Weighted> all = new ArrayList<>(weighted.values());
++        Random random = new Random(System.nanoTime());
++        for (Weighted w : all) w.jitter = random.nextDouble() * 5.0;
++        all.sort((a,b) -> Double.compare((b.weight + b.jitter), (a.weight + a.jitter)));
++        List<Song> out = new ArrayList<>();
++        for (Weighted w : all) {
++            out.add(w.song);
++            if (out.size() >= max) break;
++        }
++        return out;
++    }
++
++    public boolean hasTaste(List<Song> favorites, List<ImportedPlaylist> playlists, List<Song> history) {
++        if (favorites != null && !favorites.isEmpty()) return true;
++        if (history != null && !history.isEmpty()) return true;
++        if (playlists != null) for (ImportedPlaylist p : playlists) if (p != null && !p.songs.isEmpty()) return true;
++        return false;
++    }
++
++    private static List<String> topArtists(List<Song> favorites, List<ImportedPlaylist> playlists,
++                                           List<Song> history, int limit) {
++        Map<String,Integer> score = new HashMap<>();
++        addArtistScore(score, favorites, 7);
++        if (playlists != null) for (ImportedPlaylist p : playlists) addArtistScore(score, p == null ? null : p.songs, 3);
++        addArtistScore(score, history, 1);
++        List<Map.Entry<String,Integer>> entries = new ArrayList<>(score.entrySet());
++        entries.sort((a,b) -> Integer.compare(b.getValue(), a.getValue()));
++        List<String> out = new ArrayList<>();
++        for (Map.Entry<String,Integer> e : entries) {
++            if (e.getKey().trim().isEmpty()) continue;
++            out.add(e.getKey());
++            if (out.size() >= limit) break;
++        }
++        return out;
++    }
++
++
++    private static boolean artistMatches(String songArtist, String seed) {
++        String a = normalize(songArtist);
++        String b = normalize(seed);
++        if (a.isEmpty() || b.isEmpty()) return false;
++        return a.contains(b) || b.contains(a);
++    }
++
++    private static String normalize(String value) {
++        return (value == null ? "" : value.toLowerCase(Locale.ROOT))
++                .replaceAll("[\\s\\p{Punct}，。！？：；、“”‘’《》【】（）()·]+", "");
++    }
++    private static void addArtistScore(Map<String,Integer> score, List<Song> songs, int weight) {
++        if (songs == null) return;
++        for (Song s : songs) {
++            if (s == null || s.artist == null) continue;
++            String[] names = s.artist.split("[/、&,，·]+");
++            for (String name : names) {
++                String clean = name == null ? "" : name.trim();
++                if (clean.isEmpty() || clean.length() > 36) continue;
++                score.put(clean, score.getOrDefault(clean, 0) + weight);
++            }
++        }
++    }
++
++    private static void addWeighted(Map<String,Weighted> out, List<Song> songs, int weight) {
++        if (songs == null) return;
++        for (Song s : songs) {
++            if (s == null) continue;
++            Weighted w = out.get(s.key());
++            if (w == null) out.put(s.key(), new Weighted(s, weight));
++            else w.weight += weight;
++        }
++    }
++
++    private static void addKeys(Set<String> out, List<Song> songs) {
++        if (songs == null) return;
++        for (Song s : songs) if (s != null) out.add(s.key());
++    }
++
++    private static boolean containsKey(List<Song> list, String key) {
++        if (list == null) return false;
++        for (Song s : list) if (s != null && s.key().equals(key)) return true;
++        return false;
++    }
++
++    private static String dayKey() {
++        Calendar c = Calendar.getInstance();
++        return String.format(Locale.US, "%04d-%02d-%02d", c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH));
++    }
++
++    private static String encode(List<Song> songs) {
++        JSONArray a = new JSONArray();
++        if (songs != null) for (Song s : songs) if (s != null) a.put(s.toJson());
++        return a.toString();
++    }
++
++    private static List<Song> decode(String raw) {
++        List<Song> out = new ArrayList<>();
++        try {
++            JSONArray a = new JSONArray(raw == null ? "[]" : raw);
++            for (int i = 0; i < a.length(); i++) {
++                JSONObject o = a.optJSONObject(i);
++                if (o != null) out.add(Song.fromJson(o));
++            }
++        } catch (Exception ignored) { }
++        return out;
++    }
++
++    private static List<Song> trim(List<Song> source, int max) {
++        if (source == null || source.isEmpty()) return new ArrayList<>();
++        return source.size() <= max ? new ArrayList<>(source) : new ArrayList<>(source.subList(0, max));
++    }
++
++    private static final class Weighted {
++        final Song song;
++        int weight;
++        double jitter;
++        Weighted(Song song, int weight) { this.song = song; this.weight = weight; }
++    }
++}

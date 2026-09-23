@@ -1,0 +1,6 @@
+Lunaxy Music V64 runtime diff vs V63
+Baseline: LunaxyMusic-V63-Full.zip
+
+CHANGED java/com/xingyu/music/MainActivity.java
+  V63 ad65019eedc9d021e062321a3509e315ef33c56d72e86ccfabd07a97b3c53ab6
+  V64 50ddc5cec4ed6f77bccff33e0764b583bfbbf8d7e78a536bbeb358c68b54ece0

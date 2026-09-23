@@ -1,0 +1,334 @@
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=changes' '--exclude=V33.0_*' /mnt/data/_v32tmp/LunaxyMusic-V32/app/build.gradle.kts /mnt/data/LunaxyMusic-V33-work/app/build.gradle.kts
+--- /mnt/data/_v32tmp/LunaxyMusic-V32/app/build.gradle.kts	2026-08-10 13:42:20.000000000 +0000
++++ /mnt/data/LunaxyMusic-V33-work/app/build.gradle.kts	2026-08-10 14:10:19.424774916 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 35
+-        versionName = "32.0.0"
++        versionCode = 36
++        versionName = "33.0.0"
+     }
+ 
+     buildTypes {
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=changes' '--exclude=V33.0_*' /mnt/data/_v32tmp/LunaxyMusic-V32/app/src/main/java/com/xingyu/music/MainActivity.java /mnt/data/LunaxyMusic-V33-work/app/src/main/java/com/xingyu/music/MainActivity.java
+--- /mnt/data/_v32tmp/LunaxyMusic-V32/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 13:42:20.000000000 +0000
++++ /mnt/data/LunaxyMusic-V33-work/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 14:13:56.442875682 +0000
+@@ -95,9 +95,9 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V32.0 – append-in-place playlist paging, universal downloads and categorized library.
++ * Lunaxy Music V33.0 – cache-only downloads, isolated from the stable playback resolver chain.
+  *
+- * V32 keeps the proven Huibq/QDY audio-resolution path frozen; only a guarded local-file branch is added for offline tracks. Tapping a normal row in a saved playlist
++ * V33 keeps the proven Huibq/QDY audio-resolution path frozen; downloads are CACHE-ONLY and never request Huibq/QDY. The guarded local-file branch remains only for offline playback. Tapping a normal row in a saved playlist
+  * still replaces the current queue with the entire playlist and starts at that row. Tapping a result
+  * inside that playlist's search modal is a temporary pick: insert/play only that song and keep the
+  * existing queue, matching global-search behavior.
+@@ -3728,6 +3728,16 @@
+         FrameLayout metaRow = new FrameLayout(this);
+         nowSource = Ui.pill(this, "", Ui.CYAN);
+         metaRow.addView(nowSource, Ui.frame(-2, Ui.dp(this, 30), Gravity.CENTER));
++        FrameLayout downloadCurrent = Ui.iconButton(this, IconView.Type.DOWNLOAD, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
++        downloadCurrent.setContentDescription("下载");
++        downloadCurrent.setOnClickListener(v -> {
++            Song song = playback == null ? null : playback.currentSong();
++            if (song != null) startSongDownload(song);
++        });
++        FrameLayout.LayoutParams downloadMeta = Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.END | Gravity.CENTER_VERTICAL);
++        downloadMeta.rightMargin = Ui.dp(this, 92);
++        metaRow.addView(downloadCurrent, downloadMeta);
++
+         FrameLayout addToPlaylist = Ui.iconButton(this, IconView.Type.PLUS, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
+         addToPlaylist.setContentDescription("添加到歌单");
+         addToPlaylist.setOnClickListener(v -> {
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=changes' '--exclude=V33.0_*' /mnt/data/_v32tmp/LunaxyMusic-V32/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java /mnt/data/LunaxyMusic-V33-work/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java
+--- /mnt/data/_v32tmp/LunaxyMusic-V32/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java	2026-08-10 13:39:55.000000000 +0000
++++ /mnt/data/LunaxyMusic-V33-work/app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java	2026-08-10 14:10:18.946987811 +0000
+@@ -9,83 +9,79 @@
+ import java.util.List;
+ 
+ /**
+- * Download-only resolver. It deliberately does NOT read/write SourceHealthStore,
+- * so downloading cannot teach, cool down, reorder, or otherwise perturb the proven playback chain.
++ * V33 download resolver: CACHE-ONLY by design.
++ *
++ * Downloading must never ask Huibq/QDY (or any other resolver) for a fresh URL.
++ * It may only consume a URL that the normal playback chain has already proven
++ * with Media3 READY and persisted into PlaybackUrlStore.
++ *
++ * This means download cannot:
++ *  - consume Huibq/QDY request quota,
++ *  - trigger remote rate limiting / IP blocking,
++ *  - alter SourceHealthStore,
++ *  - cool down / reorder playback routes,
++ *  - invalidate the playback URL cache.
+  */
+ public final class DownloadSourceResolver {
++    public static final String QQ_UNSUPPORTED = "当前音源暂不支持下载，可尝试在线播放";
++    public static final String PLAY_FIRST = "请先在线播放一次，成功后再下载";
++
+     public static final class Candidate {
+         public final String url;
+         public final boolean cached;
+         public final String quality;
+         public final String provider;
+-        Candidate(String url, boolean cached, String quality, String provider) {
+-            this.url = url; this.cached = cached; this.quality = quality; this.provider = provider;
++        public final String source;
++
++        Candidate(String url, boolean cached, String quality, String provider, String source) {
++            this.url = url;
++            this.cached = cached;
++            this.quality = quality;
++            this.provider = provider;
++            this.source = source;
+         }
+     }
+ 
+     private final PlaybackUrlStore cache;
+-    private final Context context;
+-    private LxSourceRuntime huibq;
+-    private LxSourceRuntime qdy;
+ 
+     public DownloadSourceResolver(Context context) {
+-        this.context = context.getApplicationContext();
+-        this.cache = new PlaybackUrlStore(this.context);
++        this.cache = new PlaybackUrlStore(context.getApplicationContext());
+     }
+ 
+-    /** Prefer URLs already proven by Media3; only resolve a new one if the song has no usable cache. */
+-    public Candidate resolve(Song song, boolean allowCache) throws Exception {
++    /**
++     * Return only a Media3-READY validated cached URL. No network resolver call
++     * is allowed from this class under any circumstance.
++     */
++    public Candidate resolve(Song song) throws Exception {
+         if (song == null) throw new Exception("歌曲为空");
+-        if (allowCache) {
+-            Candidate stored = cached(song);
+-            if (stored != null) return stored;
+-        }
+-        Exception last = null;
+-        for (SourceVariant variant : song.variants()) {
+-            for (String quality : qualities(variant)) {
+-                for (String provider : providerOrder(variant.source)) {
+-                    try {
+-                        LxSourceRuntime runtime = runtime(provider);
+-                        if (!runtime.supportsRoute(variant.source, quality)) continue;
+-                        LxSourceRuntime.RuntimeResult result = runtime.musicUrl(variant, song, quality);
+-                        if ("qdy".equals(provider)) {
+-                            AudioUrlProbe.Result probe = AudioUrlProbe.check(result.url);
+-                            if (probe.checked && !probe.playable) throw new Exception("全豆要下载地址失效：" + probe.reason);
+-                        }
+-                        return new Candidate(result.url, false, quality, provider);
+-                    } catch (Exception e) {
+-                        last = e;
+-                    }
+-                }
+-            }
+-        }
+-        throw last == null ? new Exception("没有可下载的音频地址") : last;
++
++        Candidate stored = cached(song);
++        if (stored != null) return stored;
++
++        if (isPureQq(song)) throw new Exception(QQ_UNSUPPORTED);
++        throw new Exception(PLAY_FIRST);
+     }
+ 
+     private Candidate cached(Song song) {
+-        for (SourceVariant variant : song.variants()) {
++        // Prefer the primary provider first, then any alternate provider identity.
++        List<SourceVariant> variants = song.variants();
++        if (variants == null || variants.isEmpty()) return null;
++
++        // Keep the song's native ordering so the download consumes the exact route
++        // the playback layer has most naturally proven for this canonical song.
++        for (SourceVariant variant : variants) {
+             for (String quality : qualities(variant)) {
+                 PlaybackUrlStore.Entry e = cache.get(variant.source, variant.sourceId, quality);
+                 if (e != null && e.url != null && e.url.startsWith("http")) {
+-                    return new Candidate(e.url, true, quality,
+-                            e.providerLabel == null || e.providerLabel.isEmpty() ? "已验证缓存" : e.providerLabel);
++                    String label = e.providerLabel == null || e.providerLabel.isEmpty()
++                            ? "已验证缓存" : e.providerLabel;
++                    return new Candidate(e.url, true, quality, label, variant.source);
+                 }
+             }
+         }
+         return null;
+     }
+ 
+-    private synchronized LxSourceRuntime runtime(String provider) {
+-        if ("qdy".equals(provider)) {
+-            if (qdy == null) qdy = new LxSourceRuntime(context, new ResolverProvider(
+-                    "qdy", "全豆要聚合", "https://fastly.jsdelivr.net/gh/pdone/lx-music-source@main/qdy/latest.js", "", 1, true));
+-            return qdy;
+-        }
+-        if (huibq == null) huibq = new LxSourceRuntime(context, new ResolverProvider(
+-                "huibq", "Huibq", "", "source/huibq-latest.js", 1, false));
+-        return huibq;
+-    }
+-
+     private static List<String> qualities(SourceVariant variant) {
+         List<String> q = new ArrayList<>();
+         if (variant.quality320) q.add("320k");
+@@ -94,14 +90,17 @@
+         return q;
+     }
+ 
+-    private static String[] providerOrder(String source) {
+-        if ("tx".equals(source)) return new String[]{"huibq", "qdy"};
+-        if ("wy".equals(source)) return new String[]{"qdy", "huibq"};
+-        return new String[]{"huibq", "qdy"};
++    private static boolean isPureQq(Song song) {
++        boolean hasTx = false;
++        boolean hasOtherPlayable = false;
++        for (SourceVariant v : song.variants()) {
++            if ("tx".equals(v.source)) hasTx = true;
++            else if (!"local".equals(v.source)) hasOtherPlayable = true;
++        }
++        return hasTx && !hasOtherPlayable;
+     }
+ 
+-    public synchronized void destroy() {
+-        if (huibq != null) { huibq.destroy(); huibq = null; }
+-        if (qdy != null) { qdy.destroy(); qdy = null; }
++    public void destroy() {
++        // Intentionally empty. V33 owns no source runtime / WebView / resolver.
+     }
+ }
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=changes' '--exclude=V33.0_*' /mnt/data/_v32tmp/LunaxyMusic-V32/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java /mnt/data/LunaxyMusic-V33-work/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java
+--- /mnt/data/_v32tmp/LunaxyMusic-V32/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java	2026-08-10 13:40:24.000000000 +0000
++++ /mnt/data/LunaxyMusic-V33-work/app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java	2026-08-10 14:10:18.947852347 +0000
+@@ -23,7 +23,14 @@
+ import java.util.concurrent.ExecutorService;
+ import java.util.concurrent.Executors;
+ 
+-/** Small background downloader backed by MediaStore on Android 10+. */
++/**
++ * V33 background downloader.
++ *
++ * Safety invariant: this class only downloads a URL already validated and cached
++ * by the normal Media3 playback chain. A failed download NEVER asks an audio
++ * resolver for a replacement URL; the user can simply play the song normally to
++ * let the proven playback chain refresh it in its own controlled way.
++ */
+ public final class OfflineDownloadManager {
+     public interface Listener {
+         void onComplete(DownloadedTrack track);
+@@ -33,7 +40,8 @@
+     private final Context context;
+     private final DownloadStore store;
+     private final DownloadSourceResolver resolver;
+-    private final ExecutorService worker = Executors.newFixedThreadPool(2);
++    // One download at a time avoids accidental bursts against a CDN URL.
++    private final ExecutorService worker = Executors.newSingleThreadExecutor();
+     private final Set<String> running = ConcurrentHashMap.newKeySet();
+ 
+     public OfflineDownloadManager(Context context, DownloadStore store) {
+@@ -50,26 +58,20 @@
+         if (!running.add(key)) { fail(listener, "这首歌正在下载"); return; }
+         worker.submit(() -> {
+             try {
+-                DownloadedTrack track = tryDownload(song, true);
++                DownloadedTrack track = tryDownload(song);
+                 store.put(track);
+                 complete(listener, track);
+-            } catch (Exception first) {
+-                try {
+-                    // A cached CDN URL may have expired. Fresh-resolve once, without changing playback health.
+-                    DownloadedTrack track = tryDownload(song, false);
+-                    store.put(track);
+-                    complete(listener, track);
+-                } catch (Exception second) {
+-                    fail(listener, clean(second));
+-                }
++            } catch (Exception e) {
++                fail(listener, friendlyFailure(song, e));
+             } finally {
+                 running.remove(key);
+             }
+         });
+     }
+ 
+-    private DownloadedTrack tryDownload(Song song, boolean allowCache) throws Exception {
+-        DownloadSourceResolver.Candidate candidate = resolver.resolve(song, allowCache);
++    private DownloadedTrack tryDownload(Song song) throws Exception {
++        // CACHE ONLY. resolve() is deliberately incapable of calling Huibq/QDY.
++        DownloadSourceResolver.Candidate candidate = resolver.resolve(song);
+         String ext = extension(candidate.url);
+         String fileName = sanitize(song.artist + " - " + song.title) + "." + ext;
+         Uri destination = createDestination(fileName, mime(ext), song);
+@@ -118,7 +120,7 @@
+             c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36");
+             c.setRequestProperty("Accept", "audio/*,*/*;q=0.8");
+             int code = c.getResponseCode();
+-            if (code < 200 || code >= 300) throw new Exception("下载失败：HTTP " + code);
++            if (code < 200 || code >= 300) throw new Exception("缓存下载地址已失效：HTTP " + code);
+             ContentResolver cr = context.getContentResolver();
+             try (InputStream in = c.getInputStream(); OutputStream out = openOutput(cr, destination)) {
+                 if (out == null) throw new Exception("无法写入下载文件");
+@@ -199,6 +201,28 @@
+         return "audio/mpeg";
+     }
+ 
++    private static String friendlyFailure(Song song, Exception e) {
++        String msg = e == null || e.getMessage() == null ? "下载失败" : e.getMessage();
++        if (DownloadSourceResolver.QQ_UNSUPPORTED.equals(msg)) return msg;
++
++        boolean hasTx = false;
++        boolean hasNonTx = false;
++        if (song != null) {
++            for (com.xingyu.music.model.SourceVariant v : song.variants()) {
++                if ("tx".equals(v.source)) hasTx = true;
++                else if (!"local".equals(v.source)) hasNonTx = true;
++            }
++        }
++        // Pure QQ download failures never trigger a fresh Huibq request. Give the
++        // requested friendly message regardless of whether the cached CDN URL expired.
++        if (hasTx && !hasNonTx) return DownloadSourceResolver.QQ_UNSUPPORTED;
++
++        if (msg.contains("已失效") || msg.contains("HTTP")) {
++            return "下载地址已失效，请先在线播放一次刷新后再下载";
++        }
++        return clean(e);
++    }
++
+     private static String clean(Exception e) {
+         String s = e == null || e.getMessage() == null ? "下载失败" : e.getMessage();
+         return s.length() > 130 ? s.substring(0, 130) + "…" : s;
+diff -ruN '--exclude=SHA256SUMS.txt' '--exclude=changes' '--exclude=V33.0_*' /mnt/data/_v32tmp/LunaxyMusic-V32/app/src/main/java/com/xingyu/music/ui/IconView.java /mnt/data/LunaxyMusic-V33-work/app/src/main/java/com/xingyu/music/ui/IconView.java
+--- /mnt/data/_v32tmp/LunaxyMusic-V32/app/src/main/java/com/xingyu/music/ui/IconView.java	2026-08-10 07:56:21.000000000 +0000
++++ /mnt/data/LunaxyMusic-V33-work/app/src/main/java/com/xingyu/music/ui/IconView.java	2026-08-10 14:13:56.443125783 +0000
+@@ -9,7 +9,7 @@
+ 
+ /** Small dependency-free line icon renderer so the UI does not rely on emoji glyphs. */
+ public final class IconView extends View {
+-    public enum Type { HOME, SEARCH, PLAYLIST, HEART, PLAY, PAUSE, NEXT, PREV, PLUS, BACK, MUSIC, MORE, CLOSE, DELETE, DRAG, SHUFFLE, REPEAT, REPEAT_ONE, PALETTE, WEATHER }
++    public enum Type { HOME, SEARCH, PLAYLIST, HEART, PLAY, PAUSE, NEXT, PREV, PLUS, DOWNLOAD, BACK, MUSIC, MORE, CLOSE, DELETE, DRAG, SHUFFLE, REPEAT, REPEAT_ONE, PALETTE, WEATHER }
+ 
+     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+     private final Path path = new Path();
+@@ -114,6 +114,18 @@
+                 c.drawLine(cx, cy - s * .22f, cx, cy + s * .22f, paint);
+                 break;
+             }
++            case DOWNLOAD: {
++                // Compact SF-Symbol-like download arrow into a shallow tray.
++                c.drawLine(cx, cy - s * .25f, cx, cy + s * .10f, paint);
++                c.drawLine(cx - s * .12f, cy - s * .01f, cx, cy + s * .11f, paint);
++                c.drawLine(cx + s * .12f, cy - s * .01f, cx, cy + s * .11f, paint);
++                path.moveTo(cx - s * .22f, cy + s * .08f);
++                path.lineTo(cx - s * .22f, cy + s * .22f);
++                path.lineTo(cx + s * .22f, cy + s * .22f);
++                path.lineTo(cx + s * .22f, cy + s * .08f);
++                c.drawPath(path, paint);
++                break;
++            }
+             case BACK: {
+                 c.drawLine(cx + s * .18f, cy - s * .23f, cx - s * .10f, cy, paint);
+                 c.drawLine(cx - s * .10f, cy, cx + s * .18f, cy + s * .23f, paint);

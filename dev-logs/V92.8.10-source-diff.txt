@@ -1,0 +1,9 @@
+Baseline Java: 101
+New Java: 103
+Changed:
+com/xingyu/music/MainActivity.java
+Added:
+com/xingyu/music/ui/CoverAmbientDrawable.java
+com/xingyu/music/ui/RecommendationGlassDrawable.java
+Removed:
+(none)

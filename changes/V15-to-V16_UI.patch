@@ -1,0 +1,1595 @@
+diff --git a/BUILD_APK.bat b/BUILD_APK.bat
+index 2093da0..6428669 100644
+--- a/BUILD_APK.bat
++++ b/BUILD_APK.bat
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   XingyuMusic V15 - Debug APK Build
++echo   XingyuMusic V16 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@ if errorlevel 1 (
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\XingyuMusic-V15-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\XingyuMusic-V16-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\XingyuMusic-V15-debug.apk
++echo [OK] APK: %CD%\dist\XingyuMusic-V16-debug.apk
+ pause
+diff --git "a/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt" "b/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"
+index fa7e4e9..4d8f1ce 100644
+--- "a/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"
++++ "b/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"
+@@ -1,57 +1,45 @@
+-XingyuMusic V15.0 — Android Studio 完整工程
+-
+-【本版基线】
+-V15 直接基于用户提供的 V14 Full 完整工程迭代，不重做、不缩水。
+-V14 已验证的 Huibq / 全豆要播放路由、Media3 READY 成功判定、URL 缓存与冷却规则均保留；本轮没有改音源解析策略。
+-
+-【V15 新功能】
+-1. 播放详情页左右滑切歌
+-   - 在页面顶部/封面区域向左滑：下一首。
+-   - 向右滑：上一首（手势会直接换上一首，不受“播放超过 5 秒则回到 0:00”的按钮语义影响）。
+-   - 手势只在上半部安全区域启用，拖动进度条和滚动歌词不会误切歌。
+-
+-2. 封面颜色动态主题
+-   - 封面加载完成后提取现有 ImageLoader 返回的主题色。
+-   - 播放页星点会按封面主题色着色，但背景继续保持纯黑。
+-   - 进度条、唱片边缘光晕与粒子高光同步使用当前封面主题色。
+-
+-3. 封面粒子 + 真音乐节奏律动
+-   - 保留圆形封面主体与旋转效果。
+-   - 从封面真实像素采样约 620 个彩色粒子，主要在圆盘边缘形成粒子扩散。
+-   - Media3 解码后的 PCM 由只读/透传 AudioProcessor 计算 energy / bass / treble / beat 四组 0~1 包络。
+-   - 低频与节拍推动圆盘呼吸、边缘爆发和光晕；高频驱动细小切向抖动。
+-   - 不申请麦克风权限，不录音，不上传音频，也不修改最终听到的 PCM。
+-
+-4. 歌单详情页搜索
+-   - 右上角新增搜索按钮。
+-   - 支持按歌名或歌手实时筛选当前歌单。
+-   - 搜索完全本地执行，不请求网易/QQ搜索接口。
+-   - 点搜索结果会以原歌单作为播放队列并从对应歌曲开始。
+-
+-【V14 稳定播放核心继续保留】
+-- QQ(tx)：Huibq 默认第一优先，全豆要聚合作为备用。
+-- 网易云(wy)：全豆要聚合默认第一优先，Huibq 作为备用。
+-- 只有 Media3 真正进入 READY 才计为成功。
+-- 单曲普通 401/403/404/410 不作为全局音源封禁依据。
+-- 明确 block ip / 429 / too many requests 才进入保护冷却。
+-- Huibq 的服务端限制不能由客户端强行解除；客户端冷却结束只代表“允许再试一次”。
++XingyuMusic V16.0 — Android Studio 完整工程
++
++【基线与原则】
++V16 直接基于 XingyuMusic-V15-Full-Fixed 继续迭代。
++V14/V15 已稳定的 Huibq / 全豆要路由、Media3 READY 判定、URL 缓存、冷却和 BeatAudioProcessor 均冻结，本版没有修改 data/**、playback/**、huibq-latest.js 或 AndroidManifest.xml。
++
++【V16 新变化】
++1. 删除 V15 的 Mineradio 灵感封面粒子。
++2. 圆盘外改为 5 圈封面色渐变波纹：随能量/低频/鼓点改变扩张、明暗、粗细和节奏。
++3. 星空背景和播放页大体排版保留。
++4. UI 统一为更克制的深色玻璃表面、细描边、较轻图标、低饱和彩色强调；减少紫蓝大渐变。
++5. 底部 Tab 选中态改成极细强调线，不再使用大面积渐变胶囊。
++6. 主操作按钮改为单色浅亮强调，播放按钮会根据封面色动态调整。
++7. 同步歌词使用独立滚动视窗；当前唱到的句子会自动滚到视窗中部附近。
++8. 手动拖歌词后暂停自动跟随约 3.2 秒，随后自动回到当前句。
++9. 当前歌词默认使用冰蓝渐变高亮。
++10. 播放页歌词右上角调色板可选预设、跟随封面色，或输入两个 HEX 颜色自定义。
++11. V15 已有左右滑切歌、歌单内歌名/歌手搜索继续保留。
++
++【播放核心确认】
++详见 changes\PLAYBACK_CORE_DIFF.txt：V15-Fixed -> V16 播放核心 0 改动。
++完整 UI 源码差异见 changes\V15-to-V16_UI.patch。
++后续只微调 UI 时优先参考 changes\V16_参数速查.md。
+ 
+ 【Android Studio】
+-1. 解压 XingyuMusic-V15-Full.zip。
++1. 解压 XingyuMusic-V16-Full.zip。
+ 2. Android Studio -> Open。
+-3. 打开最外层 XingyuMusic-V15，不要单独打开 app。
++3. 打开最外层 XingyuMusic-V16，不要单独打开 app。
+ 4. 等待 Gradle Sync。
+ 5. Run 到手机，或 Build -> Build APK(s)。
+ 
+ 【构建脚本】
+-双击 BUILD_APK.bat 可生成：dist\XingyuMusic-V15-debug.apk
++双击 BUILD_APK.bat 可生成：dist\XingyuMusic-V16-debug.apk
+ 
+ 【建议第一轮真机验收】
+-1. 先用当前可播放的网易云歌曲进入播放详情页，确认声音正常。
+-2. 封面加载后观察星点颜色、唱片边缘光晕是否随歌曲封面改变。
+-3. 播放中观察封面边缘粒子是否随低频/节奏有呼吸、扩散变化；暂停后应逐步平静。
+-4. 在封面区域左滑/右滑确认下一首/上一首；拖动进度条不应触发切歌。
+-5. 打开任意较大歌单，点右上角搜索，分别输入歌名与歌手测试实时筛选。
+-6. Huibq 仍处于冷却时不要高频反复测试 QQ；等服务端限制恢复后再验证 QQ 主链。
+-
+-更详细的 V15 设计说明见：V15.0_UI交互与粒子视觉.md
++1. 先播放当前能稳定播放的网易云歌曲，确认声音、进度、切歌完全正常。
++2. 观察封面外的波纹：应是一圈圈克制扩散，不应出现粒子或满屏爆炸感。
++3. 换几张不同颜色封面，确认波纹、星点、播放按钮会跟随封面色。
++4. 播放有 LRC 的网易歌曲，确认当前句自动进入歌词视窗并冰蓝渐变高亮。
++5. 手动上下拖歌词，确认短暂停止跟随，约 3 秒后恢复当前句。
++6. 点歌词右上角调色板，测试预设 / 跟随封面 / 自定义 HEX。
++7. 检查底部 Tab、首页卡片、搜索、歌单、弹窗和播放控制按钮的新版质感。
++8. Huibq 若仍在服务端限制期，不要高频反复测试 QQ；这与本版 UI 修改无关。
++
++详细说明：V16.0_UI与歌词升级.md
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 4dce466..c194078 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -10,8 +10,8 @@ android {
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 18
+-        versionName = "15.0.0"
++        versionCode = 19
++        versionName = "16.0.0"
+     }
+ 
+     buildTypes {
+diff --git a/app/src/main/java/com/xingyu/music/MainActivity.java b/app/src/main/java/com/xingyu/music/MainActivity.java
+index b9379a0..33ba074 100644
+--- a/app/src/main/java/com/xingyu/music/MainActivity.java
++++ b/app/src/main/java/com/xingyu/music/MainActivity.java
+@@ -7,6 +7,7 @@ import android.content.ClipboardManager;
+ import android.content.ComponentName;
+ import android.content.Intent;
+ import android.content.ServiceConnection;
++import android.content.SharedPreferences;
+ import android.content.res.ColorStateList;
+ import android.graphics.Bitmap;
+ import android.graphics.Color;
+@@ -17,11 +18,13 @@ import android.os.Bundle;
+ import android.os.Handler;
+ import android.os.IBinder;
+ import android.os.Looper;
++import android.os.SystemClock;
+ import android.text.Editable;
+ import android.text.TextUtils;
+ import android.text.TextWatcher;
+ import android.view.DragEvent;
+ import android.view.Gravity;
++import android.view.MotionEvent;
+ import android.view.View;
+ import android.view.ViewGroup;
+ import android.view.WindowInsets;
+@@ -55,6 +58,7 @@ import com.xingyu.music.playback.PlaybackService;
+ import com.xingyu.music.ui.AudioLevelProvider;
+ import com.xingyu.music.ui.IconView;
+ import com.xingyu.music.ui.ImageLoader;
++import com.xingyu.music.ui.LyricLineView;
+ import com.xingyu.music.ui.StarfieldView;
+ import com.xingyu.music.ui.SwipeAwareScrollView;
+ import com.xingyu.music.ui.Ui;
+@@ -75,11 +79,11 @@ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Xingyu Music V15.0 – V14 stable playback chain + immersive now-playing interaction.
++ * Xingyu Music V16.0 – frozen V14/V15 playback core + refined native UI.
+  *
+- * V15 intentionally leaves V14's Huibq/QDY routing rules untouched. This iteration
+- * adds cover-colour star themes, audio-reactive cover particles, swipe track changes,
+- * and in-playlist title/artist search without changing the proven resolve pipeline.
++ * V16 keeps the proven Huibq/QDY routing and Media3 READY rules untouched. The work
++ * in this Activity is presentation/interaction only: calmer iOS-inspired surfaces,
++ * album-colour rhythm rings, synced lyric scrolling and customizable lyric highlight.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(4);
+@@ -151,10 +155,18 @@ public final class MainActivity extends Activity implements PlaybackService.List
+     private IconView nowModeIcon;
+     private SeekBar nowSeek;
+     private IconView nowPlayIcon;
++    private FrameLayout nowPlayButton;
+     private IconView nowFavoriteIcon;
+     private FrameLayout nowFavoriteButton;
++    private ScrollView lyricScroll;
++    private FrameLayout lyricPanel;
+     private LinearLayout lyricBox;
+     private TextView lyricEmpty;
++    private int lyricGradientStart = Ui.LYRIC_ICE_START;
++    private int lyricGradientEnd = Ui.LYRIC_ICE_END;
++    private boolean lyricUseCoverColor;
++    private long lyricsManualUntil;
++    private Runnable lyricsResumeRunnable;
+     private List<LyricLine> lyricLines = new ArrayList<>();
+     private int activeLyric = -2;
+     private String lyricSongKey = "";
+@@ -203,12 +215,20 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         V14PlaybackStateMigration.runOnce(this);
+         store = new LibraryStore(this);
+         reloadLibrary();
++        loadUiPreferences();
+         configureWindow();
+         buildShell();
+         renderTab();
+         bindService(new Intent(this, PlaybackService.class), connection, BIND_AUTO_CREATE);
+     }
+ 
++    private void loadUiPreferences() {
++        SharedPreferences prefs = getSharedPreferences("xingyu_ui_settings", MODE_PRIVATE);
++        lyricGradientStart = prefs.getInt("lyric_gradient_start", Ui.LYRIC_ICE_START);
++        lyricGradientEnd = prefs.getInt("lyric_gradient_end", Ui.LYRIC_ICE_END);
++        lyricUseCoverColor = prefs.getBoolean("lyric_gradient_cover", false);
++    }
++
+     private void configureWindow() {
+         getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
+@@ -265,10 +285,10 @@ public final class MainActivity extends Activity implements PlaybackService.List
+ 
+     private void buildNav() {
+         navBar = Ui.row(this);
+-        navBar.setPadding(Ui.dp(this, 6), Ui.dp(this, 5), Ui.dp(this, 6), Ui.dp(this, 5));
+-        navBar.setBackground(Ui.stroke(Color.argb(236, 5, 5, 11), 30,
+-                Color.argb(52, 205, 205, 230), this));
+-        FrameLayout.LayoutParams fp = Ui.frame(-1, Ui.dp(this, 72), Gravity.BOTTOM);
++        navBar.setPadding(Ui.dp(this, 8), Ui.dp(this, 5), Ui.dp(this, 8), Ui.dp(this, 5));
++        navBar.setBackground(Ui.glass(224, 27, 28, this));
++        navBar.setElevation(Ui.dp(this, 8));
++        FrameLayout.LayoutParams fp = Ui.frame(-1, Ui.dp(this, 70), Gravity.BOTTOM);
+         Ui.margins(fp, 16, 0, 16, 10, this);
+         safeLayer.addView(navBar, fp);
+         refreshNav();
+@@ -290,20 +310,22 @@ public final class MainActivity extends Activity implements PlaybackService.List
+ 
+             int accent = accents[i];
+             FrameLayout iconShell = new FrameLayout(this);
++            IconView icon = new IconView(this, icons[i], selected ? Ui.TEXT : Ui.DIM);
++            icon.setStrokeDp(selected ? 1.78f : 1.58f);
++            iconShell.addView(icon, Ui.frame(Ui.dp(this, 22), Ui.dp(this, 22), Gravity.CENTER));
+             if (selected) {
+-                iconShell.setBackground(Ui.gradient(new int[]{
+-                        Color.argb(48, Color.red(accent), Color.green(accent), Color.blue(accent)),
+-                        Color.argb(24, Color.red(Ui.PURPLE), Color.green(Ui.PURPLE), Color.blue(Ui.PURPLE))
+-                }, 15, this));
++                View marker = new View(this);
++                marker.setBackground(Ui.round(accent, 1.5f, this));
++                FrameLayout.LayoutParams mp = Ui.frame(Ui.dp(this, 16), Ui.dp(this, 2), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
++                mp.bottomMargin = Ui.dp(this, 1);
++                iconShell.addView(marker, mp);
+             }
+-            IconView icon = new IconView(this, icons[i], selected ? accent : Ui.DIM);
+-            iconShell.addView(icon, Ui.frame(Ui.dp(this, 23), Ui.dp(this, 23), Gravity.CENTER));
+-            item.addView(iconShell, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 29)));
++            item.addView(iconShell, Ui.lp(Ui.dp(this, 46), Ui.dp(this, 30)));
+ 
+-            TextView label = Ui.text(this, labels[i], 10.5f, selected ? Ui.TEXT : Ui.DIM, selected);
++            TextView label = Ui.text(this, labels[i], 10.2f, selected ? Ui.TEXT : Ui.DIM, selected);
+             label.setGravity(Gravity.CENTER);
+-            item.addView(label, Ui.lp(-1, Ui.dp(this, 24)));
+-            Ui.applyRipple(item, Color.argb(35, 255, 255, 255));
++            item.addView(label, Ui.lp(-1, Ui.dp(this, 23)));
++            Ui.applyRipple(item, Color.TRANSPARENT);
+             item.setOnClickListener(v -> {
+                 tab = idx;
+                 openPlaylist = null;
+@@ -317,15 +339,15 @@ public final class MainActivity extends Activity implements PlaybackService.List
+     private void buildMiniPlayer() {
+         miniBar = new FrameLayout(this);
+         miniBar.setVisibility(View.GONE);
+-        miniBar.setBackground(Ui.stroke(Color.argb(240, 5, 5, 11), 23,
+-                Color.argb(48, 215, 215, 235), this));
++        miniBar.setBackground(Ui.glass(232, 21, 26, this));
++        miniBar.setElevation(Ui.dp(this, 8));
+         miniBar.setClickable(true);
+         Ui.applyRipple(miniBar, Color.argb(30, 255, 255, 255));
+         miniBar.setOnClickListener(v -> openNowPlaying());
+ 
+         miniCover = new ImageView(this);
+         miniCover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+-        miniCover.setBackground(Ui.gradient(new int[]{Color.rgb(44, 39, 61), Color.rgb(30, 31, 43)}, 15, this));
++        miniCover.setBackground(Ui.round(Color.rgb(22, 22, 28), 12, this));
+         miniCover.setClipToOutline(true);
+         FrameLayout.LayoutParams cp = Ui.frame(Ui.dp(this, 48), Ui.dp(this, 48), Gravity.START | Gravity.CENTER_VERTICAL);
+         Ui.margins(cp, 8, 0, 0, 0, this);
+@@ -345,7 +367,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         tp.rightMargin = Ui.dp(this, 98);
+         miniBar.addView(texts, tp);
+ 
+-        FrameLayout play = Ui.iconButton(this, IconView.Type.PLAY, 42, Ui.TEXT, Color.argb(30, 255, 255, 255));
++        FrameLayout play = Ui.iconButton(this, IconView.Type.PLAY, 42, Ui.TEXT, Color.argb(18, 255, 255, 255));
+         miniPlayIcon = (IconView) play.getChildAt(0);
+         play.setOnClickListener(v -> { if (playback != null) playback.toggle(); });
+         FrameLayout.LayoutParams pp = Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.END | Gravity.CENTER_VERTICAL);
+@@ -366,7 +388,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         prog.bottomMargin = 0;
+         miniBar.addView(miniProgress, prog);
+ 
+-        FrameLayout.LayoutParams fp = Ui.frame(-1, Ui.dp(this, 64), Gravity.BOTTOM);
++        FrameLayout.LayoutParams fp = Ui.frame(-1, Ui.dp(this, 62), Gravity.BOTTOM);
+         Ui.margins(fp, 16, 0, 16, 91, this);
+         safeLayer.addView(miniBar, fp);
+     }
+@@ -377,7 +399,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         LinearLayout chip = Ui.column(this);
+         chip.setGravity(Gravity.CENTER);
+         chip.setPadding(Ui.dp(this, 18), Ui.dp(this, 13), Ui.dp(this, 18), Ui.dp(this, 12));
+-        chip.setBackground(Ui.stroke(Color.argb(248, 6, 6, 12), 24, Color.argb(45, 255, 255, 255), this));
++        chip.setBackground(Ui.glass(244, 22, 28, this));
+         TextView dots = Ui.text(this, "•••", 20f, Ui.PURPLE, true);
+         dots.setGravity(Gravity.CENTER);
+         chip.addView(dots, Ui.lp(Ui.dp(this, 84), Ui.dp(this, 28)));
+@@ -453,9 +475,9 @@ public final class MainActivity extends Activity implements PlaybackService.List
+     private LinearLayout modalCard(String title, String subtitle) {
+         LinearLayout card = Ui.column(this);
+         card.setPadding(Ui.dp(this, 20), Ui.dp(this, 18), Ui.dp(this, 20), Ui.dp(this, 18));
+-        card.setBackground(Ui.stroke(Color.argb(252, 7, 7, 13), 27,
+-                Color.argb(58, 255, 255, 255), this));
+-        TextView t = Ui.text(this, title, 19f, Ui.TEXT, true);
++        card.setBackground(Ui.glass(250, 25, 30, this));
++        card.setElevation(Ui.dp(this, 10));
++        TextView t = Ui.text(this, title, 18.5f, Ui.TEXT, true);
+         card.addView(t, Ui.lp(-1, Ui.dp(this, 34)));
+         if (subtitle != null && !subtitle.isEmpty()) {
+             TextView sub = Ui.text(this, subtitle, 11.7f, Ui.TEXT_2, false);
+@@ -500,13 +522,13 @@ public final class MainActivity extends Activity implements PlaybackService.List
+     }
+ 
+     private TextView modalButton(String label, boolean primary) {
+-        TextView b = Ui.text(this, label, 13.2f, primary ? Color.rgb(10, 9, 18) : Ui.TEXT, true);
++        TextView b = Ui.text(this, label, 13.1f, primary ? Color.rgb(14, 19, 24) : Ui.TEXT, true);
+         b.setGravity(Gravity.CENTER);
+         b.setClickable(true); b.setFocusable(true);
+         b.setBackground(primary
+-                ? Ui.premiumGradient(Ui.PURPLE, Ui.CYAN, 18, this)
+-                : Ui.stroke(Color.argb(24,255,255,255),18,Color.argb(45,255,255,255),this));
+-        Ui.applyRipple(b, primary ? Color.argb(45,0,0,0) : Color.argb(40,255,255,255));
++                ? Ui.primaryFill(Ui.CYAN, 16, this)
++                : Ui.glass(86, 16, 24, this));
++        Ui.applyRipple(b, Color.TRANSPARENT);
+         return b;
+     }
+ 
+@@ -538,7 +560,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         EditText input = new EditText(this);
+         input.setTypeface(Typeface.DEFAULT);
+         input.setHint(hint); input.setHintTextColor(Color.rgb(105,105,123)); input.setTextColor(Ui.TEXT);
+-        input.setTextSize(13.5f); input.setBackground(Ui.stroke(Color.argb(220,4,4,9),18,Color.argb(45,255,255,255),this));
++        input.setTextSize(13.5f); input.setBackground(Ui.glass(176,17,24,this));
+         input.setPadding(Ui.dp(this,14),Ui.dp(this,12),Ui.dp(this,14),Ui.dp(this,12));
+         input.setSingleLine(!multiline); if (multiline) input.setMinLines(3);
+         LinearLayout.LayoutParams ip = Ui.lp(-1, multiline ? Ui.dp(this, 104) : Ui.dp(this, 52)); ip.topMargin = Ui.dp(this, 14);
+@@ -576,7 +598,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+             final int idx=i;
+             TextView row=Ui.text(this,items[i],13.5f,Ui.TEXT,true); row.setGravity(Gravity.CENTER_VERTICAL);
+             row.setPadding(Ui.dp(this,14),0,Ui.dp(this,14),0); row.setClickable(true); row.setFocusable(true);
+-            row.setBackground(Ui.stroke(Color.argb(145,8,8,14),17,Color.argb(25,255,255,255),this)); Ui.applyRipple(row,Color.argb(35,255,255,255));
++            row.setBackground(Ui.glass(94,16,18,this)); Ui.applyRipple(row,Color.TRANSPARENT);
+             LinearLayout.LayoutParams rp=Ui.lp(-1,Ui.dp(this,50));rp.topMargin=Ui.dp(this,8);card.addView(row,rp);
+             row.setOnClickListener(v->{dismissModalNow();if(action!=null)action.run(idx);});
+         }
+@@ -585,7 +607,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+ 
+     private void showSourceStatus() {
+         String status = playback == null ? "音源管理器正在启动…" : playback.sourceStatus();
+-        showGlassMessage("智能音源", status + "\n\nV15 延续 V14 稳定主链：只保留 Huibq 与全豆要聚合参与日常播放；QQ 默认优先 Huibq，网易默认优先全豆要。只有 Media3 READY 才记为真实成功，普通单曲 404 不会污染下一首。",
++        showGlassMessage("智能音源", status + "\n\nV16 继续冻结 V14/V15 稳定主链：只保留 Huibq 与全豆要聚合参与日常播放；QQ 默认优先 Huibq，网易默认优先全豆要。只有 Media3 READY 才记为真实成功，普通单曲 404 不会污染下一首。",
+                 "知道了", null, "", null);
+     }
+ 
+@@ -663,13 +685,14 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         // A music app should open with something useful, not a marketing card.
+         LinearLayout quick = Ui.row(this);
+         quick.setPadding(Ui.dp(this, 15), 0, Ui.dp(this, 8), 0);
+-        quick.setBackground(Ui.stroke(Color.argb(220, 7, 7, 13), 22, Color.argb(30, 255, 255, 255), this));
++        quick.setBackground(Ui.glass(176, 20, 22, this));
+         IconView qIcon = new IconView(this, IconView.Type.SEARCH, Ui.DIM);
+         quick.addView(qIcon, Ui.lp(Ui.dp(this, 24), Ui.dp(this, 24)));
+         TextView qText = Ui.text(this, "搜索歌曲、歌手", 13.2f, Ui.TEXT_2, false);
+         qText.setPadding(Ui.dp(this, 10), 0, 0, 0);
+         quick.addView(qText, new LinearLayout.LayoutParams(0, Ui.dp(this, 52), 1f));
+-        FrameLayout qGo = Ui.iconButton(this, IconView.Type.SEARCH, 38, Color.rgb(22, 19, 34), Ui.PURPLE);
++        FrameLayout qGo = Ui.iconButton(this, IconView.Type.SEARCH, 38, Color.rgb(15, 20, 24), Ui.CYAN);
++        qGo.setBackground(Ui.primaryFill(Ui.CYAN, 19, this));
+         quick.addView(qGo, Ui.lp(Ui.dp(this, 38), Ui.dp(this, 38)));
+         quick.setClickable(true);
+         Ui.applyRipple(quick, Color.argb(30, 255, 255, 255));
+@@ -680,7 +703,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+ 
+         LinearLayout sourceCard = Ui.row(this);
+         sourceCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 10), Ui.dp(this, 12), Ui.dp(this, 10));
+-        sourceCard.setBackground(Ui.stroke(Color.argb(175, 5, 5, 10), 18, Color.argb(28, 255, 255, 255), this));
++        sourceCard.setBackground(Ui.tintedGlass(Ui.CYAN, 18, this));
+         FrameLayout sourceIcon = Ui.iconButton(this, IconView.Type.MUSIC, 36, Ui.CYAN, Color.argb(24, 93, 214, 255));
+         sourceCard.addView(sourceIcon, Ui.lp(Ui.dp(this, 36), Ui.dp(this, 36)));
+         LinearLayout sourceTexts = Ui.column(this); sourceTexts.setPadding(Ui.dp(this, 10), 0, 0, 0);
+@@ -725,10 +748,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+     private View libraryActionCard(IconView.Type type, String title, String count, int tint) {
+         LinearLayout card = Ui.column(this);
+         card.setPadding(Ui.dp(this, 16), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 12));
+-        card.setBackground(Ui.gradient(new int[]{
+-                Color.argb(180, 9, 9, 16),
+-                Color.argb(215, 5, 5, 11)
+-        }, 22, this));
++        card.setBackground(Ui.glass(164, 20, 22, this));
+         card.setClickable(true); card.setFocusable(true);
+         Ui.applyRipple(card, Color.argb(34, 255, 255, 255));
+         FrameLayout icon = Ui.iconButton(this, type, 38, tint, Color.argb(28, Color.red(tint), Color.green(tint), Color.blue(tint)));
+@@ -763,7 +783,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+ 
+             ImageView cover = new ImageView(this);
+             cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+-            cover.setBackground(Ui.gradient(new int[]{Color.rgb(43, 39, 55), Color.rgb(24, 25, 34)}, 18, this));
++            cover.setBackground(Ui.round(Color.rgb(22, 22, 28), 16, this));
+             cover.setClipToOutline(true);
+             card.addView(cover, Ui.lp(Ui.dp(this, 124), Ui.dp(this, 124)));
+             ImageLoader.load(song.coverUrl, cover, null);
+@@ -795,8 +815,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         LinearLayout searchRow = Ui.row(this);
+ 
+         FrameLayout field = new FrameLayout(this);
+-        field.setBackground(Ui.stroke(Color.argb(212, 7, 7, 13), 28,
+-                Color.argb(80, 171, 157, 232), this));
++        field.setBackground(Ui.glass(190, 26, 28, this));
+ 
+         EditText input = new EditText(this);
+         input.setHint("晴天、周杰伦…");
+@@ -815,9 +834,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         Space gap = new Space(this);
+         searchRow.addView(gap, Ui.lp(Ui.dp(this, 10), 1));
+ 
+-        FrameLayout go = Ui.iconButton(this, IconView.Type.SEARCH, 60, Ui.TEXT,
+-                Color.argb(225, 28, 28, 35));
+-        go.setBackground(Ui.premiumGradient(Ui.PURPLE, Ui.CYAN, 30, this));
++        FrameLayout go = Ui.iconButton(this, IconView.Type.SEARCH, 60, Color.rgb(13, 18, 22), Ui.CYAN);
++        go.setBackground(Ui.primaryFill(Ui.CYAN, 30, this));
+         searchRow.addView(go, Ui.lp(Ui.dp(this, 60), Ui.dp(this, 60)));
+         body.addView(searchRow, Ui.lp(-1, Ui.dp(this, 60)));
+ 
+@@ -972,7 +990,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         scroll.setFillViewport(false);
+         scroll.addView(rows);
+         FrameLayout card = new FrameLayout(this);
+-        card.setBackground(Ui.stroke(Color.argb(246, 8, 8, 14), 19, Color.argb(48, 183, 165, 255), this));
++        card.setBackground(Ui.glass(238, 18, 26, this));
+         card.setElevation(Ui.dp(this, 12));
+         card.addView(scroll, Ui.frame(-1, -1, Gravity.FILL));
+         int max = Math.max(Ui.dp(this, 132), getResources().getDisplayMetrics().heightPixels / 3);
+@@ -1020,7 +1038,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+             chip.setGravity(Gravity.CENTER);
+             chip.setSingleLine(true); chip.setEllipsize(TextUtils.TruncateAt.END);
+             chip.setPadding(Ui.dp(this, 13), 0, Ui.dp(this, 13), 0);
+-            chip.setBackground(Ui.stroke(Color.argb(145, 8, 8, 14), 16, Color.argb(38, 255, 255, 255), this));
++            chip.setBackground(Ui.glass(92, 15, 18, this));
+             chip.setClickable(true); chip.setFocusable(true); Ui.applyRipple(chip, Color.TRANSPARENT);
+             chip.setOnClickListener(v -> {
+                 input.setText(q); input.setSelection(q.length());
+@@ -1209,7 +1227,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+     private View smallLibraryAction(IconView.Type type, String title, String sub, int tint) {
+         LinearLayout card = Ui.row(this);
+         card.setPadding(Ui.dp(this, 13), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
+-        card.setBackground(Ui.stroke(Color.argb(188, 6, 6, 12), 20, Color.argb(26, 255, 255, 255), this));
++        card.setBackground(Ui.glass(142, 18, 18, this));
+         card.setClickable(true); card.setFocusable(true); Ui.applyRipple(card, Color.argb(34,255,255,255));
+         FrameLayout icon = Ui.iconButton(this, type, 38, tint, Color.argb(24,Color.red(tint),Color.green(tint),Color.blue(tint)));
+         card.addView(icon, Ui.lp(Ui.dp(this, 38), Ui.dp(this, 38)));
+@@ -1242,7 +1260,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         for (ImportedPlaylist p : playlists) {
+             LinearLayout row = Ui.row(this);
+             row.setPadding(Ui.dp(this, 8), Ui.dp(this, 7), Ui.dp(this, 8), Ui.dp(this, 7));
+-            row.setBackground(Ui.stroke(Color.argb(145, 9, 9, 15), 16, Color.argb(24,255,255,255), this));
++            row.setBackground(Ui.glass(88,15,16,this));
+             row.addView(playlistThumb(p, 42), Ui.lp(Ui.dp(this,42), Ui.dp(this,42)));
+             LinearLayout texts = Ui.column(this); texts.setPadding(Ui.dp(this,10),0,0,0);
+             TextView title = Ui.text(this,p.name,12.8f,Ui.TEXT,true); title.setSingleLine(true); title.setEllipsize(TextUtils.TruncateAt.END);
+@@ -1266,7 +1284,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         LinearLayout footer = Ui.row(this);
+         count[0]=Ui.text(this,"已选 0 个",11.2f,Ui.TEXT_2,true);
+         footer.addView(count[0],new LinearLayout.LayoutParams(0,Ui.dp(this,46),1f));
+-        TextView delete=modalButton("删除所选",true); delete.setBackground(Ui.premiumGradient(Ui.ORANGE,Ui.PINK,18,this));
++        TextView delete=modalButton("删除所选",true); delete.setBackground(Ui.primaryFill(Ui.ORANGE,18,this));
+         footer.addView(delete,Ui.lp(Ui.dp(this,118),Ui.dp(this,46)));
+         LinearLayout.LayoutParams fp=Ui.lp(-1,Ui.dp(this,46)); fp.topMargin=Ui.dp(this,10); card.addView(footer,fp);
+         delete.setOnClickListener(v->{
+@@ -1286,7 +1304,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         LinearLayout card = modalCard("合并歌单", "选择任意两个歌单。重复歌曲会自动合并平台身份；320k 优先，无法区分时优先保留 QQ 身份。原歌单会保留。");
+         EditText name = new EditText(this);
+         name.setHint("合并后的歌单名称（可选）"); name.setHintTextColor(Ui.DIM); name.setTextColor(Ui.TEXT); name.setTextSize(13f);
+-        name.setTypeface(Typeface.DEFAULT); name.setSingleLine(true); name.setBackground(Ui.stroke(Color.argb(190,5,5,11),17,Color.argb(42,135,224,175),this));
++        name.setTypeface(Typeface.DEFAULT); name.setSingleLine(true); name.setBackground(Ui.glass(156,16,22,this));
+         name.setPadding(Ui.dp(this,13),0,Ui.dp(this,13),0);
+         LinearLayout.LayoutParams np=Ui.lp(-1,Ui.dp(this,48)); np.topMargin=Ui.dp(this,12); card.addView(name,np);
+ 
+@@ -1294,7 +1312,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         TextView[] counter=new TextView[1];
+         for(ImportedPlaylist p:playlists){
+             LinearLayout row=Ui.row(this); row.setPadding(Ui.dp(this,8),Ui.dp(this,7),Ui.dp(this,8),Ui.dp(this,7));
+-            row.setBackground(Ui.stroke(Color.argb(145,9,9,15),16,Color.argb(24,255,255,255),this));
++            row.setBackground(Ui.glass(88,15,16,this));
+             row.addView(playlistThumb(p,42),Ui.lp(Ui.dp(this,42),Ui.dp(this,42)));
+             TextView title=Ui.text(this,p.name,12.6f,Ui.TEXT_2,true); title.setSingleLine(true); title.setEllipsize(TextUtils.TruncateAt.END);
+             LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(0,Ui.dp(this,42),1f); tp.leftMargin=Ui.dp(this,10); row.addView(title,tp);
+@@ -1317,7 +1335,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         ScrollView scroll=new ScrollView(this); scroll.setVerticalScrollBarEnabled(false); scroll.addView(rows);
+         LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,0,1f); sp.topMargin=Ui.dp(this,10); card.addView(scroll,sp);
+         LinearLayout footer=Ui.row(this); counter[0]=Ui.text(this,"已选 0 / 2",11.2f,Ui.TEXT_2,true); footer.addView(counter[0],new LinearLayout.LayoutParams(0,Ui.dp(this,46),1f));
+-        TextView merge=modalButton("合并并去重",true); merge.setBackground(Ui.premiumGradient(Ui.GREEN,Ui.CYAN,18,this)); footer.addView(merge,Ui.lp(Ui.dp(this,124),Ui.dp(this,46)));
++        TextView merge=modalButton("合并并去重",true); merge.setBackground(Ui.primaryFill(Ui.GREEN,18,this)); footer.addView(merge,Ui.lp(Ui.dp(this,124),Ui.dp(this,46)));
+         LinearLayout.LayoutParams fp=Ui.lp(-1,Ui.dp(this,46)); fp.topMargin=Ui.dp(this,10); card.addView(footer,fp);
+         merge.setOnClickListener(v->{
+             if(selected.size()!=2){ toast("请选择两个歌单"); return; }
+@@ -1391,11 +1409,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+     private View collectionPlayHero(String title, List<Song> songs, int firstAccent, int secondAccent) {
+         LinearLayout hero = Ui.row(this);
+         hero.setPadding(Ui.dp(this, 14), Ui.dp(this, 13), Ui.dp(this, 14), Ui.dp(this, 13));
+-        hero.setBackground(Ui.gradient(new int[]{
+-                Color.argb(58, Color.red(firstAccent), Color.green(firstAccent), Color.blue(firstAccent)),
+-                Color.argb(34, Color.red(secondAccent), Color.green(secondAccent), Color.blue(secondAccent)),
+-                Color.argb(220, 8, 8, 14)
+-        }, 22, this));
++        hero.setBackground(Ui.tintedGlass(firstAccent, 22, this));
+         if (!songs.isEmpty()) {
+             ImageView cover = new ImageView(this);
+             cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+@@ -1411,7 +1425,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         hero.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(this, 58), 1f));
+         TextView play = Ui.text(this, "从第一首播放", 11.2f, Color.rgb(12, 11, 18), true);
+         play.setGravity(Gravity.CENTER);
+-        play.setBackground(Ui.premiumGradient(firstAccent, secondAccent, 16, this));
++        play.setBackground(Ui.primaryFill(firstAccent, 16, this));
+         play.setClickable(true); Ui.applyRipple(play, Color.argb(40, 0, 0, 0));
+         play.setOnClickListener(v -> playQueue(songs, 0));
+         hero.addView(play, Ui.lp(Ui.dp(this, 112), Ui.dp(this, 40)));
+@@ -1432,11 +1446,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+ 
+         LinearLayout hero = Ui.column(this);
+         hero.setPadding(Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16));
+-        hero.setBackground(Ui.gradient(new int[]{
+-                Color.argb(72, Color.red(Ui.CYAN), Color.green(Ui.CYAN), Color.blue(Ui.CYAN)),
+-                Color.argb(58, Color.red(Ui.PURPLE), Color.green(Ui.PURPLE), Color.blue(Ui.PURPLE)),
+-                Color.argb(218, 8, 8, 14)
+-        }, 24, this));
++        hero.setBackground(Ui.tintedGlass(Ui.CYAN, 23, this));
+ 
+         LinearLayout heroTop = Ui.row(this);
+         View coverView = playlistThumb(p, 78);
+@@ -1459,14 +1469,14 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         Space ag = new Space(this); actionRow.addView(ag, Ui.lp(Ui.dp(this, 9), 1));
+         FrameLayout add = Ui.iconButton(this, IconView.Type.PLUS, 44, Color.rgb(10, 10, 16), Ui.GREEN);
+         add.setContentDescription("向歌单添加歌曲");
+-        add.setBackground(Ui.premiumGradient(Ui.GREEN, Ui.CYAN, 18, this));
++        add.setBackground(Ui.primaryFill(Ui.GREEN, 18, this));
+         add.setOnClickListener(v -> showAddSongsToPlaylist(p));
+         actionRow.addView(add, Ui.lp(Ui.dp(this, 52), Ui.dp(this, 44)));
+ 
+         Space manageGap = new Space(this); actionRow.addView(manageGap, Ui.lp(Ui.dp(this, 8), 1));
+         FrameLayout manage = Ui.iconButton(this, IconView.Type.MORE, 44, Color.rgb(12, 12, 18), Ui.GOLD);
+         manage.setContentDescription("批量管理歌曲");
+-        manage.setBackground(Ui.premiumGradient(Ui.GOLD, Ui.ORANGE, 18, this));
++        manage.setBackground(Ui.primaryFill(Ui.GOLD, 18, this));
+         manage.setOnClickListener(v -> showSongBatchManager(p.name, p.songs, p.id));
+         actionRow.addView(manage, Ui.lp(Ui.dp(this, 52), Ui.dp(this, 44)));
+         LinearLayout.LayoutParams ap = Ui.lp(-1, Ui.dp(this, 44)); ap.topMargin = Ui.dp(this, 12);
+@@ -1618,14 +1628,14 @@ public final class MainActivity extends Activity implements PlaybackService.List
+     private View songRow(Song song, List<Song> queue, int index) {
+         LinearLayout row = Ui.row(this);
+         row.setPadding(Ui.dp(this, 9), Ui.dp(this, 8), Ui.dp(this, 8), Ui.dp(this, 8));
+-        row.setBackground(Ui.stroke(Color.argb(190, 22, 23, 31), 18, Color.argb(24, 255, 255, 255), this));
++        row.setBackground(Ui.glass(128, 17, 18, this));
+         row.setClickable(true);
+         row.setFocusable(true);
+         Ui.applyRipple(row, Color.argb(33, 255, 255, 255));
+ 
+         ImageView cover = new ImageView(this);
+         cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+-        cover.setBackground(Ui.gradient(new int[]{Color.rgb(43, 40, 54), Color.rgb(28, 29, 38)}, 13, this));
++        cover.setBackground(Ui.round(Color.rgb(22, 22, 28), 12, this));
+         cover.setClipToOutline(true);
+         row.addView(cover, Ui.lp(Ui.dp(this, 56), Ui.dp(this, 56)));
+         ImageLoader.load(song.coverUrl, cover, null);
+@@ -1700,8 +1710,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
+ 
+         LinearLayout card = Ui.column(this);
+         card.setPadding(Ui.dp(this, 18), Ui.dp(this, 12), Ui.dp(this, 18), Ui.dp(this, 14));
+-        card.setBackground(Ui.stroke(Color.argb(252, 7, 7, 13), 27,
+-                Color.argb(58, 255, 255, 255), this));
++        card.setBackground(Ui.glass(250, 25, 30, this));
++        card.setElevation(Ui.dp(this, 10));
+ 
+         View handle = new View(this);
+         handle.setBackground(Ui.round(Color.argb(80, 255, 255, 255), 2, this));
+@@ -1972,7 +1982,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+                 LinearLayout row = Ui.row(MainActivity.this);
+                 row.setGravity(Gravity.CENTER_VERTICAL);
+                 row.setPadding(Ui.dp(MainActivity.this, 8), Ui.dp(MainActivity.this, 6), Ui.dp(MainActivity.this, 8), Ui.dp(MainActivity.this, 6));
+-                row.setBackground(Ui.stroke(Color.argb(142, 9, 9, 15), 15, Color.argb(22,255,255,255), MainActivity.this));
++                row.setBackground(Ui.glass(84,14,16,MainActivity.this));
+                 ImageView cover = new ImageView(MainActivity.this); cover.setScaleType(ImageView.ScaleType.CENTER_CROP); cover.setClipToOutline(true);
+                 cover.setBackground(Ui.round(Color.rgb(22,22,28),10,MainActivity.this)); ImageLoader.load(song.coverUrl, cover, null);
+                 row.addView(cover, Ui.lp(Ui.dp(MainActivity.this,42),Ui.dp(MainActivity.this,42)));
+@@ -2005,7 +2015,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         LinearLayout actions = Ui.row(this);
+         TextView delete = modalButton("删除", false); delete.setTextColor(Ui.PINK);
+         TextView addPlaylist = modalButton("加到歌单", false); addPlaylist.setTextColor(Ui.GREEN);
+-        TextView next = modalButton("下一首", true); next.setBackground(Ui.premiumGradient(Ui.CYAN,Ui.PURPLE,18,this));
++        TextView next = modalButton("下一首", true); next.setBackground(Ui.primaryFill(Ui.CYAN,18,this));
+         actions.addView(delete,new LinearLayout.LayoutParams(0,Ui.dp(this,46),1f));
+         LinearLayout.LayoutParams ap2=new LinearLayout.LayoutParams(0,Ui.dp(this,46),1f); ap2.leftMargin=Ui.dp(this,7); actions.addView(addPlaylist,ap2);
+         LinearLayout.LayoutParams ap3=new LinearLayout.LayoutParams(0,Ui.dp(this,46),1f); ap3.leftMargin=Ui.dp(this,7); actions.addView(next,ap3);
+@@ -2207,7 +2217,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+                 count++;
+                 LinearLayout row=Ui.row(this); row.setGravity(Gravity.CENTER_VERTICAL);
+                 row.setPadding(Ui.dp(this,8),Ui.dp(this,7),Ui.dp(this,8),Ui.dp(this,7));
+-                row.setBackground(Ui.stroke(Color.argb(145,9,9,15),16,Color.argb(24,255,255,255),this));
++                row.setBackground(Ui.glass(88,15,16,this));
+                 row.addView(playlistThumb(p,42),Ui.lp(Ui.dp(this,42),Ui.dp(this,42)));
+                 LinearLayout texts=Ui.column(this); texts.setPadding(Ui.dp(this,10),0,0,0);
+                 TextView title=Ui.text(this,p.name,12.7f,Ui.TEXT,true); title.setSingleLine(true); title.setEllipsize(TextUtils.TruncateAt.END);
+@@ -2234,11 +2244,11 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         input.setTypeface(Typeface.DEFAULT);
+         input.setHint("搜索歌曲、歌手"); input.setHintTextColor(Ui.DIM); input.setTextColor(Ui.TEXT); input.setTextSize(13f);
+         input.setSingleLine(true); input.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+-        input.setBackground(Ui.stroke(Color.argb(190, 5, 5, 11), 18, Color.argb(46, 123, 211, 255), this));
++        input.setBackground(Ui.glass(156,17,22,this));
+         input.setPadding(Ui.dp(this, 13), 0, Ui.dp(this, 13), 0);
+         row.addView(input, new LinearLayout.LayoutParams(0, Ui.dp(this, 46), 1f));
+         TextView go = Ui.text(this, "搜索", 11.5f, Color.rgb(10, 11, 18), true); go.setGravity(Gravity.CENTER);
+-        go.setBackground(Ui.premiumGradient(Ui.CYAN, Ui.PURPLE, 17, this)); go.setClickable(true); Ui.applyRipple(go, Color.argb(40,0,0,0));
++        go.setBackground(Ui.primaryFill(Ui.CYAN,17,this)); go.setClickable(true); Ui.applyRipple(go, Color.argb(40,0,0,0));
+         LinearLayout.LayoutParams gp = Ui.lp(Ui.dp(this, 70), Ui.dp(this, 46)); gp.leftMargin = Ui.dp(this, 8); row.addView(go, gp);
+         pane.addView(row, Ui.lp(-1, Ui.dp(this, 46)));
+ 
+@@ -2273,7 +2283,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         boolean exists = indexByKey(target.songs, song.key()) >= 0;
+         LinearLayout row = Ui.row(this);
+         row.setPadding(Ui.dp(this, 8), Ui.dp(this, 6), Ui.dp(this, 8), Ui.dp(this, 6));
+-        row.setBackground(Ui.stroke(Color.argb(145, 10, 10, 16), 16, Color.argb(24,255,255,255), this));
++        row.setBackground(Ui.glass(88,15,16,this));
+         ImageView cover = new ImageView(this); cover.setScaleType(ImageView.ScaleType.CENTER_CROP); cover.setClipToOutline(true);
+         cover.setBackground(Ui.round(Color.rgb(24,24,31), 11, this)); ImageLoader.load(song.coverUrl, cover, null);
+         row.addView(cover, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 44)));
+@@ -2303,7 +2313,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+     private View playlistCard(ImportedPlaylist p) {
+         LinearLayout row = Ui.row(this);
+         row.setPadding(Ui.dp(this, 12), Ui.dp(this, 10), Ui.dp(this, 8), Ui.dp(this, 10));
+-        row.setBackground(Ui.stroke(Color.argb(190, 22, 23, 31), 18, Color.argb(24, 255, 255, 255), this));
++        row.setBackground(Ui.glass(128, 17, 18, this));
+         row.setClickable(true);
+         Ui.applyRipple(row, Color.argb(32, 255, 255, 255));
+ 
+@@ -2344,7 +2354,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+             return cover;
+         }
+         FrameLayout shell = new FrameLayout(this);
+-        shell.setBackground(Ui.gradient(new int[]{Color.argb(60, 123, 211, 255), Color.argb(42, 183, 165, 255)}, Math.max(12, sizeDp * .25f), this));
++        shell.setBackground(Ui.tintedGlass(p != null && "tx".equals(p.source) ? Ui.CYAN : Ui.PURPLE, Math.max(12, sizeDp * .25f), this));
+         IconView icon = new IconView(this, IconView.Type.PLAYLIST, p != null && "tx".equals(p.source) ? Ui.CYAN : Ui.PURPLE);
+         shell.addView(icon, Ui.frame(Ui.dp(this, Math.max(24, (int)(sizeDp * .5f))), Ui.dp(this, Math.max(24, (int)(sizeDp * .5f))), Gravity.CENTER));
+         return shell;
+@@ -2353,7 +2363,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+     private View statCard(IconView.Type iconType, String value, String label) {
+         LinearLayout card = Ui.column(this);
+         card.setGravity(Gravity.CENTER);
+-        card.setBackground(Ui.stroke(Color.argb(160, 22, 23, 31), 20, Color.argb(22, 255, 255, 255), this));
++        card.setBackground(Ui.glass(120, 18, 18, this));
+         IconView icon = new IconView(this, iconType, Ui.PURPLE);
+         card.addView(icon, Ui.lp(Ui.dp(this, 25), Ui.dp(this, 25)));
+         TextView number = Ui.text(this, value, 17, Ui.TEXT, true);
+@@ -2381,7 +2391,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+     private View compactEmpty(String message) {
+         LinearLayout card = Ui.row(this);
+         card.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12));
+-        card.setBackground(Ui.stroke(Color.argb(135, 22, 23, 31), 18, Color.argb(20, 255, 255, 255), this));
++        card.setBackground(Ui.glass(92, 17, 16, this));
+         IconView icon = new IconView(this, IconView.Type.MUSIC, Ui.DIM);
+         card.addView(icon, Ui.lp(Ui.dp(this, 28), Ui.dp(this, 28)));
+         TextView text = Ui.text(this, message, 12, Ui.TEXT_2, false);
+@@ -2393,8 +2403,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+     private TextView filledAction(String text, int background, int foreground) {
+         TextView b = Ui.text(this, text, 13.2f, foreground, true);
+         b.setGravity(Gravity.CENTER);
+-        int second = background == Ui.PINK ? Ui.ORANGE : (background == Ui.CYAN ? Ui.GREEN : Ui.CYAN);
+-        b.setBackground(Ui.premiumGradient(background, second, 17, this));
++        b.setBackground(Ui.primaryFill(background, 17, this));
+         b.setClickable(true);
+         Ui.applyRipple(b, Color.argb(52, 255, 255, 255));
+         return b;
+@@ -2403,7 +2412,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+     private TextView outlineAction(String text) {
+         TextView b = Ui.text(this, text, 13, Ui.TEXT, true);
+         b.setGravity(Gravity.CENTER);
+-        b.setBackground(Ui.stroke(Color.argb(25, 255, 255, 255), 17, Color.argb(42, 255, 255, 255), this));
++        b.setBackground(Ui.glass(68, 16, 22, this));
+         b.setClickable(true);
+         Ui.applyRipple(b, Color.argb(42, 255, 255, 255));
+         return b;
+@@ -2530,7 +2539,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         playerStars = new StarfieldView(this);
+         playerOverlay.addView(playerStars, Ui.frame(-1, -1, Gravity.FILL));
+ 
+-        // Native Media3 PCM envelopes drive both the star field and cover particles.
++        // Native Media3 PCM envelopes drive both the star field and cover ripple rings.
+         // No RECORD_AUDIO permission/microphone capture is involved.
+         AudioLevelProvider visualLevels = new AudioLevelProvider() {
+             @Override public float energy() { return playback == null ? 0f : playback.visualEnergy(); }
+@@ -2575,7 +2584,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         playerSafe.addView(scroll, Ui.frame(-1, -1, Gravity.FILL));
+ 
+         LinearLayout top = Ui.row(this);
+-        FrameLayout back = Ui.iconButton(this, IconView.Type.BACK, 42, Ui.TEXT, Color.argb(34, 255, 255, 255));
++        FrameLayout back = Ui.iconButton(this, IconView.Type.BACK, 42, Ui.TEXT, Color.argb(18, 255, 255, 255));
+         back.setOnClickListener(v -> closeNowPlaying());
+         top.addView(back, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
+         TextView label = Ui.text(this, "正在播放", 12.2f, Ui.TEXT, true);
+@@ -2591,7 +2600,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+ 
+         int widthDp = (int) (getResources().getDisplayMetrics().widthPixels / getResources().getDisplayMetrics().density);
+         int discDp = Math.min(326, Math.max(278, widthDp - 62));
+-        // Give particles a transparent margin without making the visible cover larger.
++        // Give the concentric wave rings a transparent margin without changing the overall page layout.
+         int visualDp = Math.min(Math.max(discDp, widthDp - 40), discDp + 28);
+         nowVinyl = new VinylRecordView(this);
+         nowVinyl.setAudioLevelProvider(visualLevels);
+@@ -2622,7 +2631,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         FrameLayout metaRow = new FrameLayout(this);
+         nowSource = Ui.pill(this, "", Ui.CYAN);
+         metaRow.addView(nowSource, Ui.frame(-2, Ui.dp(this, 30), Gravity.CENTER));
+-        nowFavoriteButton = Ui.iconButton(this, IconView.Type.HEART, 42, Ui.TEXT_2, Color.argb(20, 255, 255, 255));
++        nowFavoriteButton = Ui.iconButton(this, IconView.Type.HEART, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
+         nowFavoriteIcon = (IconView) nowFavoriteButton.getChildAt(0);
+         nowFavoriteButton.setContentDescription("收藏");
+         nowFavoriteButton.setOnClickListener(v -> {
+@@ -2663,7 +2672,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         controls.setGravity(Gravity.CENTER_VERTICAL);
+ 
+         int initialMode = playback == null ? PlaybackService.MODE_SEQUENTIAL : playback.getPlayMode();
+-        FrameLayout modeButton = Ui.iconButton(this, playModeIcon(initialMode), 46, playModeAccent(initialMode), Color.argb(20, 255, 255, 255));
++        FrameLayout modeButton = Ui.iconButton(this, playModeIcon(initialMode), 46, playModeAccent(initialMode), Color.argb(12, 255, 255, 255));
+         nowModeIcon = (IconView) modeButton.getChildAt(0);
+         modeButton.setContentDescription(playModeLabel(initialMode));
+         modeButton.setOnClickListener(v -> {
+@@ -2676,15 +2685,16 @@ public final class MainActivity extends Activity implements PlaybackService.List
+             showModeToast(playModeLabel(mode), accent);
+         });
+ 
+-        FrameLayout prev = Ui.iconButton(this, IconView.Type.PREV, 50, Ui.TEXT, Color.argb(24, 255, 255, 255));
++        FrameLayout prev = Ui.iconButton(this, IconView.Type.PREV, 50, Ui.TEXT, Color.argb(10, 255, 255, 255));
+         prev.setOnClickListener(v -> { if (playback != null) playback.previous(); });
+-        FrameLayout play = Ui.iconButton(this, IconView.Type.PLAY, 66, Color.rgb(12, 12, 18), Ui.PURPLE);
+-        play.setBackground(Ui.premiumGradient(Ui.PURPLE, Ui.CYAN, 33, this));
++        FrameLayout play = Ui.iconButton(this, IconView.Type.PLAY, 66, Color.rgb(13, 18, 22), Ui.CYAN);
++        play.setBackground(Ui.primaryFill(Ui.CYAN, 33, this));
++        nowPlayButton = play;
+         nowPlayIcon = (IconView) play.getChildAt(0);
+         play.setOnClickListener(v -> { if (playback != null) playback.toggle(); });
+-        FrameLayout next = Ui.iconButton(this, IconView.Type.NEXT, 50, Ui.TEXT, Color.argb(24, 255, 255, 255));
++        FrameLayout next = Ui.iconButton(this, IconView.Type.NEXT, 50, Ui.TEXT, Color.argb(10, 255, 255, 255));
+         next.setOnClickListener(v -> { if (playback != null) playback.next(); });
+-        FrameLayout queueButton = Ui.iconButton(this, IconView.Type.PLAYLIST, 46, Ui.GOLD, Color.argb(20, 255, 255, 255));
++        FrameLayout queueButton = Ui.iconButton(this, IconView.Type.PLAYLIST, 46, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
+         queueButton.setContentDescription("播放列表");
+         queueButton.setOnClickListener(v -> showPlaybackQueue());
+ 
+@@ -2697,14 +2707,51 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         ctrlP.topMargin = Ui.dp(this, 10);
+         content.addView(controls, ctrlP);
+ 
+-        // Keep synced lyrics, but remove the redundant “歌词 / 跟随播放” textual header.
++        // Synced lyric viewport. It owns its own scroll position so the active line can
++        // stay centered without moving the transport controls above it.
++        lyricPanel = new FrameLayout(this);
++        lyricPanel.setBackground(Ui.glass(92, 24, 20, this));
++
++        lyricScroll = new ScrollView(this);
++        lyricScroll.setFillViewport(true);
++        lyricScroll.setVerticalScrollBarEnabled(false);
++        lyricScroll.setClipToPadding(false);
++        lyricScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
++        lyricScroll.setPadding(0, Ui.dp(this, 18), 0, Ui.dp(this, 18));
++        lyricScroll.setOnTouchListener((v, e) -> {
++            if (e.getActionMasked() == MotionEvent.ACTION_DOWN || e.getActionMasked() == MotionEvent.ACTION_MOVE) {
++                lyricsManualUntil = SystemClock.uptimeMillis() + 4200L;
++                if (lyricsResumeRunnable != null) main.removeCallbacks(lyricsResumeRunnable);
++            } else if (e.getActionMasked() == MotionEvent.ACTION_UP || e.getActionMasked() == MotionEvent.ACTION_CANCEL) {
++                lyricsManualUntil = SystemClock.uptimeMillis() + 3200L;
++                if (lyricsResumeRunnable != null) main.removeCallbacks(lyricsResumeRunnable);
++                lyricsResumeRunnable = () -> scrollLyricToActive(true);
++                main.postDelayed(lyricsResumeRunnable, 3250L);
++            }
++            return false;
++        });
++
+         lyricBox = Ui.column(this);
+         lyricBox.setGravity(Gravity.CENTER_HORIZONTAL);
++        lyricBox.setPadding(Ui.dp(this, 10), Ui.dp(this, 44), Ui.dp(this, 10), Ui.dp(this, 34));
+         lyricEmpty = Ui.text(this, "歌词加载中…", 12.5f, Ui.DIM, false);
+         lyricEmpty.setGravity(Gravity.CENTER);
+-        lyricBox.addView(lyricEmpty, Ui.lp(-1, Ui.dp(this, 82)));
+-        LinearLayout.LayoutParams lyricP = Ui.lp(-1, -2); lyricP.topMargin = Ui.dp(this, 18);
+-        content.addView(lyricBox, lyricP);
++        lyricBox.addView(lyricEmpty, Ui.lp(-1, Ui.dp(this, 138)));
++        lyricScroll.addView(lyricBox);
++        lyricPanel.addView(lyricScroll, Ui.frame(-1, -1, Gravity.FILL));
++
++        // Small, discoverable colour control; no extra textual lyric header is needed.
++        FrameLayout lyricPalette = Ui.iconButton(this, IconView.Type.PALETTE, 34, Ui.TEXT_2, Color.argb(110, 15, 15, 21));
++        lyricPalette.setContentDescription("歌词高亮颜色");
++        lyricPalette.setOnClickListener(v -> showLyricStylePicker());
++        FrameLayout.LayoutParams paletteP = Ui.frame(Ui.dp(this, 34), Ui.dp(this, 34), Gravity.TOP | Gravity.END);
++        paletteP.topMargin = Ui.dp(this, 8);
++        paletteP.rightMargin = Ui.dp(this, 8);
++        lyricPanel.addView(lyricPalette, paletteP);
++
++        LinearLayout.LayoutParams lyricP = Ui.lp(-1, Ui.dp(this, 258));
++        lyricP.topMargin = Ui.dp(this, 20);
++        content.addView(lyricPanel, lyricP);
+ 
+         nowSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+             @Override public void onStartTrackingTouch(SeekBar b) { }
+@@ -2750,6 +2797,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
+             nowVinyl.setCoverBitmap(null);
+             nowVinyl.setAccentColor(nowAccent);
+             playerStars.setAccentColor(nowAccent);
++            if (nowPlayButton != null) nowPlayButton.setBackground(Ui.primaryFill(nowAccent, 33, this));
++            if (lyricUseCoverColor) applyCoverLyricGradient(nowAccent);
+             if (Build.VERSION.SDK_INT >= 21) {
+                 nowSeek.setProgressTintList(ColorStateList.valueOf(nowAccent));
+                 nowSeek.setThumbTintList(ColorStateList.valueOf(nowAccent));
+@@ -2759,6 +2808,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
+                 nowVinyl.setCoverBitmap(bmp);
+                 nowVinyl.setAccentColor(color);
+                 playerStars.setAccentColor(color);
++                if (nowPlayButton != null) nowPlayButton.setBackground(Ui.primaryFill(color, 33, this));
++                if (lyricUseCoverColor) applyCoverLyricGradient(color);
+                 if (Build.VERSION.SDK_INT >= 21) {
+                     nowSeek.setProgressTintList(ColorStateList.valueOf(color));
+                     nowSeek.setThumbTintList(ColorStateList.valueOf(color));
+@@ -2777,7 +2828,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+             lyricBox.removeAllViews();
+             lyricEmpty = Ui.text(this, song.variant("wy") != null ? "歌词加载中…" : "当前歌曲暂未找到网易歌词信息", 12.5f, Ui.DIM, false);
+             lyricEmpty.setGravity(Gravity.CENTER);
+-            lyricBox.addView(lyricEmpty, Ui.lp(-1, Ui.dp(this, 80)));
++            lyricBox.addView(lyricEmpty, Ui.lp(-1, Ui.dp(this, 138)));
+         }
+         com.xingyu.music.model.SourceVariant wyVariant = song.variant("wy");
+         if (wyVariant == null) return;
+@@ -2804,15 +2855,16 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         if (lyricLines.isEmpty()) {
+             lyricEmpty = Ui.text(this, "暂无歌词", 12.5f, Ui.DIM, false);
+             lyricEmpty.setGravity(Gravity.CENTER);
+-            lyricBox.addView(lyricEmpty, Ui.lp(-1, Ui.dp(this, 80)));
++            lyricBox.addView(lyricEmpty, Ui.lp(-1, Ui.dp(this, 138)));
+             return;
+         }
+         for (LyricLine line : lyricLines) {
+-            TextView t = Ui.text(this, line.text, 14, Ui.DIM, false);
+-            t.setGravity(Gravity.CENTER);
+-            t.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+-            t.setPadding(Ui.dp(this, 8), Ui.dp(this, 9), Ui.dp(this, 8), Ui.dp(this, 9));
+-            lyricBox.addView(t, Ui.lp(-1, Ui.dp(this, 46)));
++            LyricLineView t = new LyricLineView(this);
++            t.setText(line.text);
++            t.setGradientColors(lyricGradientStart, lyricGradientEnd);
++            t.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12));
++            t.setMinHeight(Ui.dp(this, 48));
++            lyricBox.addView(t, Ui.lp(-1, -2));
+         }
+         activeLyric = -2;
+         if (playback != null) updateLyricHighlight(playback.snapshot().positionMs);
+@@ -2825,14 +2877,124 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         activeLyric = idx;
+         for (int i = 0; i < lyricBox.getChildCount(); i++) {
+             View v = lyricBox.getChildAt(i);
+-            if (v instanceof TextView) {
+-                TextView t = (TextView) v;
+-                boolean active = i == idx;
+-                t.setTextColor(active ? Ui.TEXT : Ui.DIM);
+-                t.setTextSize(active ? 16 : 14);
+-                t.setTypeface(active ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
++            if (v instanceof LyricLineView) {
++                LyricLineView line = (LyricLineView) v;
++                line.setGradientColors(lyricGradientStart, lyricGradientEnd);
++                line.setActiveLine(i == idx);
+             }
+         }
++        scrollLyricToActive(false);
++    }
++
++    private void scrollLyricToActive(boolean force) {
++        if (lyricScroll == null || lyricBox == null || activeLyric < 0 || activeLyric >= lyricBox.getChildCount()) return;
++        if (!force && SystemClock.uptimeMillis() < lyricsManualUntil) return;
++        View line = lyricBox.getChildAt(activeLyric);
++        lyricScroll.post(() -> {
++            if (lyricScroll == null || line.getParent() == null) return;
++            int viewport = lyricScroll.getHeight() - lyricScroll.getPaddingTop() - lyricScroll.getPaddingBottom();
++            int target = line.getTop() - Math.max(0, (viewport - line.getHeight()) / 2);
++            target = Math.max(0, Math.min(target, Math.max(0, lyricBox.getHeight() - viewport)));
++            int delta = Math.abs(lyricScroll.getScrollY() - target);
++            if (delta < Ui.dp(this, 4)) return;
++            if (force || delta > Ui.dp(this, 160)) lyricScroll.smoothScrollTo(0, target);
++            else lyricScroll.smoothScrollBy(0, target - lyricScroll.getScrollY());
++        });
++    }
++
++    private void showLyricStylePicker() {
++        LinearLayout card = modalCard("歌词高亮", "默认冰蓝渐变。颜色只影响歌词显示，不影响歌曲、音源或播放链。");
++        int[][] presets = new int[][]{
++                {Ui.LYRIC_ICE_START, Ui.LYRIC_ICE_END},
++                {Color.rgb(222, 211, 255), Color.rgb(143, 126, 255)},
++                {Color.rgb(205, 251, 235), Color.rgb(103, 225, 190)},
++                {Color.rgb(255, 226, 190), Color.rgb(255, 153, 116)},
++                {Color.rgb(255, 210, 232), Color.rgb(255, 135, 184)},
++                {Color.rgb(255, 255, 255), Color.rgb(205, 220, 244)}
++        };
++        String[] names = {"冰蓝", "星紫", "薄荷", "日落", "玫瑰", "银白"};
++        for (int i = 0; i < names.length; i++) {
++            final int index = i;
++            LyricLineView preview = new LyricLineView(this);
++            preview.setText(names[i] + "  ·  正在唱的这一句");
++            preview.setGradientColors(presets[i][0], presets[i][1]);
++            preview.setActiveLine(true);
++            preview.setGravity(Gravity.CENTER_VERTICAL);
++            preview.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
++            preview.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0);
++            preview.setBackground(Ui.glass(92, 16, 18, this));
++            preview.setClickable(true);
++            Ui.applyRipple(preview, Color.TRANSPARENT);
++            preview.setOnClickListener(v -> {
++                dismissModalNow();
++                saveLyricGradient(presets[index][0], presets[index][1], false);
++            });
++            LinearLayout.LayoutParams rp = Ui.lp(-1, Ui.dp(this, 48));
++            rp.topMargin = Ui.dp(this, 8);
++            card.addView(preview, rp);
++        }
++
++        TextView cover = outlineAction("跟随歌曲封面颜色");
++        cover.setOnClickListener(v -> {
++            dismissModalNow();
++            lyricUseCoverColor = true;
++            getSharedPreferences("xingyu_ui_settings", MODE_PRIVATE).edit().putBoolean("lyric_gradient_cover", true).apply();
++            applyCoverLyricGradient(nowAccent);
++            toast("歌词高亮已跟随封面");
++        });
++        LinearLayout.LayoutParams cp = Ui.lp(-1, Ui.dp(this, 46)); cp.topMargin = Ui.dp(this, 10); card.addView(cover, cp);
++
++        TextView custom = outlineAction("自定义两端颜色");
++        custom.setOnClickListener(v -> {
++            dismissModalNow();
++            showGlassInput("自定义歌词高亮", "例如 #C9F2FF,#69ABFF", false, "应用", value -> {
++                int[] colors = parseGradientPair(value);
++                if (colors == null) { toast("格式不对，请输入两个 HEX 颜色"); return; }
++                saveLyricGradient(colors[0], colors[1], false);
++            });
++        });
++        LinearLayout.LayoutParams xp = Ui.lp(-1, Ui.dp(this, 46)); xp.topMargin = Ui.dp(this, 8); card.addView(custom, xp);
++        presentFractionModal(card, .72f);
++    }
++
++    private int[] parseGradientPair(String raw) {
++        if (raw == null) return null;
++        String[] parts = raw.trim().split("[,，\\s]+", -1);
++        if (parts.length < 2) return null;
++        try {
++            int first = Color.parseColor(parts[0].startsWith("#") ? parts[0] : "#" + parts[0]);
++            int second = Color.parseColor(parts[1].startsWith("#") ? parts[1] : "#" + parts[1]);
++            return new int[]{first, second};
++        } catch (Exception ignored) { return null; }
++    }
++
++    private void saveLyricGradient(int start, int end, boolean coverMode) {
++        lyricUseCoverColor = coverMode;
++        lyricGradientStart = start;
++        lyricGradientEnd = end;
++        getSharedPreferences("xingyu_ui_settings", MODE_PRIVATE).edit()
++                .putInt("lyric_gradient_start", start)
++                .putInt("lyric_gradient_end", end)
++                .putBoolean("lyric_gradient_cover", coverMode)
++                .apply();
++        refreshLyricGradientViews();
++        toast("歌词高亮已更新");
++    }
++
++    private void applyCoverLyricGradient(int coverAccent) {
++        lyricGradientStart = Ui.mix(coverAccent, Color.WHITE, .66f);
++        lyricGradientEnd = Ui.mix(coverAccent, Ui.CYAN, .18f);
++        getSharedPreferences("xingyu_ui_settings", MODE_PRIVATE).edit()
++                .putBoolean("lyric_gradient_cover", true).apply();
++        refreshLyricGradientViews();
++    }
++
++    private void refreshLyricGradientViews() {
++        if (lyricBox == null) return;
++        for (int i = 0; i < lyricBox.getChildCount(); i++) {
++            View v = lyricBox.getChildAt(i);
++            if (v instanceof LyricLineView) ((LyricLineView) v).setGradientColors(lyricGradientStart, lyricGradientEnd);
++        }
+     }
+ 
+     private void toast(String s) {
+@@ -2857,7 +3019,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+         snackbar.bringToFront();
+         snackbar.setText("  " + (label == null ? "播放模式" : label));
+         snackbar.setTextColor(Color.rgb(12, 12, 18));
+-        snackbar.setBackground(Ui.premiumGradient(accent, Ui.mix(accent, Color.WHITE, .32f), 18, this));
++        snackbar.setBackground(Ui.primaryFill(accent, 18, this));
+         snackbar.setVisibility(View.VISIBLE);
+         snackbar.setAlpha(0f);
+         snackbar.setTranslationY(-Ui.dp(this, 10));
+@@ -2902,6 +3064,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
+ 
+     @Override protected void onDestroy() {
+         if (pendingSuggestionRunnable != null) main.removeCallbacks(pendingSuggestionRunnable);
++        if (lyricsResumeRunnable != null) main.removeCallbacks(lyricsResumeRunnable);
+         suggestionRequestToken++;
+         if (bound && playback != null) playback.clearListener(this);
+         if (bound) try { unbindService(connection); } catch (Exception ignored) { }
+diff --git a/app/src/main/java/com/xingyu/music/ui/IconView.java b/app/src/main/java/com/xingyu/music/ui/IconView.java
+index 8bde182..66a6f09 100644
+--- a/app/src/main/java/com/xingyu/music/ui/IconView.java
++++ b/app/src/main/java/com/xingyu/music/ui/IconView.java
+@@ -9,13 +9,13 @@ import android.view.View;
+ 
+ /** Small dependency-free line icon renderer so the UI does not rely on emoji glyphs. */
+ public final class IconView extends View {
+-    public enum Type { HOME, SEARCH, PLAYLIST, HEART, PLAY, PAUSE, NEXT, PREV, PLUS, BACK, MUSIC, MORE, CLOSE, DELETE, DRAG, SHUFFLE, REPEAT, REPEAT_ONE }
++    public enum Type { HOME, SEARCH, PLAYLIST, HEART, PLAY, PAUSE, NEXT, PREV, PLUS, BACK, MUSIC, MORE, CLOSE, DELETE, DRAG, SHUFFLE, REPEAT, REPEAT_ONE, PALETTE }
+ 
+     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+     private final Path path = new Path();
+     private Type type;
+     private int color;
+-    private float strokeDp = 2f;
++    private float strokeDp = 1.72f;
+ 
+     public IconView(Context context, Type type, int color) {
+         super(context);
+@@ -166,6 +166,20 @@ public final class IconView extends View {
+                 c.drawLine(r - s * .07f, cy + s * .22f, r, cy + s * .15f, paint);
+                 break;
+             }
++            case PALETTE: {
++                // Compact SF-Symbol-like palette outline.
++                RectF oval = new RectF(cx - s * .27f, cy - s * .23f, cx + s * .27f, cy + s * .23f);
++                c.drawOval(oval, paint);
++                paint.setStyle(Paint.Style.FILL);
++                c.drawCircle(cx - s * .12f, cy - s * .07f, s * .033f, paint);
++                c.drawCircle(cx, cy - s * .13f, s * .033f, paint);
++                c.drawCircle(cx + s * .13f, cy - s * .03f, s * .033f, paint);
++                c.drawCircle(cx - s * .03f, cy + s * .10f, s * .033f, paint);
++                // Small thumb indentation gives the glyph a recognisable painter-palette silhouette.
++                paint.setStyle(Paint.Style.STROKE);
++                c.drawArc(new RectF(cx + s * .03f, cy + s * .02f, cx + s * .25f, cy + s * .22f), 128f, 120f, false, paint);
++                break;
++            }
+             case REPEAT:
+             case REPEAT_ONE: {
+                 float l = cx - s * .22f, r = cx + s * .22f, t = cy - s * .14f, b = cy + s * .14f;
+diff --git a/app/src/main/java/com/xingyu/music/ui/LyricLineView.java b/app/src/main/java/com/xingyu/music/ui/LyricLineView.java
+new file mode 100644
+index 0000000..29c22dd
+--- /dev/null
++++ b/app/src/main/java/com/xingyu/music/ui/LyricLineView.java
+@@ -0,0 +1,61 @@
++package com.xingyu.music.ui;
++
++import android.content.Context;
++import android.graphics.LinearGradient;
++import android.graphics.Shader;
++import android.graphics.Typeface;
++import android.view.Gravity;
++import android.view.View;
++import android.widget.TextView;
++
++/**
++ * One synced lyric row. Active rows use a true text shader rather than a neon
++ * background, which keeps the player calm while still making the current line obvious.
++ */
++public final class LyricLineView extends TextView {
++    private boolean active;
++    private int gradientStart = Ui.LYRIC_ICE_START;
++    private int gradientEnd = Ui.LYRIC_ICE_END;
++
++    public LyricLineView(Context context) {
++        super(context);
++        setGravity(Gravity.CENTER);
++        setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
++        setIncludeFontPadding(false);
++        setLineSpacing(0f, 1.12f);
++        setTextSize(14f);
++        setTextColor(Ui.DIM);
++        setTypeface(Typeface.DEFAULT);
++        setAlpha(.78f);
++    }
++
++    public void setGradientColors(int start, int end) {
++        gradientStart = start;
++        gradientEnd = end;
++        invalidate();
++    }
++
++    public void setActiveLine(boolean value) {
++        if (active == value) return;
++        active = value;
++        setTextSize(value ? 16.2f : 14f);
++        setTypeface(value ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
++        setAlpha(value ? 1f : .72f);
++        setTextColor(value ? android.graphics.Color.WHITE : Ui.DIM);
++        if (!value) getPaint().setShader(null);
++        invalidate();
++    }
++
++    @Override protected void onDraw(android.graphics.Canvas canvas) {
++        if (active && getWidth() > 0) {
++            int middle = Ui.mix(gradientStart, android.graphics.Color.WHITE, .24f);
++            getPaint().setShader(new LinearGradient(
++                    0f, 0f, Math.max(1f, getWidth()), 0f,
++                    new int[]{gradientStart, middle, gradientEnd},
++                    new float[]{0f, .52f, 1f}, Shader.TileMode.CLAMP));
++        } else {
++            getPaint().setShader(null);
++        }
++        super.onDraw(canvas);
++    }
++}
+diff --git a/app/src/main/java/com/xingyu/music/ui/Ui.java b/app/src/main/java/com/xingyu/music/ui/Ui.java
+index 9ea49e6..4f56bbb 100644
+--- a/app/src/main/java/com/xingyu/music/ui/Ui.java
++++ b/app/src/main/java/com/xingyu/music/ui/Ui.java
+@@ -14,13 +14,15 @@ import android.widget.TextView;
+ 
+ import java.util.Locale;
+ 
++/** Shared visual tokens for the native UI. Playback code must not depend on this class. */
+ public final class Ui {
+     public static final int BG = Color.BLACK;
+-    public static final int SURFACE = Color.rgb(8, 8, 13);
+-    public static final int SURFACE_2 = Color.rgb(14, 14, 22);
+-    public static final int TEXT = Color.rgb(248, 247, 251);
+-    public static final int TEXT_2 = Color.rgb(205, 205, 216);
+-    public static final int DIM = Color.rgb(154, 154, 170);
++    public static final int SURFACE = Color.rgb(7, 7, 10);
++    public static final int SURFACE_2 = Color.rgb(12, 12, 17);
++    public static final int SURFACE_3 = Color.rgb(18, 18, 24);
++    public static final int TEXT = Color.rgb(248, 248, 250);
++    public static final int TEXT_2 = Color.rgb(205, 205, 214);
++    public static final int DIM = Color.rgb(145, 145, 158);
+     public static final int PURPLE = Color.rgb(183, 165, 255);
+     public static final int PINK = Color.rgb(255, 144, 195);
+     public static final int CYAN = Color.rgb(123, 211, 255);
+@@ -30,6 +32,10 @@ public final class Ui {
+     public static final int BLUE = Color.rgb(132, 169, 255);
+     public static final int RED = Color.rgb(255, 121, 133);
+ 
++    // V16 synced-lyric default: cool, bright, but not neon.
++    public static final int LYRIC_ICE_START = Color.rgb(201, 242, 255);
++    public static final int LYRIC_ICE_END = Color.rgb(105, 171, 255);
++
+     private Ui() { }
+ 
+     public static int dp(Context c, float v) {
+@@ -61,15 +67,40 @@ public final class Ui {
+         return d;
+     }
+ 
++    /** Calm translucent surface used for most cards/sheets in V16. */
++    public static GradientDrawable glass(int alpha, float radius, int strokeAlpha, Context c) {
++        return stroke(Color.argb(alpha, 11, 11, 16), radius,
++                Color.argb(strokeAlpha, 255, 255, 255), c);
++    }
++
++    /** Tinted surface: accent is present only as a trace, never a full neon card. */
++    public static GradientDrawable tintedGlass(int accent, float radius, Context c) {
++        int r = mixChannel(11, Color.red(accent), .07f);
++        int g = mixChannel(11, Color.green(accent), .07f);
++        int b = mixChannel(16, Color.blue(accent), .07f);
++        return stroke(Color.argb(232, r, g, b), radius,
++                Color.argb(34, Color.red(accent), Color.green(accent), Color.blue(accent)), c);
++    }
++
++    /** Flat premium primary action. Deliberately avoids the V15 purple-cyan AI gradient. */
++    public static GradientDrawable primaryFill(int accent, float radius, Context c) {
++        int fill = mix(accent, Color.WHITE, .42f);
++        GradientDrawable d = round(fill, radius, c);
++        d.setStroke(dp(c, 1), withAlpha(Color.WHITE, 42));
++        return d;
++    }
++
+     public static GradientDrawable gradient(int[] colors, float radius, Context c) {
+         GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TL_BR, colors);
+         d.setCornerRadius(dp(c, radius));
+         return d;
+     }
+ 
+-
++    /** Legacy helper kept for compatibility; new V16 screens prefer flat primaryFill/glass. */
+     public static GradientDrawable premiumGradient(int first, int second, float radius, Context c) {
+-        GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{first, second});
++        int a = mix(first, Color.WHITE, .22f);
++        int b = mix(second, first, .62f);
++        GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{a, b});
+         d.setCornerRadius(dp(c, radius));
+         return d;
+     }
+@@ -82,6 +113,10 @@ public final class Ui {
+                 Math.round(Color.blue(a) * (1f - t) + Color.blue(b) * t));
+     }
+ 
++    private static int mixChannel(int channel, int otherChannel, float amount) {
++        return Math.round(channel * (1f - amount) + otherChannel * amount);
++    }
++
+     public static LinearLayout row(Context c) {
+         LinearLayout l = new LinearLayout(c);
+         l.setOrientation(LinearLayout.HORIZONTAL);
+@@ -110,13 +145,13 @@ public final class Ui {
+     }
+ 
+     public static TextView pill(Context c, String label, int tint) {
+-        TextView v = text(c, label, 10.5f, tint, true);
++        TextView v = text(c, label, 10.2f, mix(tint, Color.WHITE, .10f), true);
+         v.setGravity(Gravity.CENTER);
+-        v.setPadding(dp(c, 10), dp(c, 4), dp(c, 10), dp(c, 4));
++        v.setPadding(dp(c, 9), dp(c, 3), dp(c, 9), dp(c, 3));
+         v.setBackground(stroke(
+-                Color.argb(24, Color.red(tint), Color.green(tint), Color.blue(tint)),
+-                13,
+-                Color.argb(56, Color.red(tint), Color.green(tint), Color.blue(tint)), c));
++                Color.argb(12, Color.red(tint), Color.green(tint), Color.blue(tint)),
++                12,
++                Color.argb(42, Color.red(tint), Color.green(tint), Color.blue(tint)), c));
+         return v;
+     }
+ 
+@@ -124,30 +159,32 @@ public final class Ui {
+         FrameLayout b = new FrameLayout(c);
+         b.setClickable(true);
+         b.setFocusable(true);
+-        b.setBackground(round(bgColor, sizeDp / 2f, c));
++        if (Color.alpha(bgColor) == 0) {
++            b.setBackgroundColor(Color.TRANSPARENT);
++        } else {
++            b.setBackground(stroke(bgColor, sizeDp / 2f, Color.argb(24, 255, 255, 255), c));
++        }
+         IconView iv = new IconView(c, icon, iconColor);
+-        int inner = Math.max(18, (int) (sizeDp * .52f));
++        iv.setStrokeDp(sizeDp >= 54 ? 1.72f : 1.62f);
++        int inner = Math.max(17, (int) (sizeDp * .46f));
+         b.addView(iv, frame(dp(c, inner), dp(c, inner), Gravity.CENTER));
+-        applyRipple(b, Color.argb(55, 255, 255, 255));
++        applyRipple(b, Color.argb(48, 255, 255, 255));
+         return b;
+     }
+ 
+-    /**
+-     * Premium press feedback without Android's rectangular RippleDrawable flash.
+-     * Keeps the original background untouched and uses a tiny scale/alpha response instead.
+-     */
++    /** iOS-like direct manipulation: restrained scale + opacity, no rectangular system flash. */
+     public static void applyRipple(View view, int ignoredRippleColor) {
+         if (view == null) return;
+         view.setOnTouchListener((v, e) -> {
+             switch (e.getActionMasked()) {
+                 case MotionEvent.ACTION_DOWN:
+                     v.animate().cancel();
+-                    v.animate().scaleX(.985f).scaleY(.985f).alpha(.86f).setDuration(65).start();
++                    v.animate().scaleX(.972f).scaleY(.972f).alpha(.78f).setDuration(70).start();
+                     break;
+                 case MotionEvent.ACTION_UP:
+                 case MotionEvent.ACTION_CANCEL:
+                     v.animate().cancel();
+-                    v.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(120).start();
++                    v.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(150).start();
+                     break;
+             }
+             return false;
+diff --git a/app/src/main/java/com/xingyu/music/ui/VinylRecordView.java b/app/src/main/java/com/xingyu/music/ui/VinylRecordView.java
+index 883f163..722a77f 100644
+--- a/app/src/main/java/com/xingyu/music/ui/VinylRecordView.java
++++ b/app/src/main/java/com/xingyu/music/ui/VinylRecordView.java
+@@ -8,39 +8,28 @@ import android.graphics.Color;
+ import android.graphics.Matrix;
+ import android.graphics.Paint;
+ import android.graphics.Shader;
++import android.graphics.SweepGradient;
+ import android.os.SystemClock;
+ import android.view.View;
+ 
+-import java.util.Random;
+-
+ /**
+- * Xingyu Music V15 album visual.
++ * Xingyu Music V16 album visual.
+  *
+- * The cover remains recognizable as the rotating circular record, while hundreds of
+- * cover-colored particles are sampled from the artwork and breathe/expand with the
+- * real PCM energy supplied by Media3. Strong low-frequency onsets create a short
+- * particle burst around the rim; no microphone permission is needed.
++ * The V15 cover-particle cloud is intentionally removed. The artwork remains a clean,
++ * rotating circular cover while a small family of album-colour concentric wave rings
++ * breathes outward from its rim. The rings are driven by the same pass-through Media3
++ * PCM envelopes already present in V15, so this class does not alter the playback chain.
+  */
+ public final class VinylRecordView extends View {
+-    private static final class Particle {
+-        float nx, ny;
+-        float radial;
+-        float angle;
+-        float size;
+-        float phase;
+-        float drift;
+-        float edge;
+-        int color;
+-    }
+-
+-    private static final int PARTICLE_COUNT = 620;
++    private static final int WAVE_COUNT = 5;
+ 
+     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+-    private final Paint particlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+-    private final Particle[] particles = new Particle[PARTICLE_COUNT];
++    private final Paint wavePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private final Matrix gradientMatrix = new Matrix();
+     private Bitmap cover;
+     private boolean spinning;
+     private float angle;
++    private float wavePhase;
+     private long lastFrame;
+     private int accent = Color.rgb(183, 165, 255);
+     private AudioLevelProvider audioLevels;
+@@ -56,7 +45,6 @@ public final class VinylRecordView extends View {
+ 
+     public void setCoverBitmap(Bitmap bitmap) {
+         cover = bitmap;
+-        rebuildParticles();
+         invalidate();
+     }
+ 
+@@ -78,71 +66,43 @@ public final class VinylRecordView extends View {
+         else invalidate();
+     }
+ 
+-    private void rebuildParticles() {
+-        if (cover == null || cover.isRecycled() || cover.getWidth() <= 0 || cover.getHeight() <= 0) {
+-            for (int i = 0; i < particles.length; i++) particles[i] = null;
+-            return;
+-        }
+-        long seed = 0x51A7C0DEL ^ ((long) cover.getWidth() << 32) ^ cover.getHeight();
+-        Random random = new Random(seed);
+-        for (int i = 0; i < particles.length; i++) {
+-            Particle p = new Particle();
+-            // sqrt makes the point cloud approximately area-uniform inside the cover.
+-            float radial = (float) Math.sqrt(random.nextFloat()) * .995f;
+-            float a = random.nextFloat() * (float) (Math.PI * 2.0);
+-            p.nx = (float) Math.cos(a) * radial;
+-            p.ny = (float) Math.sin(a) * radial;
+-            p.radial = radial;
+-            p.angle = a;
+-            p.size = .42f + random.nextFloat() * 1.05f;
+-            p.phase = random.nextFloat() * 6.283185f;
+-            p.drift = .45f + random.nextFloat() * 1.15f;
+-            p.edge = clamp((radial - .63f) / .37f, 0f, 1f);
+-
+-            int sx = Math.max(0, Math.min(cover.getWidth() - 1,
+-                    Math.round((p.nx * .5f + .5f) * (cover.getWidth() - 1))));
+-            int sy = Math.max(0, Math.min(cover.getHeight() - 1,
+-                    Math.round((p.ny * .5f + .5f) * (cover.getHeight() - 1))));
+-            try { p.color = cover.getPixel(sx, sy); }
+-            catch (Exception ignored) { p.color = accent; }
+-            particles[i] = p;
+-        }
+-    }
+-
+     @Override protected void onDraw(Canvas canvas) {
+         super.onDraw(canvas);
+         float w = getWidth(), h = getHeight();
+         if (w <= 0 || h <= 0) return;
++
+         long now = SystemClock.uptimeMillis();
+         if (lastFrame == 0L) lastFrame = now;
+         float dt = Math.min(.08f, Math.max(.001f, (now - lastFrame) / 1000f));
+-        if (spinning) angle = (angle + dt * (17.2f + visualEnergy * 1.8f)) % 360f;
+         lastFrame = now;
+ 
+         sampleAudio(dt);
++        if (spinning) {
++            angle = (angle + dt * (16.2f + visualEnergy * 1.2f)) % 360f;
++            wavePhase = (wavePhase + dt * (.20f + visualEnergy * .08f + visualBass * .08f + visualBeat * .13f)) % 1f;
++        }
+ 
+         float cx = w * .5f, cy = h * .5f;
+-        // V15 view is slightly larger than the actual cover. The spare ring is where
+-        // edge particles can escape instead of being clipped at the old disc boundary.
+-        float r = Math.min(w, h) * .430f;
+-        float pulse = 1f + visualBass * .010f + visualBeat * .022f;
++        // Leave a little more breathing room than V15 so the ripple family can expand
++        // without touching the view boundary.
++        float r = Math.min(w, h) * .418f;
++        float artR = r * .985f;
++        float density = getResources().getDisplayMetrics().density;
+ 
+-        // Album-color halo grows on real low-frequency transients.
+-        float haloBoost = .04f + visualEnergy * .055f + visualBeat * .10f;
+-        paint.setStyle(Paint.Style.FILL);
+-        paint.setShader(null);
+-        paint.setColor(Color.argb((int) (30 + visualBeat * 42),
+-                Color.red(accent), Color.green(accent), Color.blue(accent)));
+-        canvas.drawCircle(cx, cy, r * (1.045f + haloBoost), paint);
++        drawAlbumWaves(canvas, cx, cy, r, density);
+ 
++        // The cover itself stays restrained; bass/beat produce only a subtle breathing scale.
++        float pulse = 1f + visualBass * .006f + visualBeat * .012f;
+         canvas.save();
+         canvas.scale(pulse, pulse, cx, cy);
+         canvas.rotate(angle, cx, cy);
+ 
+-        // Thin premium rim.
++        // Quiet dark outer ring separates the artwork from the luminous waves.
++        paint.setShader(null);
++        paint.setStyle(Paint.Style.FILL);
++        paint.setAlpha(255);
+         paint.setColor(Color.rgb(7, 7, 10));
+         canvas.drawCircle(cx, cy, r, paint);
+-        float artR = r * .982f;
+ 
+         if (cover != null && !cover.isRecycled()) {
+             BitmapShader shader = new BitmapShader(cover, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+@@ -153,7 +113,7 @@ public final class VinylRecordView extends View {
+             m.postTranslate(cx - dw / 2f, cy - dh / 2f);
+             shader.setLocalMatrix(m);
+             paint.setShader(shader);
+-            paint.setAlpha(spinning ? 236 : 255);
++            paint.setAlpha(spinning ? 244 : 255);
+             canvas.drawCircle(cx, cy, artR, paint);
+             paint.setAlpha(255);
+             paint.setShader(null);
+@@ -162,63 +122,70 @@ public final class VinylRecordView extends View {
+             canvas.drawCircle(cx, cy, artR, paint);
+         }
+ 
+-        // The sampled cover-particle layer. Interior particles move only slightly so faces/text
+-        // remain readable; rim particles travel further and form the Mineradio-inspired burst.
+-        if (cover != null && !cover.isRecycled()) {
+-            float time = now / 1000f;
+-            float density = getResources().getDisplayMetrics().density;
+-            float drive = spinning ? (.12f + visualEnergy * .55f + visualBass * .42f + visualBeat * .82f) : .055f;
+-            for (Particle p : particles) {
+-                if (p == null) continue;
+-                float flutter = (float) Math.sin(time * (1.15f + p.drift) + p.phase);
+-                float radialPush = p.edge * artR * (drive * (.018f + p.edge * .058f));
+-                radialPush += p.edge * artR * visualBeat * (.025f + p.edge * .055f);
+-                float tangent = artR * p.edge * (visualTreble * .018f + visualEnergy * .008f) * flutter;
+-                float baseX = cx + p.nx * artR;
+-                float baseY = cy + p.ny * artR;
+-                float cos = (float) Math.cos(p.angle);
+-                float sin = (float) Math.sin(p.angle);
+-                float x = baseX + cos * radialPush - sin * tangent;
+-                float y = baseY + sin * radialPush + cos * tangent;
+-
+-                float lum = (Color.red(p.color) * .299f + Color.green(p.color) * .587f + Color.blue(p.color) * .114f) / 255f;
+-                int alpha = (int) (24 + p.edge * 92 + visualEnergy * 40 + visualBeat * p.edge * 72);
+-                alpha = Math.max(10, Math.min(190, alpha));
+-                int pr = Color.red(p.color), pg = Color.green(p.color), pb = Color.blue(p.color);
+-                // Very dark cover pixels would disappear against the black player. Lift them
+-                // toward the album accent/white while retaining the original sampled hue.
+-                if (lum < .14f) {
+-                    float lift = clamp((.14f - lum) / .14f, 0f, 1f);
+-                    pr = mix(pr, Color.red(accent), .58f * lift);
+-                    pg = mix(pg, Color.green(accent), .58f * lift);
+-                    pb = mix(pb, Color.blue(accent), .58f * lift);
+-                    pr = mix(pr, 255, .16f * lift);
+-                    pg = mix(pg, 255, .16f * lift);
+-                    pb = mix(pb, 255, .16f * lift);
+-                }
+-                particlePaint.setColor(Color.argb(alpha, pr, pg, pb));
+-                float sz = Math.max(.45f * density,
+-                        p.size * density * (.62f + p.edge * .52f + visualTreble * .42f + visualBeat * p.edge * .55f));
+-                canvas.drawCircle(x, y, sz, particlePaint);
+-
+-                // Only sparse edge highlights receive a soft album-colored bloom.
+-                if (p.edge > .90f && p.size > 1.18f && visualBeat > .18f) {
+-                    particlePaint.setColor(Color.argb((int) (alpha * .20f),
+-                            Color.red(accent), Color.green(accent), Color.blue(accent)));
+-                    canvas.drawCircle(x, y, sz * (2.2f + visualBeat * 1.8f), particlePaint);
+-                }
+-            }
+-        }
+-
++        // Fine album-colour rim: visible, but no neon outline.
+         paint.setStyle(Paint.Style.STROKE);
+-        paint.setStrokeWidth(Math.max(1.2f, r * .0065f));
+-        paint.setColor(Color.argb((int) (118 + visualBeat * 84),
++        paint.setStrokeWidth(Math.max(.85f * density, r * .0048f));
++        paint.setColor(Color.argb((int) (88 + visualEnergy * 28 + visualBeat * 38),
+                 Color.red(accent), Color.green(accent), Color.blue(accent)));
+         canvas.drawCircle(cx, cy, artR, paint);
+         paint.setStyle(Paint.Style.FILL);
+         canvas.restore();
+ 
+-        if (spinning || visualEnergy > .01f || visualBeat > .01f) postInvalidateOnAnimation();
++        if (spinning || visualEnergy > .008f || visualBeat > .008f || visualBass > .008f) {
++            postInvalidateOnAnimation();
++        }
++    }
++
++    private void drawAlbumWaves(Canvas canvas, float cx, float cy, float r, float density) {
++        int light = mixColor(accent, Color.WHITE, .28f);
++        int mid = mixColor(accent, Color.WHITE, .07f);
++        int deep = mixColor(accent, Color.BLACK, .22f);
++        SweepGradient sweep = new SweepGradient(cx, cy,
++                new int[]{light, mid, accent, deep, accent, light},
++                new float[]{0f, .17f, .38f, .58f, .78f, 1f});
++        gradientMatrix.reset();
++        gradientMatrix.setRotate(wavePhase * 120f + visualTreble * 10f, cx, cy);
++        sweep.setLocalMatrix(gradientMatrix);
++        wavePaint.setShader(sweep);
++        wavePaint.setStyle(Paint.Style.STROKE);
++        wavePaint.setStrokeCap(Paint.Cap.ROUND);
++
++        // A very soft colour bed under the first ring keeps the effect cohesive rather
++        // than looking like several unrelated outlines.
++        paint.setShader(null);
++        paint.setStyle(Paint.Style.FILL);
++        int haloAlpha = (int) (12 + visualEnergy * 18 + visualBass * 10 + visualBeat * 16);
++        paint.setColor(Color.argb(Math.min(54, haloAlpha),
++                Color.red(accent), Color.green(accent), Color.blue(accent)));
++        canvas.drawCircle(cx, cy, r * (1.018f + visualBass * .010f + visualBeat * .018f), paint);
++
++        for (int i = 0; i < WAVE_COUNT; i++) {
++            // Rings continuously leave the cover rim and fade as they move outward.
++            float phase = (wavePhase + i / (float) WAVE_COUNT) % 1f;
++            float life = 1f - phase;
++            float musicalLift = visualEnergy * .012f + visualBass * .018f + visualBeat * (.015f + life * .025f);
++            float radius = r * (1.022f + phase * .115f + musicalLift);
++
++            float basePresence = spinning ? .31f : .075f;
++            float strength = basePresence + visualEnergy * .34f + visualBass * .28f + visualBeat * (.46f * life);
++            strength *= (.30f + .70f * life);
++            int alpha = Math.max(5, Math.min(126, Math.round(12f + strength * 88f)));
++
++            float coreWidth = density * (.65f + life * .55f + visualBass * 1.10f + visualBeat * (1.15f + life * .95f));
++            coreWidth = Math.min(4.6f * density, coreWidth);
++
++            // Soft outer stroke.
++            wavePaint.setAlpha(Math.max(3, Math.round(alpha * .18f)));
++            wavePaint.setStrokeWidth(coreWidth * (2.8f + visualEnergy * .45f));
++            canvas.drawCircle(cx, cy, radius, wavePaint);
++
++            // Crisp core stroke. Thickness and opacity breathe independently with the track.
++            wavePaint.setAlpha(alpha);
++            wavePaint.setStrokeWidth(coreWidth);
++            canvas.drawCircle(cx, cy, radius, wavePaint);
++        }
++        wavePaint.setAlpha(255);
++        wavePaint.setShader(null);
+     }
+ 
+     private void sampleAudio(float dt) {
+@@ -231,10 +198,10 @@ public final class VinylRecordView extends View {
+                 targetBeat = clamp(audioLevels.beat(), 0f, 1f);
+             } catch (Exception ignored) { }
+         }
+-        visualEnergy = approach(visualEnergy, targetEnergy, dt, targetEnergy > visualEnergy ? 12f : 4.8f);
+-        visualBass = approach(visualBass, targetBass, dt, targetBass > visualBass ? 11f : 4.3f);
+-        visualTreble = approach(visualTreble, targetTreble, dt, targetTreble > visualTreble ? 13f : 5.2f);
+-        visualBeat = approach(visualBeat, targetBeat, dt, targetBeat > visualBeat ? 20f : 8.5f);
++        visualEnergy = approach(visualEnergy, targetEnergy, dt, targetEnergy > visualEnergy ? 11f : 4.4f);
++        visualBass = approach(visualBass, targetBass, dt, targetBass > visualBass ? 10.5f : 4.0f);
++        visualTreble = approach(visualTreble, targetTreble, dt, targetTreble > visualTreble ? 12f : 4.8f);
++        visualBeat = approach(visualBeat, targetBeat, dt, targetBeat > visualBeat ? 18f : 7.5f);
+     }
+ 
+     private static float approach(float old, float target, float dt, float speed) {
+@@ -246,7 +213,11 @@ public final class VinylRecordView extends View {
+         return Math.max(lo, Math.min(hi, v));
+     }
+ 
+-    private static int mix(int a, int b, float t) {
+-        return Math.max(0, Math.min(255, Math.round(a + (b - a) * clamp(t, 0f, 1f))));
++    private static int mixColor(int a, int b, float t) {
++        float f = clamp(t, 0f, 1f);
++        return Color.rgb(
++                Math.round(Color.red(a) + (Color.red(b) - Color.red(a)) * f),
++                Math.round(Color.green(a) + (Color.green(b) - Color.green(a)) * f),
++                Math.round(Color.blue(a) + (Color.blue(b) - Color.blue(a)) * f));
+     }
+ }

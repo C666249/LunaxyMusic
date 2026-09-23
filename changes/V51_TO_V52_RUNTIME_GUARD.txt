@@ -1,0 +1,15 @@
+V51 -> V52 Runtime Golden Guard
+===============================
+Expected app/src/main runtime diff:
+- MODIFIED java/com/xingyu/music/ui/Starfield3DView.java
+
+Verified:
+- V51 runtime files: 82
+- V52 runtime files: 82
+- Runtime diff count: 1
+- Other 81 existing runtime files: SHA-256 identical
+
+Locked areas therefore remain byte-for-byte unchanged, including playback matrix,
+SourceCoordinator, Provider health, SearchRanker/Exact gate, catalogs, Media3 playback,
+download isolation, offline storage/playback, ringtone editor/system sounds, Context Coach,
+LibraryStore/Song/SourceVariant and all existing resources/layouts/manifests.

@@ -1,0 +1,559 @@
+--- /mnt/data/v26baseline/XingyuMusic-V25/settings.gradle.kts	2026-08-07 08:09:53.000000000 +0000
++++ settings.gradle.kts	2026-08-10 10:49:59.170143751 +0000
+@@ -14,5 +14,5 @@
+     }
+ }
+ 
+-rootProject.name = "XingyuMusic"
++rootProject.name = "LunaxyMusic"
+ include(":app")
+--- /mnt/data/v26baseline/XingyuMusic-V25/BUILD_APK.bat	2026-08-10 04:41:43.000000000 +0000
++++ BUILD_APK.bat	2026-08-10 10:49:59.170291845 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   XingyuMusic V16 - Debug APK Build
++echo   LunaxyMusic V26 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\XingyuMusic-V16-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V26-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\XingyuMusic-V16-debug.apk
++echo [OK] APK: %CD%\dist\LunaxyMusic-V26-debug.apk
+ pause
+--- /mnt/data/v26baseline/XingyuMusic-V25/app/build.gradle.kts	2026-08-10 08:52:56.000000000 +0000
++++ app/build.gradle.kts	2026-08-10 10:45:43.533966358 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 28
+-        versionName = "25.0.0"
++        versionCode = 29
++        versionName = "26.0.0"
+     }
+ 
+     buildTypes {
+--- /mnt/data/v26baseline/XingyuMusic-V25/app/src/main/res/values/strings.xml	2026-08-07 08:09:53.000000000 +0000
++++ app/src/main/res/values/strings.xml	2026-08-10 10:45:43.533892201 +0000
+@@ -1,4 +1,4 @@
+ <resources>
+-    <string name="app_name">星雨音乐</string>
++    <string name="app_name">Lunaxy Music</string>
+     <string name="notification_channel">音乐播放</string>
+ </resources>
+--- /mnt/data/v26baseline/XingyuMusic-V25/app/src/main/AndroidManifest.xml	2026-08-10 07:57:02.000000000 +0000
++++ app/src/main/AndroidManifest.xml	2026-08-10 10:45:43.533932840 +0000
+@@ -10,6 +10,7 @@
+ 
+     <application
+         android:allowBackup="true"
++        android:enableOnBackInvokedCallback="true"
+         android:icon="@drawable/icon_stardust"
+         android:roundIcon="@drawable/icon_stardust"
+         android:label="@string/app_name"
+--- /mnt/data/v26baseline/XingyuMusic-V25/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 08:52:56.000000000 +0000
++++ app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 10:49:27.852834335 +0000
+@@ -90,9 +90,9 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Xingyu Music V25.0 – playlist detail and playlist-search semantics are intentionally different.
++ * Lunaxy Music V26.0 – UI/navigation refinement on top of the frozen V25 playback chain.
+  *
+- * V25 keeps the proven audio-resolution/playback core frozen. Tapping a normal row in a saved playlist
++ * V26 keeps the proven audio-resolution/playback core frozen. Tapping a normal row in a saved playlist
+  * still replaces the current queue with the entire playlist and starts at that row. Tapping a result
+  * inside that playlist's search modal is a temporary pick: insert/play only that song and keep the
+  * existing queue, matching global-search behavior.
+@@ -146,7 +146,14 @@
+     private int homeRecommendationScrollX;
+     private boolean restoreHomePosition;
+     private HorizontalScrollView homeRecommendationCarousel;
++    private TextView homeLyricQuoteView;
++    private final List<String> homeLyricQuotes = new ArrayList<>();
++    private final LinkedHashSet<String> homeQuotePrefetchAttempted = new LinkedHashSet<>();
++    private Runnable homeLyricQuoteTicker;
++    private int homeLyricQuoteIndex;
++    private int homeLyricQuoteGeneration;
+     private int playlistVisibleCount = 40;
++    private android.window.OnBackInvokedCallback backInvokedCallback;
+     private Song lastHistorySong;
+     private String lastErrorShown;
+     private List<Song> pendingQueue;
+@@ -282,6 +289,7 @@
+         loadUiPreferences();
+         configureWindow();
+         buildShell();
++        installSystemBackHandler();
+         renderTab();
+         bindService(new Intent(this, PlaybackService.class), connection, BIND_AUTO_CREATE);
+     }
+@@ -619,7 +627,7 @@
+     }
+ 
+     private void showGlassInput(String title, String hint, boolean multiline, String primaryLabel, InputAction action) {
+-        LinearLayout card = modalCard(title, "输入后会保存在本机，不经过星雨音乐服务器");
++        LinearLayout card = modalCard(title, "输入后会保存在本机，不经过 Lunaxy Music 服务器");
+         EditText input = new EditText(this);
+         input.setTypeface(Typeface.DEFAULT);
+         input.setHint(hint); input.setHintTextColor(Color.rgb(105,105,123)); input.setTextColor(Ui.TEXT);
+@@ -677,7 +685,7 @@
+     private void copyText(String text) {
+         try {
+             ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+-            if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Xingyu diagnostics", text == null ? "" : text));
++            if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Lunaxy diagnostics", text == null ? "" : text));
+             toast("已复制诊断信息");
+         } catch (Exception e) { toast("复制失败"); }
+     }
+@@ -692,6 +700,7 @@
+     private void renderTab() {
+         hideSearchSuggestions();
+         activeSearchSuggestions = null;
++        stopHomeLyricQuoteTicker();
+         pageHost.animate().cancel();
+         pageHost.removeAllViews();
+         final boolean renderingHomeRoot = openSmartCollection == null && openPlaylist == null && tab == 0;
+@@ -735,11 +744,22 @@
+         renderTab();
+     }
+ 
++    private void closePlaylistToLibrary() {
++        openPlaylist = null;
++        tab = 2;
++        refreshNav();
++        renderTab();
++    }
++
+     private View pageScaffold(String title, String subtitle, View body) {
+-        return pageScaffold(title, subtitle, body, null);
++        return pageScaffold(title, subtitle, body, null, false);
+     }
+ 
+     private View pageScaffold(String title, String subtitle, View body, View titleAction) {
++        return pageScaffold(title, subtitle, body, titleAction, false);
++    }
++
++    private View pageScaffold(String title, String subtitle, View body, View titleAction, boolean rotatingHomeLyric) {
+         LinearLayout root = Ui.column(this);
+         root.setPadding(Ui.dp(this, 20), Ui.dp(this, 23), Ui.dp(this, 20), Ui.dp(this, 162));
+ 
+@@ -750,12 +770,19 @@
+             LinearLayout titleRow = Ui.row(this);
+             titleRow.setGravity(Gravity.CENTER_VERTICAL);
+             TextView t = Ui.text(this, title, 30.5f, Ui.TEXT, true);
++            t.setSingleLine(true);
++            t.setEllipsize(TextUtils.TruncateAt.END);
+             titleRow.addView(t, new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f));
+-            titleRow.addView(titleAction, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
++            LinearLayout.LayoutParams actionLp = new LinearLayout.LayoutParams(-2, Ui.dp(this, 42));
++            actionLp.leftMargin = Ui.dp(this, 8);
++            titleRow.addView(titleAction, actionLp);
+             root.addView(titleRow, Ui.lp(-1, Ui.dp(this, 48)));
+         }
+         TextView s = Ui.text(this, subtitle, 13.5f, Ui.TEXT_2, false);
++        s.setSingleLine(true);
++        s.setEllipsize(TextUtils.TruncateAt.END);
+         root.addView(s, Ui.lp(-1, Ui.dp(this, 31)));
++        if (rotatingHomeLyric) startHomeLyricQuoteTicker(s);
+ 
+         if (body != null) {
+             LinearLayout.LayoutParams bp = Ui.lp(-1, -2);
+@@ -821,7 +848,7 @@
+             body.addView(recentCarousel(recent), marginTop(8));
+         }
+ 
+-        body.addView(sectionHeader("为你推荐", "本地口味 · 天气与时间"), marginTop(24));
++        body.addView(sectionHeader("为你推荐", ""), marginTop(24));
+         body.addView(recommendationCarousel(), marginTop(8));
+ 
+         if (!playlists.isEmpty()) {
+@@ -829,7 +856,135 @@
+             for (int i = 0; i < Math.min(3, playlists.size()); i++) body.addView(playlistCard(playlists.get(i)), marginTop(8));
+         }
+ 
+-        return pageScaffold(greetingTitle(), "星雨音乐 · 找到想听的，直接播放", body);
++        return pageScaffold(greetingTitle(), "", body, null, true);
++    }
++
++    private void startHomeLyricQuoteTicker(TextView target) {
++        homeLyricQuoteView = target;
++        homeLyricQuoteGeneration++;
++        final int generation = homeLyricQuoteGeneration;
++        homeLyricQuoteIndex = 0;
++        homeLyricQuotes.clear();
++        if (target == null) return;
++        target.setText("正在从你的音乐里找一句歌词…");
++        collectCachedHomeLyricQuotes(homeLyricQuotes, 28);
++        java.util.Collections.shuffle(homeLyricQuotes);
++        if (!homeLyricQuotes.isEmpty()) target.setText("“" + homeLyricQuotes.get(0) + "”");
++
++        homeLyricQuoteTicker = new Runnable() {
++            @Override public void run() {
++                if (generation != homeLyricQuoteGeneration || homeLyricQuoteView != target || target.getParent() == null) return;
++                if (homeLyricQuotes.size() > 1) {
++                    homeLyricQuoteIndex = (homeLyricQuoteIndex + 1) % homeLyricQuotes.size();
++                    String quote = homeLyricQuotes.get(homeLyricQuoteIndex);
++                    target.animate().cancel();
++                    target.animate().alpha(.18f).setDuration(150).withEndAction(() -> {
++                        if (generation != homeLyricQuoteGeneration || homeLyricQuoteView != target) return;
++                        target.setText("“" + quote + "”");
++                        target.animate().alpha(1f).setDuration(220).start();
++                    }).start();
++                }
++                main.postDelayed(this, 3000L);
++            }
++        };
++        main.postDelayed(homeLyricQuoteTicker, 3000L);
++        prefetchHomeLyricQuotes(generation, target);
++    }
++
++    private void stopHomeLyricQuoteTicker() {
++        homeLyricQuoteGeneration++;
++        if (homeLyricQuoteTicker != null) main.removeCallbacks(homeLyricQuoteTicker);
++        homeLyricQuoteTicker = null;
++        homeLyricQuoteView = null;
++    }
++
++    private void collectCachedHomeLyricQuotes(List<String> out, int max) {
++        if (out == null || lyricCache == null || max <= 0) return;
++        List<Song> candidates = new ArrayList<>(homeQuoteSongCandidates().values());
++        java.util.Collections.shuffle(candidates);
++        int scan = Math.min(160, candidates.size());
++        for (int i = 0; i < scan; i++) {
++            if (out.size() >= max) break;
++            String cached = lyricCache.get(candidates.get(i));
++            appendQuoteLines(cached, out, max);
++        }
++    }
++
++    private LinkedHashMap<String, Song> homeQuoteSongCandidates() {
++        LinkedHashMap<String, Song> out = new LinkedHashMap<>();
++        for (Song song : favorites) if (song != null) out.put(song.key(), song);
++        for (ImportedPlaylist playlist : playlists) {
++            if (playlist == null || playlist.songs == null) continue;
++            for (Song song : playlist.songs) if (song != null) out.put(song.key(), song);
++        }
++        return out;
++    }
++
++    private void prefetchHomeLyricQuotes(int generation, TextView target) {
++        if (homeLyricQuotes.size() >= 10 || lyricCache == null) return;
++        List<Song> candidates = new ArrayList<>(homeQuoteSongCandidates().values());
++        java.util.Collections.shuffle(candidates);
++        List<Song> fetch = new ArrayList<>();
++        for (Song song : candidates) {
++            if (fetch.size() >= 6) break;
++            if (song == null || !lyricCache.get(song).trim().isEmpty()) continue;
++            if (!homeQuotePrefetchAttempted.add(song.key())) continue;
++            fetch.add(song);
++        }
++        if (fetch.isEmpty()) return;
++        io.submit(() -> {
++            List<String> found = new ArrayList<>();
++            for (Song song : fetch) {
++                try {
++                    String lrc = "";
++                    com.xingyu.music.model.SourceVariant wy = song.variant("wy");
++                    com.xingyu.music.model.SourceVariant tx = song.variant("tx");
++                    if (wy != null) lrc = netease.lyricData(wy.sourceId).lrc;
++                    else if (tx != null) lrc = qqLyrics.lyric(tx.sourceId);
++                    if (lrc != null && !lrc.trim().isEmpty()) {
++                        lyricCache.put(song, lrc);
++                        appendQuoteLines(lrc, found, 12);
++                    }
++                } catch (Exception ignored) { }
++                if (found.size() >= 12) break;
++            }
++            if (found.isEmpty()) return;
++            main.post(() -> {
++                if (generation != homeLyricQuoteGeneration || homeLyricQuoteView != target) return;
++                LinkedHashSet<String> merged = new LinkedHashSet<>(homeLyricQuotes);
++                merged.addAll(found);
++                homeLyricQuotes.clear();
++                homeLyricQuotes.addAll(merged);
++                java.util.Collections.shuffle(homeLyricQuotes);
++                if (!homeLyricQuotes.isEmpty() && target.getText().toString().startsWith("正在")) {
++                    homeLyricQuoteIndex = 0;
++                    target.setText("“" + homeLyricQuotes.get(0) + "”");
++                }
++            });
++        });
++    }
++
++    private static void appendQuoteLines(String raw, List<String> out, int max) {
++        if (raw == null || raw.trim().isEmpty() || out == null) return;
++        for (LyricLine line : LyricParser.parse(raw)) {
++            if (out.size() >= max) break;
++            String value = line == null || line.text == null ? "" : line.text.trim();
++            if (!isGoodHomeQuote(value) || out.contains(value)) continue;
++            out.add(value);
++        }
++    }
++
++    private static boolean isGoodHomeQuote(String value) {
++        if (value == null) return false;
++        String clean = value.trim();
++        if (clean.length() < 5 || clean.length() > 42) return false;
++        String lower = clean.toLowerCase(Locale.ROOT);
++        if (lower.startsWith("作词") || lower.startsWith("作曲") || lower.startsWith("编曲") ||
++                lower.startsWith("制作") || lower.startsWith("词：") || lower.startsWith("曲：") ||
++                lower.contains("qq音乐") || lower.contains("网易云")) return false;
++        int meaningful = 0;
++        for (int i = 0; i < clean.length(); i++) if (Character.isLetterOrDigit(clean.charAt(i))) meaningful++;
++        return meaningful >= 4;
+     }
+ 
+     private View libraryActionCard(IconView.Type type, String title, int tint) {
+@@ -1786,7 +1941,7 @@
+         TextView bt = Ui.text(this, "返回", 13, Ui.CYAN, true);
+         back.addView(bt, new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
+         back.setClickable(true);
+-        back.setOnClickListener(v -> { openPlaylist = null; renderTab(); });
++        back.setOnClickListener(v -> closePlaylistToLibrary());
+         body.addView(back, Ui.lp(-1, Ui.dp(this, 38)));
+ 
+         LinearLayout hero = Ui.column(this);
+@@ -1805,27 +1960,6 @@
+         heroTop.addView(heroText, new LinearLayout.LayoutParams(0, Ui.dp(this, 78), 1f));
+         hero.addView(heroTop, Ui.lp(-1, Ui.dp(this, 78)));
+ 
+-        LinearLayout actionRow = Ui.row(this);
+-        TextView all = filledAction("从第一首播放", Ui.CYAN, Color.rgb(12, 12, 18));
+-        all.setEnabled(!p.songs.isEmpty());
+-        all.setAlpha(p.songs.isEmpty() ? .42f : 1f);
+-        all.setOnClickListener(v -> { if (!p.songs.isEmpty()) playQueue(p.songs, 0); });
+-        actionRow.addView(all, new LinearLayout.LayoutParams(0, Ui.dp(this, 44), 1f));
+-        Space ag = new Space(this); actionRow.addView(ag, Ui.lp(Ui.dp(this, 9), 1));
+-        FrameLayout add = Ui.iconButton(this, IconView.Type.PLUS, 44, Color.rgb(10, 10, 16), Ui.GREEN);
+-        add.setContentDescription("向歌单添加歌曲");
+-        add.setBackground(Ui.primaryFill(Ui.GREEN, 18, this));
+-        add.setOnClickListener(v -> showAddSongsToPlaylist(p));
+-        actionRow.addView(add, Ui.lp(Ui.dp(this, 52), Ui.dp(this, 44)));
+-
+-        Space manageGap = new Space(this); actionRow.addView(manageGap, Ui.lp(Ui.dp(this, 8), 1));
+-        FrameLayout manage = Ui.iconButton(this, IconView.Type.MORE, 44, Color.rgb(12, 12, 18), Ui.GOLD);
+-        manage.setContentDescription("批量管理歌曲");
+-        manage.setBackground(Ui.primaryFill(Ui.GOLD, 18, this));
+-        manage.setOnClickListener(v -> showSongBatchManager(p.name, p.songs, p.id));
+-        actionRow.addView(manage, Ui.lp(Ui.dp(this, 52), Ui.dp(this, 44)));
+-        LinearLayout.LayoutParams ap = Ui.lp(-1, Ui.dp(this, 44)); ap.topMargin = Ui.dp(this, 12);
+-        hero.addView(actionRow, ap);
+         body.addView(hero, Ui.lp(-1, -2));
+ 
+         body.addView(sectionHeader("歌曲", p.songs.size() + " 首"), marginTop(22));
+@@ -1844,11 +1978,32 @@
+                 hint.setGravity(Gravity.CENTER); body.addView(hint, Ui.lp(-1, Ui.dp(this, 34)));
+             }
+         }
+-        FrameLayout playlistSearch = Ui.iconButton(this, IconView.Type.SEARCH, 42, Ui.CYAN,
+-                Color.argb(24, Color.red(Ui.CYAN), Color.green(Ui.CYAN), Color.blue(Ui.CYAN)));
++        LinearLayout playlistActions = Ui.row(this);
++        playlistActions.setGravity(Gravity.CENTER_VERTICAL);
++
++        FrameLayout playlistSearch = Ui.iconButton(this, IconView.Type.SEARCH, 38, Ui.CYAN,
++                Color.argb(22, Color.red(Ui.CYAN), Color.green(Ui.CYAN), Color.blue(Ui.CYAN)));
+         playlistSearch.setContentDescription("搜索当前歌单");
+         playlistSearch.setOnClickListener(v -> showPlaylistSearch(p));
+-        return pageScaffold("歌单详情", "已保存到本机", body, playlistSearch);
++        playlistActions.addView(playlistSearch, Ui.lp(Ui.dp(this, 38), Ui.dp(this, 38)));
++
++        Space actionGap1 = new Space(this);
++        playlistActions.addView(actionGap1, Ui.lp(Ui.dp(this, 6), 1));
++        FrameLayout add = Ui.iconButton(this, IconView.Type.PLUS, 38, Ui.GREEN,
++                Color.argb(22, Color.red(Ui.GREEN), Color.green(Ui.GREEN), Color.blue(Ui.GREEN)));
++        add.setContentDescription("向歌单添加歌曲");
++        add.setOnClickListener(v -> showAddSongsToPlaylist(p));
++        playlistActions.addView(add, Ui.lp(Ui.dp(this, 38), Ui.dp(this, 38)));
++
++        Space actionGap2 = new Space(this);
++        playlistActions.addView(actionGap2, Ui.lp(Ui.dp(this, 6), 1));
++        FrameLayout manage = Ui.iconButton(this, IconView.Type.MORE, 38, Ui.GOLD,
++                Color.argb(22, Color.red(Ui.GOLD), Color.green(Ui.GOLD), Color.blue(Ui.GOLD)));
++        manage.setContentDescription("批量管理歌曲");
++        manage.setOnClickListener(v -> showSongBatchManager(p.name, p.songs, p.id));
++        playlistActions.addView(manage, Ui.lp(Ui.dp(this, 38), Ui.dp(this, 38)));
++
++        return pageScaffold("歌单详情", "已保存到本机", body, playlistActions);
+     }
+ 
+     /** V15: local, instant search inside one playlist by title or artist. */
+@@ -2701,22 +2856,41 @@
+         texts.addView(Ui.text(this, p.songs.size() + " 首 · " + (p.source.equals("local") ? "本地歌单" : (p.source.equals("tx") ? "QQ 音乐" : "网易云")), 11.3f, Ui.DIM, false), new LinearLayout.LayoutParams(-1, 0, 1f));
+         row.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(this, 52), 1f));
+ 
+-        FrameLayout delete = Ui.iconButton(this, IconView.Type.DELETE, 34, Ui.DIM, Color.TRANSPARENT);
+-        delete.setContentDescription("删除歌单");
+-        delete.setOnClickListener(v -> showGlassMessage("删除歌单", "确定从本机删除《" + p.name + "》吗？音乐平台上的原歌单不会受到影响。", "删除", () -> {
+-            playlists = store.removePlaylist(p.id);
+-            if (openPlaylist != null && p.id.equals(openPlaylist.id)) openPlaylist = null;
+-            renderTab(); toast("已删除《" + p.name + "》");
+-        }, "取消", null));
+-        row.addView(delete, Ui.lp(Ui.dp(this, 34), Ui.dp(this, 34)));
++        FrameLayout more = Ui.iconButton(this, IconView.Type.MORE, 34, Ui.DIM, Color.TRANSPARENT);
++        more.setContentDescription("歌单更多操作");
++        more.setOnClickListener(v -> showPlaylistOptions(p));
++        row.addView(more, Ui.lp(Ui.dp(this, 34), Ui.dp(this, 34)));
+ 
+         IconView arrow = new IconView(this, IconView.Type.BACK, Ui.DIM);
+         arrow.setRotation(180f);
+         row.addView(arrow, Ui.lp(Ui.dp(this, 30), Ui.dp(this, 30)));
+-        row.setOnClickListener(v -> { openPlaylist = p; playlistVisibleCount = 40; renderTab(); });
++        row.setOnClickListener(v -> { tab = 2; openPlaylist = p; playlistVisibleCount = 40; refreshNav(); renderTab(); });
+         return row;
+     }
+ 
++    private void showPlaylistOptions(ImportedPlaylist playlist) {
++        if (playlist == null) return;
++        showGlassOptions(playlist.name, "歌单操作", new String[]{"重命名", "删除"}, which -> {
++            if (which == 0) {
++                showGlassInput("重命名歌单", playlist.name, false, "保存", value -> {
++                    String clean = value == null ? "" : value.trim();
++                    if (clean.isEmpty()) { toast("歌单名称不能为空"); return; }
++                    playlists = store.renamePlaylist(playlist.id, clean);
++                    if (openPlaylist != null && playlist.id.equals(openPlaylist.id)) openPlaylist = playlistById(playlist.id);
++                    renderTab();
++                    toast("已重命名为《" + clean + "》");
++                });
++            } else if (which == 1) {
++                showGlassMessage("删除歌单", "确定从本机删除《" + playlist.name + "》吗？音乐平台上的原歌单不会受到影响。", "删除", () -> {
++                    playlists = store.removePlaylist(playlist.id);
++                    if (openPlaylist != null && playlist.id.equals(openPlaylist.id)) openPlaylist = null;
++                    renderTab();
++                    toast("已删除《" + playlist.name + "》");
++                }, "取消", null);
++            }
++        });
++    }
++
+     private View playlistThumb(ImportedPlaylist p, int sizeDp) {
+         if (p != null && p.songs != null && !p.songs.isEmpty() && !p.songs.get(0).coverUrl.isEmpty()) {
+             ImageView cover = new ImageView(this);
+@@ -3672,11 +3846,20 @@
+         return e == null || e.getMessage() == null ? e == null ? "unknown" : e.getClass().getSimpleName() : e.getMessage();
+     }
+ 
+-    @Override public void onBackPressed() {
++    private void installSystemBackHandler() {
++        if (Build.VERSION.SDK_INT >= 33) {
++            backInvokedCallback = this::handleBackNavigation;
++            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
++                    android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, backInvokedCallback);
++        }
++    }
++
++    private void handleBackNavigation() {
+         if (activeSearchSuggestions != null && activeSearchSuggestions.getVisibility() == View.VISIBLE) {
+             hideSearchSuggestions();
+             return;
+         }
++        // Queue, playlist search, rename/delete sheets and other temporary panels all live in this layer.
+         if (modalOverlay != null && modalOverlay.getVisibility() == View.VISIBLE) {
+             hideModal();
+             return;
+@@ -3690,22 +3873,30 @@
+             return;
+         }
+         if (openPlaylist != null) {
+-            openPlaylist = null;
+-            renderTab();
++            closePlaylistToLibrary();
+             return;
+         }
+-        // Root tabs behave like navigation levels: Back returns to Home instead of exiting.
++        // Root tabs are one navigation level below Home.
+         if (tab != 0) {
+             tab = 0;
+             refreshNav();
+             renderTab();
+             return;
+         }
+-        // At the Home root, background the task rather than finishing the Activity.
++        // Home is the root: background instead of finishing so accidental Back never kills playback/UI state.
+         moveTaskToBack(true);
+     }
+ 
++    @Override public void onBackPressed() {
++        handleBackNavigation();
++    }
++
+     @Override protected void onDestroy() {
++        stopHomeLyricQuoteTicker();
++        if (Build.VERSION.SDK_INT >= 33 && backInvokedCallback != null) {
++            try { getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backInvokedCallback); } catch (Exception ignored) { }
++            backInvokedCallback = null;
++        }
+         if (pendingSuggestionRunnable != null) main.removeCallbacks(pendingSuggestionRunnable);
+         if (lyricsResumeRunnable != null) main.removeCallbacks(lyricsResumeRunnable);
+         if (lyricScrollSettleRunnable != null) main.removeCallbacks(lyricScrollSettleRunnable);
+--- /mnt/data/v26baseline/XingyuMusic-V25/app/src/main/java/com/xingyu/music/data/LibraryStore.java	2026-08-10 08:30:32.000000000 +0000
++++ app/src/main/java/com/xingyu/music/data/LibraryStore.java	2026-08-10 10:45:43.533819341 +0000
+@@ -91,7 +91,8 @@
+             if(p.id.equals(id)){
+                 List<Song> songs=new ArrayList<>(p.songs); boolean exists=false;
+                 for(Song s:songs) if(s.key().equals(song.key())){exists=true;break;}
+-                if(!exists) songs.add(song);
++                // Newly added songs belong at the top of a saved playlist. Existing songs keep position.
++                if(!exists) songs.add(0,song);
+                 out.add(new ImportedPlaylist(p.id,p.name,p.source,songs,p.importedAt));
+             } else out.add(p);
+         }
+@@ -102,20 +103,34 @@
+         List<ImportedPlaylist> src=playlists(), out=new ArrayList<>();
+         for(ImportedPlaylist p:src){
+             if(p.id.equals(id)){
+-                List<Song> songs=new ArrayList<>(p.songs);
++                List<Song> songs=new ArrayList<>();
++                Set<String> existingKeys=new HashSet<>();
++                for(Song current:p.songs) if(current!=null) existingKeys.add(current.key());
++                Set<String> addedKeys=new HashSet<>();
++                // Preserve the user's picker order while placing only genuinely new songs first.
+                 if(incoming!=null){
+                     for(Song candidate:incoming){
+-                        if(candidate==null) continue;
+-                        boolean exists=false;
+-                        for(Song s:songs) if(s.key().equals(candidate.key())){exists=true;break;}
+-                        if(!exists) songs.add(candidate);
++                        if(candidate==null||existingKeys.contains(candidate.key())||!addedKeys.add(candidate.key())) continue;
++                        songs.add(candidate);
+                     }
+                 }
++                songs.addAll(p.songs);
+                 out.add(new ImportedPlaylist(p.id,p.name,p.source,songs,p.importedAt));
+             } else out.add(p);
+         }
+         savePlaylists(out); return out;
+     }
++
++    public List<ImportedPlaylist> renamePlaylist(String id,String newName){
++        String clean=newName==null?"":newName.trim();
++        if(id==null||clean.isEmpty()) return playlists();
++        List<ImportedPlaylist> src=playlists(), out=new ArrayList<>();
++        for(ImportedPlaylist p:src){
++            if(p.id.equals(id)) out.add(new ImportedPlaylist(p.id,clean,p.source,p.songs,p.importedAt));
++            else out.add(p);
++        }
++        savePlaylists(out); return out;
++    }
+ 
+     /** Remove multiple songs from one locally stored playlist copy. */
+     public List<ImportedPlaylist> removeSongsFromPlaylist(String id,List<String> keys){
+--- /mnt/data/v26baseline/XingyuMusic-V25/app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-10 06:03:57.000000000 +0000
++++ app/src/main/java/com/xingyu/music/playback/PlaybackService.java	2026-08-10 10:46:02.687555274 +0000
+@@ -666,7 +666,7 @@
+ 
+     private Notification buildNotification(boolean playing) {
+         Song s = currentSong();
+-        String title = s == null ? "星雨音乐" : s.title;
++        String title = s == null ? "Lunaxy Music" : s.title;
+         String sub = s == null ? "准备播放" : s.artist;
+         PendingIntent content = PendingIntent.getActivity(this, 11, new Intent(this, MainActivity.class),
+                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);

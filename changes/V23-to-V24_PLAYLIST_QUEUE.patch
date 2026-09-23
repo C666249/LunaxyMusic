@@ -1,0 +1,74 @@
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V24.0_更新说明.md' '--exclude=V24.0_自测结果.txt' /mnt/data/v24baseline/app/build.gradle.kts /mnt/data/v24work/XingyuMusic-V24/app/build.gradle.kts
+--- /mnt/data/v24baseline/app/build.gradle.kts	2026-08-10 08:30:32.000000000 +0000
++++ /mnt/data/v24work/XingyuMusic-V24/app/build.gradle.kts	2026-08-10 08:42:54.516882276 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 26
+-        versionName = "23.0.0"
++        versionCode = 27
++        versionName = "24.0.0"
+     }
+ 
+     buildTypes {
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V24.0_更新说明.md' '--exclude=V24.0_自测结果.txt' /mnt/data/v24baseline/app/src/main/java/com/xingyu/music/MainActivity.java /mnt/data/v24work/XingyuMusic-V24/app/src/main/java/com/xingyu/music/MainActivity.java
+--- /mnt/data/v24baseline/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 08:30:32.000000000 +0000
++++ /mnt/data/v24work/XingyuMusic-V24/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 08:44:08.421094049 +0000
+@@ -90,11 +90,11 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Xingyu Music V23.0 – recent-play collection page + 50-track history.
++ * Xingyu Music V24.0 – real playlist row-to-queue behavior.
+  *
+- * V23 keeps the proven audio-resolution/playback core frozen. The Home recent shelf remains compact,
+- * while “全部播放” now opens a real recent-play collection page instead of immediately replacing
+- * the queue. Recent history persistence is expanded to 50 tracks. No audio URL logic changes.
++ * V24 keeps the proven audio-resolution/playback core frozen. In saved playlist detail pages, tapping
++ * any song now replaces the current playback queue with the entire playlist and starts at that song,
++ * matching Daily / Private / Weather collections. Generic search-result taps remain single-song.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(4);
+@@ -1833,7 +1833,7 @@
+         } else {
+             int visible = Math.min(Math.max(40, playlistVisibleCount), p.songs.size());
+             List<Song> pageSongs = new ArrayList<>(p.songs.subList(0, visible));
+-            body.addView(songList(pageSongs, p.songs), marginTop(6));
++            body.addView(playlistSongList(pageSongs, p.songs), marginTop(6));
+             if (visible < p.songs.size()) {
+                 int left = p.songs.size() - visible;
+                 TextView more = outlineAction("继续加载 " + Math.min(40, left) + " 首");
+@@ -1963,6 +1963,31 @@
+         }
+         return box;
+     }
++
++    /**
++     * V24: a real playlist detail installs the whole playlist as the playback queue when a row
++     * is tapped, then starts from that exact row. This intentionally differs from generic search
++     * results, where tapping one result still inserts/plays only that single song.
++     */
++    private View playlistSongList(List<Song> display, List<Song> fullPlaylist) {
++        LinearLayout box = Ui.column(this);
++        for (int i = 0; i < display.size(); i++) {
++            Song song = display.get(i);
++            int resolvedIndex = -1;
++            // display is normally a slice copied from fullPlaylist, so identity gives the exact
++            // occurrence even if a user-created playlist happens to contain duplicate song keys.
++            for (int q = 0; q < fullPlaylist.size(); q++) {
++                if (fullPlaylist.get(q) == song) { resolvedIndex = q; break; }
++            }
++            if (resolvedIndex < 0) resolvedIndex = indexByKey(fullPlaylist, song.key());
++            final int queueIndex = resolvedIndex >= 0 ? resolvedIndex : Math.min(i, Math.max(0, fullPlaylist.size() - 1));
++
++            View row = songRow(song, fullPlaylist, queueIndex);
++            row.setOnClickListener(v -> playQueue(fullPlaylist, queueIndex));
++            box.addView(row, marginTop(i == 0 ? 0 : 7));
++        }
++        return box;
++    }
+ 
+     private int indexByKey(List<Song> list, String key) {
+         for (int i = 0; i < list.size(); i++) if (list.get(i).key().equals(key)) return i;

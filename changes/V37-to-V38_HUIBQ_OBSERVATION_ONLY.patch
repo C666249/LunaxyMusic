@@ -1,0 +1,206 @@
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=V38*' '--exclude=README_验收说明.txt' /mnt/data/v38work/LunaxyMusic-V37/BUILD_APK.bat /mnt/data/v38work/LunaxyMusic-V38/BUILD_APK.bat
+--- /mnt/data/v38work/LunaxyMusic-V37/BUILD_APK.bat	2026-08-11 04:14:11.000000000 +0000
++++ /mnt/data/v38work/LunaxyMusic-V38/BUILD_APK.bat	2026-08-11 04:54:47.146950359 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   LunaxyMusic V37 - Debug APK Build
++echo   LunaxyMusic V38 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V37-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V38-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\LunaxyMusic-V37-debug.apk
++echo [OK] APK: %CD%\dist\LunaxyMusic-V38-debug.apk
+ pause
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=V38*' '--exclude=README_验收说明.txt' /mnt/data/v38work/LunaxyMusic-V37/app/build.gradle.kts /mnt/data/v38work/LunaxyMusic-V38/app/build.gradle.kts
+--- /mnt/data/v38work/LunaxyMusic-V37/app/build.gradle.kts	2026-08-11 04:14:11.000000000 +0000
++++ /mnt/data/v38work/LunaxyMusic-V38/app/build.gradle.kts	2026-08-11 04:54:47.146906174 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 40
+-        versionName = "37.0.0"
++        versionCode = 41
++        versionName = "38.0.0"
+     }
+ 
+     buildTypes {
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=V38*' '--exclude=README_验收说明.txt' /mnt/data/v38work/LunaxyMusic-V37/app/src/main/java/com/xingyu/music/MainActivity.java /mnt/data/v38work/LunaxyMusic-V38/app/src/main/java/com/xingyu/music/MainActivity.java
+--- /mnt/data/v38work/LunaxyMusic-V37/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 04:14:11.000000000 +0000
++++ /mnt/data/v38work/LunaxyMusic-V38/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 04:54:47.146635964 +0000
+@@ -49,6 +49,7 @@
+ import android.widget.TextView;
+ 
+ import com.xingyu.music.data.LibraryStore;
++import com.xingyu.music.data.ResolverHttpDiagnostics;
+ import com.xingyu.music.data.LyricCacheStore;
+ import com.xingyu.music.data.LyricMatchStore;
+ import com.xingyu.music.data.LyricMatcher;
+@@ -92,7 +93,7 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V37.0 – Playback-Safe edition.
++ * Lunaxy Music V38.0 – Playback-Safe + observation-only diagnostics.
+  *
+  * The optional music download/offline subsystem has been removed completely. The QQ/NetEase
+  * network playback path is restored byte-for-byte to the proven V29 stable chain; current UI,
+@@ -3556,7 +3557,10 @@
+         showGlassMessage("这首暂时没接通", error == null ? "当前线路播放失败，已经停止重复请求。" : error,
+                 "查看诊断", () -> {
+                     String detail = playback == null ? "暂无诊断信息" : playback.diagnostics();
+-                    showGlassMessage("播放诊断", detail, "关闭", null, "复制", () -> copyText(detail));
++                    String httpObservation = ResolverHttpDiagnostics.text();
++                    if (!httpObservation.isEmpty()) detail = detail + "\n\n" + httpObservation;
++                    final String diagnosticText = detail;
++                    showGlassMessage("播放诊断", diagnosticText, "关闭", null, "复制", () -> copyText(diagnosticText));
+                 }, "关闭", null);
+     }
+ 
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=V38*' '--exclude=README_验收说明.txt' /mnt/data/v38work/LunaxyMusic-V37/app/src/main/java/com/xingyu/music/data/Http.java /mnt/data/v38work/LunaxyMusic-V38/app/src/main/java/com/xingyu/music/data/Http.java
+--- /mnt/data/v38work/LunaxyMusic-V37/app/src/main/java/com/xingyu/music/data/Http.java	2026-08-08 04:58:53.000000000 +0000
++++ /mnt/data/v38work/LunaxyMusic-V38/app/src/main/java/com/xingyu/music/data/Http.java	2026-08-11 04:54:47.145349179 +0000
+@@ -102,7 +102,11 @@
+         String text = read(in);
+         Map<String,String> responseHeaders = flattenHeaders(c);
+         c.disconnect();
+-        return new Response(code, text, finalUrl, responseHeaders);
++        Response response = new Response(code, text, finalUrl, responseHeaders);
++        // V38 observation-only hook: summarizes an already-completed Huibq response.
++        // It does not perform/retry requests and cannot mutate the response or route health.
++        ResolverHttpDiagnostics.observe(url, response);
++        return response;
+     }
+ 
+     private static HttpURLConnection open(String method, String url, Map<String,String> headers, boolean redirects, int connectMs, int readMs) throws Exception {
+diff -ruN '--exclude=changes' '--exclude=SHA256SUMS.txt' '--exclude=V37*' '--exclude=V38*' '--exclude=README_验收说明.txt' /mnt/data/v38work/LunaxyMusic-V37/app/src/main/java/com/xingyu/music/data/ResolverHttpDiagnostics.java /mnt/data/v38work/LunaxyMusic-V38/app/src/main/java/com/xingyu/music/data/ResolverHttpDiagnostics.java
+--- /mnt/data/v38work/LunaxyMusic-V37/app/src/main/java/com/xingyu/music/data/ResolverHttpDiagnostics.java	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/v38work/LunaxyMusic-V38/app/src/main/java/com/xingyu/music/data/ResolverHttpDiagnostics.java	2026-08-11 04:55:17.606715151 +0000
+@@ -0,0 +1,118 @@
++package com.xingyu.music.data;
++
++import java.net.URI;
++import java.text.SimpleDateFormat;
++import java.util.ArrayList;
++import java.util.Date;
++import java.util.List;
++import java.util.Locale;
++import java.util.Map;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
++/**
++ * Observation-only HTTP trace for the bundled Huibq endpoint.
++ *
++ * This class never performs a request, never retries, never mutates source health,
++ * and never changes a response. It only summarizes a response that Http has already
++ * received so a later "unknow error" can be diagnosed without changing V14 routing.
++ */
++public final class ResolverHttpDiagnostics {
++    private static final int MAX = 12;
++    private static final List<String> lines = new ArrayList<>();
++    private static final String HUIBQ_HOST = "lxmusicapi.onrender.com";
++    private static final Pattern CODE = Pattern.compile("[\\\"']?code[\\\"']?\\s*:\\s*([\\\"']?[^,}\\s\\\"']+[\\\"']?)", Pattern.CASE_INSENSITIVE);
++    private static final Pattern MSG = Pattern.compile("[\\\"']?msg[\\\"']?\\s*:\\s*[\\\"']([^\\\"']{0,160})[\\\"']", Pattern.CASE_INSENSITIVE);
++
++    private ResolverHttpDiagnostics() { }
++
++    public static void observe(String url, Http.Response response) {
++        try {
++            if (response == null || !isHuibq(url)) return;
++            String contentType = header(response.headers, "Content-Type");
++            String body = summarizeBody(response.body);
++            StringBuilder detail = new StringBuilder();
++            detail.append("Huibq HTTP ").append(response.code);
++            if (!contentType.isEmpty()) detail.append(" · ").append(shorten(contentType, 72));
++            if (!body.isEmpty()) detail.append(" · ").append(body);
++            add(detail.toString());
++        } catch (Exception ignored) {
++            // Diagnostics must be impossible to turn into a playback failure.
++        }
++    }
++
++    public static synchronized String text() {
++        if (lines.isEmpty()) return "";
++        StringBuilder b = new StringBuilder();
++        b.append("--- Huibq HTTP 纯观察（不参与选路/学习） ---");
++        for (String line : lines) b.append('\n').append(line);
++        return b.toString();
++    }
++
++    private static synchronized void add(String detail) {
++        if (lines.size() >= MAX) lines.remove(0);
++        lines.add(time() + "  " + detail);
++    }
++
++    private static boolean isHuibq(String url) {
++        if (url == null || url.isEmpty()) return false;
++        try {
++            String host = new URI(url).getHost();
++            return host != null && HUIBQ_HOST.equalsIgnoreCase(host);
++        } catch (Exception ignored) {
++            return url.contains(HUIBQ_HOST);
++        }
++    }
++
++    private static String header(Map<String,String> headers, String name) {
++        if (headers == null || headers.isEmpty()) return "";
++        for (Map.Entry<String,String> e : headers.entrySet()) {
++            if (e.getKey() != null && name.equalsIgnoreCase(e.getKey())) return safe(e.getValue());
++        }
++        return "";
++    }
++
++    private static String summarizeBody(String raw) {
++        String t = raw == null ? "" : raw.trim();
++        if (t.isEmpty()) return "body=empty";
++        String oneLine = t.replaceAll("\\s+", " ");
++        boolean jsonLike = oneLine.startsWith("{") || oneLine.startsWith("[");
++        if (jsonLike) {
++            String code = match(CODE, oneLine);
++            String msg = match(MSG, oneLine);
++            StringBuilder b = new StringBuilder("body=json");
++            if (!code.isEmpty()) b.append(" code=").append(shorten(stripQuotes(code), 32));
++            if (!msg.isEmpty()) b.append(" msg=").append(shorten(msg, 96));
++            if (code.isEmpty() && msg.isEmpty()) b.append(" snippet=\"").append(shorten(redactUrl(oneLine), 120)).append("\"");
++            return b.toString();
++        }
++        return "body=text \"" + shorten(redactUrl(oneLine), 140) + "\"";
++    }
++
++    private static String match(Pattern p, String s) {
++        Matcher m = p.matcher(s == null ? "" : s);
++        return m.find() ? safe(m.group(1)) : "";
++    }
++
++    private static String stripQuotes(String s) {
++        String v = safe(s).trim();
++        if (v.length() >= 2 && ((v.startsWith("\"") && v.endsWith("\"")) || (v.startsWith("'") && v.endsWith("'")))) {
++            return v.substring(1, v.length() - 1);
++        }
++        return v;
++    }
++
++    private static String redactUrl(String s) {
++        // Never surface a playable media URL in diagnostics. Service/error URLs are reduced to a marker.
++        return safe(s).replaceAll("https?://[^\\s\\\"']+", "<url-redacted>");
++    }
++
++    private static String shorten(String s, int max) {
++        String v = safe(s);
++        if (v.length() <= max) return v;
++        return v.substring(0, Math.max(1, max)) + "…";
++    }
++
++    private static String safe(String s) { return s == null ? "" : s; }
++    private static String time() { return new SimpleDateFormat("HH:mm:ss.SSS", Locale.ROOT).format(new Date()); }
++}

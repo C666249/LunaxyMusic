@@ -1,0 +1,18 @@
+Lunaxy Music V36 · DOWNLOAD PATH GUARD
+Baseline: V35 download policy/path must remain byte-identical in this UI-only release.
+
+PASS  app/src/main/java/com/xingyu/music/data/DownloadPolicy.java
+  V35 095c73f193dd319a0cd29ab4190dfdc599fe3d7dcea04a3a09701be02530bdd3
+  V36 095c73f193dd319a0cd29ab4190dfdc599fe3d7dcea04a3a09701be02530bdd3
+
+PASS  app/src/main/java/com/xingyu/music/data/DownloadSourceResolver.java
+  V35 c490e7483ed2957ec5f5438e677ecf1c460ceaeeaf8436089250062e5037ceed
+  V36 c490e7483ed2957ec5f5438e677ecf1c460ceaeeaf8436089250062e5037ceed
+
+PASS  app/src/main/java/com/xingyu/music/data/OfflineDownloadManager.java
+  V35 becdb32ed1a8748ee5540245e101df1f05bf75fa723ba96ad6c811d8dc430cb3
+  V36 becdb32ed1a8748ee5540245e101df1f05bf75fa723ba96ad6c811d8dc430cb3
+
+Result: 3/3 PASS
+
+V36 does not alter download behavior. QQ-containing tracks remain hard-disabled for download; NetEase download remains the V35 READY-cache-only path.

@@ -1,0 +1,9 @@
+Lunaxy Music V75 — app/src/main runtime diff against V74
+
+V74_RUNTIME_FILES=119
+V75_RUNTIME_FILES=119
+CHANGED=1
+ADDED=0
+DELETED=0
+
+CHANGED	java/com/xingyu/music/MainActivity.java

@@ -1,0 +1,26 @@
+XingyuMusic V19 播放核心保护检查
+基线：V18 Full
+结论：以下受保护播放/音源文件全部 SHA-256 一致。
+总体：PASS，播放核心 0 改动
+
+OK  app/src/main/java/com/xingyu/music/data/AudioUrlProbe.java  522d2384d2e1b014b7eb4bbeafc5cdf56f5f34720ec695684aa4458ab928fa2c
+OK  app/src/main/java/com/xingyu/music/data/Http.java  2b0bcc2492416944785f1e1221d5a420e59fd2097d1a3e7cb010a549629c2092
+OK  app/src/main/java/com/xingyu/music/data/LibraryStore.java  0d8eaf627eebe00f29743d68f2429127e3086248b693ca5f1adb98a396acb5dc
+OK  app/src/main/java/com/xingyu/music/data/LxSourceRuntime.java  7f467647aeae0497b1857718c280ae7dff18797dbb3ea1706ca12d8c61f28e2a
+OK  app/src/main/java/com/xingyu/music/data/LyricParser.java  155a6ed74c83d066156432208620617928b580fe402f6fc92d005c8326c58b5e
+OK  app/src/main/java/com/xingyu/music/data/MultiSourceManager.java  9ccb4d48e1ddc97881069a6241d35527f2dab76163f075f57c07c35c4f26ea04
+OK  app/src/main/java/com/xingyu/music/data/NeteaseApi.java  5074d13bb9b90fd2c60f3069641920639d6ca610704bb6f6c62587404fa9f795
+OK  app/src/main/java/com/xingyu/music/data/NeteaseCrypto.java  476bdd0f8128f1cadd334a883f40b8d8421b90d32dccbcef03069fc69b4d7dff
+OK  app/src/main/java/com/xingyu/music/data/PlaybackTrace.java  24ce07eaeb3e28264dde1f0deea0c4a3aad8e7556ebb181b79cec6d88ca5366b
+OK  app/src/main/java/com/xingyu/music/data/PlaybackUrlStore.java  013d45537090f2686e6833ea4273991ab1ca23c32f49b48999b33f94ef0440e6
+OK  app/src/main/java/com/xingyu/music/data/QQMusicApi.java  bd36e05e69bf8aeee5ff12ef55b18a0a672bcdd93604b7758eb6e2e26e67a384
+OK  app/src/main/java/com/xingyu/music/data/ResolverProvider.java  dcd816e418966bdaf54bfed67c025a1ce0a56d6d98bd6192332ff197f5135068
+OK  app/src/main/java/com/xingyu/music/data/SearchRanker.java  144a5ed0f5ee6d563861994f616ca9c8436191fca0e7f1773ce010550aed07ad
+OK  app/src/main/java/com/xingyu/music/data/SourceCoordinator.java  cdcc6afe54a7a70251a64689a1fa851eda251d220ec4438bd4c607018c86b37c
+OK  app/src/main/java/com/xingyu/music/data/SourceHealthStore.java  7a22aaf0acd69f4e3d52ce7ddace4ac469a013282df263b4ffac8f80591cb594
+OK  app/src/main/java/com/xingyu/music/data/SourceScriptStore.java  590e3169ba46b75d043a41cfc109d8f2fd14e77bc8fcc50178955e0467e062f2
+OK  app/src/main/java/com/xingyu/music/data/V14PlaybackStateMigration.java  9cbde513ff5aefd43987ef155a0e056b3778559974d53236daa9d6802c88e4a1
+OK  app/src/main/java/com/xingyu/music/playback/BeatAudioProcessor.java  cd99b6b52d344af9ab2782cea7fa58957a4f38be7fd5650ee489f51db2e9b72f
+OK  app/src/main/java/com/xingyu/music/playback/PlaybackService.java  0fad6065fbb1805b18f3673178460a5d0c5e05bb87257c46f9f505bf96253dc7
+OK  app/src/main/assets/source/huibq-latest.js  a9adeb456690b523008038224091cee31977606302d79082eb06adb3c75c9146
+OK  app/src/main/AndroidManifest.xml  3e88a297df235cf54b02144ae072985c099d2f3eb0c4499675abc637c39e0714

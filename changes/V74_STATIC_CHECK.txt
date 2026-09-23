@@ -1,0 +1,17 @@
+Lunaxy Music V74 — Static Check
+
+PASS app/src/main runtime V73=119 / V74=119 / changed=1 / added=0 / deleted=0
+PASS Java delimiter=79/79
+PASS XML parse=17/17
+PASS PNG structure=22/22
+PASS versionCode=740 / versionName=74.0.0
+PASS Locked Core=25/25
+PASS MainActivity guard=11/11
+PASS PlaybackService guard=18/18
+PASS no_nowSource
+PASS no_bindNowPlayingSourceText
+PASS song_info_sources_preserved
+PASS three_equal_slots
+PASS lyric_before_favorite_before_add
+PASS sleep_service_identical
+PASS stale-now-playing-source refs=0

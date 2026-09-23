@@ -1,0 +1,276 @@
+--- /tmp/v43compare/SunflowerMusic-V4.3/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-12 04:28:57.000000000 +0000
++++ app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-12 04:56:27.960154012 +0000
+@@ -85,6 +85,7 @@
+ import com.xingyu.music.playback.PlaybackService;
+ import com.xingyu.music.ui.AudioLevelProvider;
+ import com.xingyu.music.ui.ColorPickerView;
++import com.xingyu.music.ui.ContextCoachOverlay;
+ import com.xingyu.music.ui.IconView;
+ import com.xingyu.music.ui.ImageLoader;
+ import com.xingyu.music.ui.LyricLineView;
+@@ -113,7 +114,7 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Sunflower Music 3.2 test branch, forked from the Lunaxy Music V47 golden UI/data baseline.
++ * Sunflower Music 4.4 experimental branch, continuing from the V4.3 locked playback/download/ringtone baseline.
+  *
+  * V47 search, playlists, lyrics, recommendation UI and queue interaction remain intentionally stable.
+  * V3 extends the experimental playback domain into a multi-catalog route matrix: TX/KW/KG/WY
+@@ -208,6 +209,18 @@
+ 
+     // V27 first-run coach marks. UI-only: never touches playback/source routing.
+     private OnboardingOverlay onboardingOverlay;
++    // V4.4 scene-triggered hidden-feature teaching. UI-only and persisted separately from onboarding.
++    private ContextCoachOverlay contextCoachOverlay;
++    private String activeContextCoachId = "";
++    private final LinkedHashSet<String> deferredContextCoachThisSession = new LinkedHashSet<>();
++    private static final String COACH_PREFS = "sunflower_context_coach_v1";
++    private static final String COACH_LYRIC_SEEK = "lyric_seek";
++    private static final String COACH_MULTI_CATALOG = "multi_catalog";
++    private static final String COACH_PLAYLIST_QUEUE = "playlist_queue_takeover";
++    private static final String COACH_IMPORT_PLAYLIST = "import_playlist";
++    private static final String COACH_OFFLINE_SYSTEM = "offline_system_sound";
++    private static final String COACH_OFFLINE_RINGTONE = "offline_ringtone";
++    private static final String COACH_RINGTONE_CLIP = "ringtone_clip";
+     private boolean onboardingStarted;
+     private int onboardingStep;
+     private ScrollView onboardingHomeScroll;
+@@ -651,6 +664,7 @@
+ 
+     private interface SimpleAction { void run(); }
+     private interface InputAction { void run(String value); }
++    private interface ViewAction { void run(View view); }
+     private interface OptionAction { void run(int index); }
+     private interface PlaylistAction { void run(ImportedPlaylist playlist); }
+ 
+@@ -793,6 +807,10 @@
+     }
+ 
+     private void showGlassInput(String title, String hint, boolean multiline, String primaryLabel, InputAction action) {
++        showGlassInput(title, hint, multiline, primaryLabel, action, null);
++    }
++
++    private void showGlassInput(String title, String hint, boolean multiline, String primaryLabel, InputAction action, ViewAction onInputReady) {
+         LinearLayout card = modalCard(title, "输入后会保存在本机，不经过 Sunflower Music 服务器");
+         EditText input = new EditText(this);
+         input.setTypeface(Typeface.DEFAULT);
+@@ -809,6 +827,7 @@
+         actions.addView(ok,Ui.lp(Ui.dp(this,112),Ui.dp(this,46)));
+         LinearLayout.LayoutParams ap=Ui.lp(-1,Ui.dp(this,46));ap.topMargin=Ui.dp(this,14);card.addView(actions,ap);
+         presentInputModal(card); input.requestFocus();
++        if (onInputReady != null) input.postDelayed(() -> onInputReady.run(input), 180L);
+     }
+ 
+     private void presentInputModal(View card) {
+@@ -1162,6 +1181,84 @@
+         onboardingStarted = false;
+     }
+ 
++    // V4.4 Context Coach ------------------------------------------------------
++    // Separate from the five-step first-run tour: a hidden-feature tip appears only when the
++    // relevant scene actually exists. "知道了" persists completion; "稍后再说" suppresses it only
++    // for this process so the user can encounter it naturally on a future launch.
++    private boolean contextCoachDone(String id) {
++        if (id == null || id.isEmpty()) return true;
++        return getSharedPreferences(COACH_PREFS, MODE_PRIVATE).getBoolean(id, false);
++    }
++
++    private void markContextCoachDone(String id) {
++        if (id == null || id.isEmpty()) return;
++        getSharedPreferences(COACH_PREFS, MODE_PRIVATE).edit().putBoolean(id, true).apply();
++        deferredContextCoachThisSession.remove(id);
++    }
++
++    private boolean canShowContextCoach(String id, View target) {
++        if (isFinishing() || appRoot == null || target == null || id == null || id.isEmpty()) return false;
++        if (contextCoachDone(id) || deferredContextCoachThisSession.contains(id)) return false;
++        if (onboardingStarted || (onboardingOverlay != null && onboardingOverlay.getVisibility() == View.VISIBLE)) return false;
++        // Fresh installs finish the primary tour before contextual tips begin.
++        if (!getSharedPreferences("sunflower_onboarding", MODE_PRIVATE).getBoolean("first_run_guide_v1_done", false)) return false;
++        return contextCoachOverlay == null;
++    }
++
++    private void maybeShowContextCoach(String id, View target, String title, String body) {
++        if (!canShowContextCoach(id, target)) return;
++        if (!target.isAttachedToWindow() || target.getWidth() <= 0 || target.getHeight() <= 0 || !target.isShown()) {
++            target.postDelayed(() -> {
++                if (canShowContextCoach(id, target) && target.isAttachedToWindow() && target.isShown())
++                    showContextCoachNow(id, target, title, body);
++            }, 120L);
++            return;
++        }
++        showContextCoachNow(id, target, title, body);
++    }
++
++    private void showContextCoachNow(String id, View target, String title, String body) {
++        if (!canShowContextCoach(id, target)) return;
++        activeContextCoachId = id;
++        contextCoachOverlay = new ContextCoachOverlay(this);
++        appRoot.addView(contextCoachOverlay, Ui.frame(-1, -1, Gravity.FILL));
++        contextCoachOverlay.setTip(target, title, body, new ContextCoachOverlay.Callback() {
++            @Override public void onLater() {
++                deferredContextCoachThisSession.add(id);
++                dismissContextCoach();
++            }
++            @Override public void onGotIt() {
++                markContextCoachDone(id);
++                dismissContextCoach();
++            }
++        });
++        contextCoachOverlay.bringToFront();
++        contextCoachOverlay.post(contextCoachOverlay::refreshTarget);
++    }
++
++    private void dismissContextCoach() {
++        if (contextCoachOverlay != null) {
++            try {
++                ViewGroup parent = (ViewGroup) contextCoachOverlay.getParent();
++                if (parent != null) parent.removeView(contextCoachOverlay);
++            } catch (Exception ignored) { }
++            contextCoachOverlay = null;
++        }
++        activeContextCoachId = "";
++    }
++
++    private void deferActiveContextCoach() {
++        if (!activeContextCoachId.isEmpty()) deferredContextCoachThisSession.add(activeContextCoachId);
++        dismissContextCoach();
++    }
++
++    private void teachMultiCatalogIfNeeded(View badge, Song song) {
++        if (song == null || badge == null || song.variants().size() < 2 || tab != 1 || searchMetadataPending) return;
++        maybeShowContextCoach(COACH_MULTI_CATALOG, badge,
++                "一首歌，多条可播放路线",
++                "这里显示同一录音已匹配到的平台。QQ、网易、酷我、酷狗只是歌曲身份；Sunflower 会在后台自动选择当前真正可用的播放线路。你不需要手动切源。");
++    }
++
+     private void startHomeLyricQuoteTicker(TextView target) {
+         homeLyricQuoteView = target;
+         homeLyricQuoteGeneration++;
+@@ -2678,6 +2775,7 @@
+             holder.source.setText(song.sourceLabel());
+             holder.source.setTextColor(sourceAccent);
+             holder.source.setBackground(Ui.tintedGlass(sourceAccent, 12, MainActivity.this));
++            holder.source.post(() -> teachMultiCatalogIfNeeded(holder.source, song));
+             holder.favoriteIcon.setIconColor(isFavorite(song) ? Ui.PINK : Ui.DIM);
+ 
+             SearchAllHolder bound = holder;
+@@ -2966,6 +3064,9 @@
+         TextView systemSoundView = Ui.pill(this, "查看", Ui.CYAN); systemSoundView.setGravity(Gravity.CENTER);
+         systemSoundView.setOnClickListener(v -> showSystemSoundStatusDialog());
+         heroTitle.addView(systemSoundView, Ui.lp(Ui.dp(this, 62), Ui.dp(this, 30)));
++        systemSoundView.postDelayed(() -> maybeShowContextCoach(COACH_OFFLINE_SYSTEM, systemSoundView,
++                "这里查看手机当前系统声音",
++                "“查看”不会修改任何声音。点进去可以确认当前来电铃声、通知音和闹钟音，还能试听或直接打开 Android 系统声音设置。"), 180L);
+         hero.addView(heroTitle, Ui.lp(-1, Ui.dp(this, 34)));
+         hero.addView(Ui.text(this, records.size() + " 首 · " + formatStorage(offlineStore == null ? 0L : offlineStore.totalBytes()) + " · App 私有存储", 11f, Ui.TEXT_2, false), Ui.lp(-1, Ui.dp(this, 28)));
+         hero.addView(Ui.text(this, "安全模式：仅复用非 TX 的 Media3 READY 缓存 · 在线播放时下载自动让路", 10.2f, Ui.DIM, false), Ui.lp(-1, Ui.dp(this, 28)));
+@@ -2985,7 +3086,17 @@
+         ImageView cover = new ImageView(this); cover.setScaleType(ImageView.ScaleType.CENTER_CROP); cover.setBackground(Ui.round(Color.rgb(24,24,31), 11, this)); cover.setClipToOutline(true); ImageLoader.load(song.coverUrl, cover, null); row.addView(cover, Ui.lp(Ui.dp(this, 48), Ui.dp(this, 48)));
+         LinearLayout text = Ui.column(this); text.setPadding(Ui.dp(this, 11), Ui.dp(this, 8), Ui.dp(this, 6), Ui.dp(this, 7)); TextView title = Ui.text(this, song.title, 14.2f, Ui.TEXT, true); title.setSingleLine(true); title.setEllipsize(TextUtils.TruncateAt.END); text.addView(title, new LinearLayout.LayoutParams(-1, 0, 1f));
+         TextView sub = Ui.text(this, song.artist + " · " + record.quality + " · " + formatStorage(record.file().length()), 10.2f, Ui.TEXT_2, false); sub.setSingleLine(true); sub.setEllipsize(TextUtils.TruncateAt.END); text.addView(sub, new LinearLayout.LayoutParams(-1, 0, 1f)); row.addView(text, new LinearLayout.LayoutParams(0, Ui.dp(this, 64), 1f));
+-        TextView ring = Ui.pill(this, "铃声", Ui.CYAN); ring.setGravity(Gravity.CENTER); ring.setOnClickListener(v -> showRingtoneOptions(record)); row.addView(ring, Ui.lp(Ui.dp(this, 58), Ui.dp(this, 34)));
++        TextView ring = Ui.pill(this, "铃声", Ui.CYAN); ring.setGravity(Gravity.CENTER);
++        ring.setOnClickListener(v -> {
++            if (!contextCoachDone(COACH_OFFLINE_RINGTONE) && !deferredContextCoachThisSession.contains(COACH_OFFLINE_RINGTONE) && contextCoachOverlay == null) {
++                maybeShowContextCoach(COACH_OFFLINE_RINGTONE, ring,
++                        "离线歌曲可以直接做系统铃声",
++                        "这里可以把已经下载好的本地歌曲设为来电铃声、通知音或闹钟音。整个流程只处理离线文件，不会重新请求播放 Provider。看完后再点一次“铃声”即可继续。" );
++                return;
++            }
++            showRingtoneOptions(record);
++        });
++        row.addView(ring, Ui.lp(Ui.dp(this, 58), Ui.dp(this, 34)));
+         FrameLayout more = Ui.iconButton(this, IconView.Type.MORE, 31, Ui.DIM, Color.TRANSPARENT); more.setOnClickListener(v -> showSongActions(song)); row.addView(more, Ui.lp(Ui.dp(this, 32), Ui.dp(this, 32)));
+         row.setClickable(true); Ui.applyRipple(row, Color.TRANSPARENT); row.setOnClickListener(v -> { List<Song> songs = new ArrayList<>(); int start = 0; for (int i=0;i<allRecords.size();i++){songs.add(allRecords.get(i).song); if (song.key().equals(allRecords.get(i).song.key())) start=i;} playQueue(songs,start); });
+         return row;
+@@ -3109,6 +3220,9 @@
+         editorScroll.setClipToPadding(false);
+         editorScroll.addView(card, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+         presentFractionModal(editorScroll, .82f);
++        selector.postDelayed(() -> maybeShowContextCoach(COACH_RINGTONE_CLIP, selector,
++                "按歌词截出真正想要的片段",
++                "歌词可以上下滚动。长按右侧“开始 / 结束”标签后上下拖动横线；跨过相邻歌词的中点才会切到下一句，松手会平滑吸附。选好后先试听，再确认设置。"), 230L);
+     }
+ 
+     private void previewOfflineSegment(OfflineStore.Record record, long startMs, long endMs) {
+@@ -3282,7 +3396,10 @@
+     }
+ 
+     private void showImportDialog() {
+-        showGlassInput("导入歌单", "粘贴网易云 / QQ 音乐歌单链接或 ID", true, "开始导入", this::importPlaylist);
++        showGlassInput("导入歌单", "粘贴网易云 / QQ 音乐歌单链接或 ID", true, "开始导入", this::importPlaylist, input ->
++                maybeShowContextCoach(COACH_IMPORT_PLAYLIST, input,
++                        "复制分享链接就能导入",
++                        "从 QQ 音乐或网易云复制歌单分享链接，粘贴到这里即可保存到本机。导入后 Sunflower 会在后台为歌曲补充 Exact 多平台身份，但不会修改原平台歌单。"));
+     }
+ 
+     private void showPlaylistManager() {
+@@ -3638,9 +3755,25 @@
+             scroll.setOnScrollChangeListener((v, scrollX, scrollY, oldScrollX, oldScrollY) ->
+                     maybeAppendPlaylistRows(scroll, lazySongHost[0], p, lazyLoaded, lazyAppendScheduled));
+         }
++        if (!p.songs.isEmpty() && lazySongHost[0] != null) {
++            page.postDelayed(() -> {
++                View target = firstPlaylistCoachTarget(lazySongHost[0]);
++                maybeShowContextCoach(COACH_PLAYLIST_QUEUE, target,
++                        "点一首，会从这里接管整张歌单",
++                        "在真正的歌单详情里点击任意歌曲，会把这张歌单完整设为播放队列，并从你点的这一首开始。搜索页点歌仍然只是临时插入，不会改变这条规则。" );
++            }, 180L);
++        }
+         return page;
+     }
+ 
++    private View firstPlaylistCoachTarget(LinearLayout lazyHost) {
++        if (lazyHost == null || lazyHost.getChildCount() == 0) return null;
++        View chunk = lazyHost.getChildAt(0);
++        if (chunk instanceof ViewGroup && ((ViewGroup) chunk).getChildCount() > 0)
++            return ((ViewGroup) chunk).getChildAt(0);
++        return chunk;
++    }
++
+     private void appendPlaylistRows(LinearLayout host, ImportedPlaylist playlist, int from, int to) {
+         if (host == null || playlist == null || playlist.songs == null || from < 0 || to <= from) return;
+         int safeTo = Math.min(to, playlist.songs.size());
+@@ -3876,6 +4009,7 @@
+         TextView src = Ui.pill(this, song.sourceLabel(), song.variants().size() > 1 ? Ui.CYAN : Ui.PURPLE);
+         configureAdaptiveSourceBadge(src, 112);
+         row.addView(src, Ui.lp(-2, -2));
++        src.post(() -> teachMultiCatalogIfNeeded(src, song));
+ 
+         FrameLayout fav = Ui.iconButton(this, IconView.Type.HEART, 38, isFavorite(song) ? Ui.PINK : Ui.DIM, Color.TRANSPARENT);
+         IconView favIcon = (IconView) fav.getChildAt(0);
+@@ -5756,6 +5890,9 @@
+         }
+         activeLyric = -2;
+         if (playback != null) updateLyricHighlight(playback.snapshot().positionMs);
++        if (lyricPanel != null) lyricPanel.postDelayed(() -> maybeShowContextCoach(COACH_LYRIC_SEEK, lyricPanel,
++                "歌词不只是用来看的",
++                "在歌词框里上下滑动会出现定位线和时间。停下后选中一句，再点一次即可跳到那句对应的播放位置；之后歌词会继续自动跟随。"), 180L);
+     }
+ 
+     private void showLyricSeekGuide(boolean visible) {
+@@ -6095,6 +6232,10 @@
+     }
+ 
+     private void handleBackNavigation() {
++        if (contextCoachOverlay != null && contextCoachOverlay.getVisibility() == View.VISIBLE) {
++            deferActiveContextCoach();
++            return;
++        }
+         if (onboardingOverlay != null && onboardingOverlay.getVisibility() == View.VISIBLE) {
+             finishOnboarding();
+             return;
+@@ -6147,6 +6288,11 @@
+ 
+     @Override protected void onDestroy() {
+         stopHomeLyricQuoteTicker();
++        if (contextCoachOverlay != null) {
++            try { ((ViewGroup) contextCoachOverlay.getParent()).removeView(contextCoachOverlay); } catch (Exception ignored) { }
++            contextCoachOverlay = null;
++            activeContextCoachId = "";
++        }
+         if (onboardingOverlay != null) {
+             try { ((ViewGroup) onboardingOverlay.getParent()).removeView(onboardingOverlay); } catch (Exception ignored) { }
+             onboardingOverlay = null;

@@ -1,0 +1,9 @@
+Lunaxy Music V62 runtime diff vs V61
+Baseline: LunaxyMusic-V61-Full.zip
+
+CHANGED java/com/xingyu/music/download/DownloadDiscoveryResolver.java
+  V61 4c5800170c222c31a6f431dd749a72876c06c2dd7f6240092927d457c32b7c6c
+  V62 4fd59ee9316f1f311ddad24c5ec00eea9d0f89a5b47581e411f7715aeab39fbe
+CHANGED java/com/xingyu/music/download/OfflineDownloadService.java
+  V61 a90683701f78c3db74e6e72f316c9ca3476d5bebd44ad1a33418a6c6d46f8408
+  V62 b3e296131236d9e894ab57c92802ba1b69bff848a737f7d5a7f63bfbd1924c77

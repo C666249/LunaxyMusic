@@ -1,0 +1,10 @@
+V17 回退说明
+============
+
+V17 只改 UI/歌词交互和版本号。若要回退：
+1. 查看 changes/V16-to-V17_UI.patch。
+2. 主要改动文件只有：
+   - app/src/main/java/com/xingyu/music/MainActivity.java
+   - app/src/main/java/com/xingyu/music/ui/LyricLineView.java
+   - app/build.gradle.kts（仅版本号）
+3. 冻结播放核心未修改，无需回退 data/**、playback/** 或 huibq-latest.js。

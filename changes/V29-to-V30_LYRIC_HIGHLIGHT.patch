@@ -1,0 +1,184 @@
+diff -ruN '--exclude=V29-to-V30_LYRIC_HIGHLIGHT.patch' '--exclude=PLAYBACK_CORE_GUARD_V30.txt' '--exclude=SHA256SUMS.txt' v29baseline/LunaxyMusic-V29/BUILD_APK.bat v30work/LunaxyMusic-V29/BUILD_APK.bat
+--- v29baseline/LunaxyMusic-V29/BUILD_APK.bat	2026-08-10 11:10:36.000000000 +0000
++++ v30work/LunaxyMusic-V29/BUILD_APK.bat	2026-08-10 12:33:53.018782196 +0000
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   LunaxyMusic V27 - Debug APK Build
++echo   LunaxyMusic V30 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V27-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V30-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\LunaxyMusic-V27-debug.apk
++echo [OK] APK: %CD%\dist\LunaxyMusic-V30-debug.apk
+ pause
+diff -ruN '--exclude=V29-to-V30_LYRIC_HIGHLIGHT.patch' '--exclude=PLAYBACK_CORE_GUARD_V30.txt' '--exclude=SHA256SUMS.txt' "v29baseline/LunaxyMusic-V29/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt" "v30work/LunaxyMusic-V29/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"
+--- "v29baseline/LunaxyMusic-V29/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-10 11:10:36.000000000 +0000
++++ "v30work/LunaxyMusic-V29/README_\351\252\214\346\224\266\350\257\264\346\230\216.txt"	2026-08-10 12:33:53.018982383 +0000
+@@ -1,13 +1,13 @@
+-LunaxyMusic V27.0 — 当前 Android Studio 完整工程
++LunaxyMusic V30.0 — 当前 Android Studio 完整工程
+ 
+ 【本版快速验收】
+-1. 覆盖安装后系统显示名称应为 Lunaxy Music，原图标保持不变；包名仍为 com.xingyu.music，因此历史/收藏/歌单/音源学习和 URL 缓存继续沿用。
+-2. Android 13+ 与旧系统的系统返回键统一按层级返回：播放列表/弹层先收起；播放详情先关闭；歌单详情回歌单 Tab；推荐详情回原首页位置；根 Tab 再回首页。
+-3. 歌单详情不再显示“从第一首播放”卡片，右上角为搜索 / 添加 / 批量管理。点歌单任意歌曲仍会装载整个歌单并从该首开始。
+-4. 新加进歌单的歌曲应出现在最顶部；歌单列表三点菜单可重命名或删除。
+-5. 首页标题下方不再显示旧品牌说明，而是从收藏/歌单歌词里随机取一句，约每 3 秒切换；“本地口味 · 天气与时间”已删除。
+-6. 播放核心保护：详见 changes\PLAYBACK_CORE_GUARD_V27.txt；完整 V26→V27 差异见 changes\V26-to-V27_ONBOARDING_UI.patch。
+-7. BUILD_APK.bat 成功构建后输出 dist\LunaxyMusic-V27-debug.apk。
++1. 歌词高亮选择页：冰蓝 / 星紫 / 薄荷 / 日落 / 玫瑰 / 银白，每一整句文字都应从第一个字到最后一个字完整呈现两端渐变，不再只有开头一小段有颜色。
++2. 播放页真实当前歌词：继续采用逐句整句高亮，整句均使用所选渐变；不恢复逐字模式。
++3. 手动上下滑歌词后出现的虚线选中框：停留约 2 秒后自动取消并回到当前播放歌词。
++4. V29 的可视化 HSV 选色器、添加歌曲 ListView 虚拟化、其他歌单全选优化全部保留。
++5. 播放/音源核心没有修改，详见 changes\PLAYBACK_CORE_GUARD_V30.txt。
++6. V29→V30 完整源码差异见 changes\V29-to-V30_LYRIC_HIGHLIGHT.patch。
++7. BUILD_APK.bat 成功构建后输出 dist\LunaxyMusic-V30-debug.apk。
+ 
+ ----------------------------------------
+ 以下保留旧版本验收记录，供回退/排查历史问题使用。
+diff -ruN '--exclude=V29-to-V30_LYRIC_HIGHLIGHT.patch' '--exclude=PLAYBACK_CORE_GUARD_V30.txt' '--exclude=SHA256SUMS.txt' "v29baseline/LunaxyMusic-V29/V30.0_\346\255\214\350\257\215\351\253\230\344\272\256\344\270\216\346\211\213\345\212\250\351\200\211\344\270\255\346\227\266\351\225\277\344\277\256\345\244\215.md" "v30work/LunaxyMusic-V29/V30.0_\346\255\214\350\257\215\351\253\230\344\272\256\344\270\216\346\211\213\345\212\250\351\200\211\344\270\255\346\227\266\351\225\277\344\277\256\345\244\215.md"
+--- "v29baseline/LunaxyMusic-V29/V30.0_\346\255\214\350\257\215\351\253\230\344\272\256\344\270\216\346\211\213\345\212\250\351\200\211\344\270\255\346\227\266\351\225\277\344\277\256\345\244\215.md"	1970-01-01 00:00:00.000000000 +0000
++++ "v30work/LunaxyMusic-V29/V30.0_\346\255\214\350\257\215\351\253\230\344\272\256\344\270\216\346\211\213\345\212\250\351\200\211\344\270\255\346\227\266\351\225\277\344\277\256\345\244\215.md"	2026-08-10 12:33:53.146944003 +0000
+@@ -0,0 +1,14 @@
++# Lunaxy Music V30.0
++
++基线：V29。
++
++## 修复
++
++- 歌词高亮预设预览改为“整句完整渐变”：当逐句模式进度为 100% 时，直接对整句文字绘制两端渐变，不再经过逐字/选区裁剪路径。
++- 渐变范围按实际文字左右边界计算，而不是按整行空白宽度计算，因此短句也能明显看到完整的起点色 → 终点色变化。
++- 真实播放歌词仍为 V20 以来的逐句整句高亮，不恢复逐字估算。
++- 手动滑动歌词后的淡虚线选中框停留时间由约 5.2 秒改为 2 秒；之后恢复自动跟随当前歌词。
++
++## 播放核心
++
++本版只修改歌词 UI 绘制、歌词手动交互等待时间、版本信息与说明文件。Huibq、全豆要、Media3、READY 判定、URL 缓存、音源学习/冷却均未修改。
+diff -ruN '--exclude=V29-to-V30_LYRIC_HIGHLIGHT.patch' '--exclude=PLAYBACK_CORE_GUARD_V30.txt' '--exclude=SHA256SUMS.txt' "v29baseline/LunaxyMusic-V29/V30.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt" "v30work/LunaxyMusic-V29/V30.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"
+--- "v29baseline/LunaxyMusic-V29/V30.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"	1970-01-01 00:00:00.000000000 +0000
++++ "v30work/LunaxyMusic-V29/V30.0_\350\207\252\346\265\213\347\273\223\346\236\234.txt"	2026-08-10 12:33:53.147586809 +0000
+@@ -0,0 +1,11 @@
++Lunaxy Music V30.0 自测结果
++
++[PASS] 歌词高亮预设：karaokeProgress=1 时不再走 selection clip，整句直接绘制两端渐变。
++[PASS] 渐变坐标：按 Layout 实际文字左右边界计算，不再把渐变摊到整行空白区域。
++[PASS] 实际播放：当前句仍为 100% 逐句高亮；未恢复逐字估算。
++[PASS] 手动歌词虚线选中：自动恢复等待由约 5.2 秒改为 2.0 秒。
++[PASS] V29 可视化选色器与添加歌曲大列表虚拟化逻辑均保留。
++[PASS] 播放核心保护：21/21 保护对象与 V29 SHA-256 完全一致。
++[PASS] 版本：versionCode 33 / versionName 30.0.0。
++
++[环境限制] 当前容器未配置可用 Android SDK/Gradle 依赖缓存，最终 APK 请在本机 Android Studio 构建。
+diff -ruN '--exclude=V29-to-V30_LYRIC_HIGHLIGHT.patch' '--exclude=PLAYBACK_CORE_GUARD_V30.txt' '--exclude=SHA256SUMS.txt' v29baseline/LunaxyMusic-V29/app/build.gradle.kts v30work/LunaxyMusic-V29/app/build.gradle.kts
+--- v29baseline/LunaxyMusic-V29/app/build.gradle.kts	2026-08-10 11:55:24.000000000 +0000
++++ v30work/LunaxyMusic-V29/app/build.gradle.kts	2026-08-10 12:30:47.109312807 +0000
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 32
+-        versionName = "29.0.0"
++        versionCode = 33
++        versionName = "30.0.0"
+     }
+ 
+     buildTypes {
+diff -ruN '--exclude=V29-to-V30_LYRIC_HIGHLIGHT.patch' '--exclude=PLAYBACK_CORE_GUARD_V30.txt' '--exclude=SHA256SUMS.txt' v29baseline/LunaxyMusic-V29/app/src/main/java/com/xingyu/music/MainActivity.java v30work/LunaxyMusic-V29/app/src/main/java/com/xingyu/music/MainActivity.java
+--- v29baseline/LunaxyMusic-V29/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 11:59:10.000000000 +0000
++++ v30work/LunaxyMusic-V29/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-10 12:32:54.578253127 +0000
+@@ -92,9 +92,9 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V29.0 – lyric color picker polish + virtualized add-song picker performance.
++ * Lunaxy Music V30.0 – full-line lyric gradient preview + shorter manual lyric selection hold.
+  *
+- * V29 keeps the proven audio-resolution/playback core frozen. Tapping a normal row in a saved playlist
++ * V30 keeps the proven audio-resolution/playback core frozen. Tapping a normal row in a saved playlist
+  * still replaces the current queue with the entire playlist and starts at that row. Tapping a result
+  * inside that playlist's search modal is a temporary pick: insert/play only that song and keep the
+  * existing queue, matching global-search behavior.
+@@ -4031,15 +4031,15 @@
+             setManualLyricSelection(lyricSeekCandidate);
+             lyricSeekMode = false;
+             showLyricSeekGuide(false);
+-            // Give enough time to inspect/tap the chosen row, then return to live lyrics.
+-            lyricsManualUntil = SystemClock.uptimeMillis() + 5200L;
++            // Keep the dashed lyric selection briefly visible, then return to live lyrics.
++            lyricsManualUntil = SystemClock.uptimeMillis() + 2000L;
+             if (lyricsResumeRunnable != null) main.removeCallbacks(lyricsResumeRunnable);
+             lyricsResumeRunnable = () -> {
+                 clearManualLyricSelection(false);
+                 lyricsManualUntil = 0L;
+                 scrollLyricToActive(true);
+             };
+-            main.postDelayed(lyricsResumeRunnable, 5250L);
++            main.postDelayed(lyricsResumeRunnable, 2000L);
+         };
+         main.postDelayed(lyricScrollSettleRunnable, 170L);
+     }
+diff -ruN '--exclude=V29-to-V30_LYRIC_HIGHLIGHT.patch' '--exclude=PLAYBACK_CORE_GUARD_V30.txt' '--exclude=SHA256SUMS.txt' v29baseline/LunaxyMusic-V29/app/src/main/java/com/xingyu/music/ui/LyricLineView.java v30work/LunaxyMusic-V29/app/src/main/java/com/xingyu/music/ui/LyricLineView.java
+--- v29baseline/LunaxyMusic-V29/app/src/main/java/com/xingyu/music/ui/LyricLineView.java	2026-08-10 06:05:07.000000000 +0000
++++ v30work/LunaxyMusic-V29/app/src/main/java/com/xingyu/music/ui/LyricLineView.java	2026-08-10 12:31:18.788066579 +0000
+@@ -101,6 +101,18 @@
+         int length = value == null ? 0 : value.length();
+         if (length <= 0) return;
+ 
++        // V20+ uses sentence-level highlighting (the active line is 100% highlighted).
++        // Handle that common path directly instead of routing it through a selection
++        // clip.  This guarantees that the style chooser paints EVERY glyph with the
++        // chosen gradient, rather than leaving most of the sample looking gray/white.
++        if (karaokeProgress >= .999f) {
++            applyTextGradient(layout);
++            super.onDraw(canvas);
++            getPaint().setShader(null);
++            return;
++        }
++
++        // Keep partial reveal support for compatibility with any future karaoke mode.
+         float charPos = Math.min(length, karaokeProgress * length);
+         int whole = Math.min(length, (int) Math.floor(charPos));
+         float partial = charPos - whole;
+@@ -124,13 +136,28 @@
+ 
+         int save = canvas.save();
+         canvas.clipPath(reveal);
+-        int middle = Ui.mix(gradientStart, Color.WHITE, .24f);
+-        getPaint().setShader(new LinearGradient(
+-                0f, 0f, Math.max(1f, getWidth()), 0f,
+-                new int[]{gradientStart, middle, gradientEnd},
+-                new float[]{0f, .52f, 1f}, Shader.TileMode.CLAMP));
++        applyTextGradient(layout);
+         super.onDraw(canvas);
+         getPaint().setShader(null);
+         canvas.restoreToCount(save);
+     }
++
++    /** Paint the gradient across the actual text span, not across the empty row width. */
++    private void applyTextGradient(Layout layout) {
++        float textLeft = Float.MAX_VALUE;
++        float textRight = -Float.MAX_VALUE;
++        for (int line = 0; line < layout.getLineCount(); line++) {
++            float a = layout.getLineLeft(line);
++            float b = layout.getLineRight(line);
++            textLeft = Math.min(textLeft, Math.min(a, b));
++            textRight = Math.max(textRight, Math.max(a, b));
++        }
++        if (textLeft == Float.MAX_VALUE || textRight <= textLeft + 1f) {
++            textLeft = 0f;
++            textRight = Math.max(1f, layout.getWidth());
++        }
++        getPaint().setShader(new LinearGradient(
++                textLeft, 0f, textRight, 0f,
++                gradientStart, gradientEnd, Shader.TileMode.CLAMP));
++    }
+ }

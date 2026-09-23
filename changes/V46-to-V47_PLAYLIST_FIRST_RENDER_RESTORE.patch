@@ -1,0 +1,59 @@
+--- V46/app/src/main/java/com/xingyu/music/MainActivity.java
++++ V47/app/src/main/java/com/xingyu/music/MainActivity.java
+@@ -95,11 +95,11 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V46.0 – Playback core locked; smoother playlist prefetch buffering.
++ * Lunaxy Music V47.0 – Playback core locked; 40-row first render + early small-batch playlist prefetch.
+  *
+  * The optional music download/offline subsystem remains removed. Playback resolution, Media3 READY
+  * validation, URL cache and the V41 fixed source scheduling/health policy are treated as a locked zone;
+- * V46 changes only playlist-detail UI prefetch/rendering outside that zone.
++ * V47 keeps the V46 prefetch strategy, but restores the first render to 40 rows for faster detail entry.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(4);
+@@ -162,7 +162,7 @@
+     // construction happens well before the user reaches the current tail, while keeping each
+     // append small enough to avoid a large main-thread spike. Playback always receives the full
+     // playlist; these constants affect presentation only.
+-    private static final int PLAYLIST_INITIAL_RENDER_COUNT = 72;
++    private static final int PLAYLIST_INITIAL_RENDER_COUNT = 40;
+     private static final int PLAYLIST_APPEND_BATCH = 24;
+     private static final int PLAYLIST_PREFETCH_DISTANCE_DP = 1900;
+     private int playlistVisibleCount = PLAYLIST_INITIAL_RENDER_COUNT;
+--- V46/app/build.gradle.kts
++++ V47/app/build.gradle.kts
+@@ -10,8 +10,8 @@
+         applicationId = "com.xingyu.music"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 49
+-        versionName = "46.0.0"
++        versionCode = 50
++        versionName = "47.0.0"
+     }
+ 
+     buildTypes {
+--- V46/BUILD_APK.bat
++++ V47/BUILD_APK.bat
+@@ -2,7 +2,7 @@
+ setlocal
+ cd /d "%~dp0"
+ echo ==========================================
+-echo   LunaxyMusic V46 - Debug APK Build
++echo   LunaxyMusic V47 - Debug APK Build
+ echo ==========================================
+ call gradlew.bat :app:assembleDebug
+ if errorlevel 1 (
+@@ -12,7 +12,7 @@
+   exit /b 1
+ )
+ if not exist dist mkdir dist
+-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V46-debug.apk" >nul
++copy /Y "app\build\outputs\apk\debug\app-debug.apk" "dist\LunaxyMusic-V47-debug.apk" >nul
+ echo.
+-echo [OK] APK: %CD%\dist\LunaxyMusic-V46-debug.apk
++echo [OK] APK: %CD%\dist\LunaxyMusic-V47-debug.apk
+ pause

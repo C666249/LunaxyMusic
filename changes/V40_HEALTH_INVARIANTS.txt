@@ -1,0 +1,10 @@
+V40 HEALTH INVARIANTS
+
+1. QQ fixed order = Huibq -> QDY. Historical counters cannot reverse it.
+2. Netease fixed order = QDY -> Huibq. Historical counters cannot reverse it.
+3. qdy|tx platform cooldown is distinct from qdy|wy; QQ fallback failures cannot cool Netease primary.
+4. Huibq 5xx classification reads the status from the same already-completed request; zero additional HTTP requests.
+5. READY URL cache logic and Media3 success/failure callback logic unchanged.
+6. Cache failure still invalidates that song/quality URL and fresh-resolves using the fixed route order.
+7. Historical FAIL remains visible but is diagnostic only.
+8. Explicit 429 / block-ip protections remain stronger than transient breakers.

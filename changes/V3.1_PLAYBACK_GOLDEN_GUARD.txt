@@ -1,0 +1,10 @@
+V3.1 Playback Golden Guard
+==========================
+本轮是 UI-only patch。
+递归对比 V3 基线后，播放/Provider/Catalog/数据/歌词核心源码均未发生变化。
+允许变化：
+- app/src/main/java/com/xingyu/music/MainActivity.java（来源标签布局）
+- app/build.gradle.kts（测试版 versionCode/versionName）
+- 本轮说明/自测/patch/hash 文件
+
+禁止变化：AudioProviderHub、SourceCoordinator、PlaybackService、ExactTrackMatcher、TrackVariantStore、TrackVariantEnricher、KuwoMusicApi、KugouMusicApi、QQ/Netease Catalog 与歌词核心、LibraryStore 等 V3 已验收功能。

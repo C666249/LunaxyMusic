@@ -1,0 +1,19 @@
+Lunaxy Music V35 · NETEASE DOWNLOAD ISOLATION GUARD
+
+Policy: optional download is a pure-NetEase (wy) whitelist and CACHE-ONLY. Any QQ identity (including merged QQ·网易) is rejected before cache lookup or worker scheduling.
+
+PASS  SourceCoordinator
+PASS  MultiSourceManager
+PASS  SourceHealthStore
+PASS  LxSourceRuntime
+PASS  musicUrl(
+PASS  invalidate(
+PASS  QQ blocked before cache lookup
+PASS  Only wy variants read from PlaybackUrlStore
+PASS  Pure-NetEase whitelist exists
+PASS  Playback page standalone download icon removed
+
+Allowed download-side playback-state access: PlaybackUrlStore.get(...) READ ONLY, for wy entries only.
+Forbidden behavior verified absent from executable download code: no SourceCoordinator, MultiSourceManager, SourceHealthStore, LxSourceRuntime/musicUrl, or PlaybackUrlStore.invalidate.
+The downloader still performs one HTTP GET to the already-READY NetEase final CDN URL to save the file. This external GET is inherently required to download audio, but it cannot write Lunaxy route health, cooldown, resolver order, or READY URL cache.
+QQ hard wall remains defense-in-depth in MainActivity, OfflineDownloadManager.download/tryDownload, and DownloadSourceResolver.resolve.

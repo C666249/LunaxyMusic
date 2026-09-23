@@ -1,0 +1,15 @@
+Lunaxy Music V85 automated static check summary
+
+PASS 42/42 key assertions before packaging.
+PASS 81 Java files lexical/string/comment/delimiter balance.
+PASS Changed Java parser pass: no illegal start / expected / unclosed / reached-end / not-a-statement class of errors (Android symbols unavailable in container).
+PASS ImageLoader + LyricCacheStore Java 17 stub semantic compile.
+PASS LyricCacheStore runtime behavior test: provider-id, cross-platform metadata, legacy read+migration.
+PASS Stable/Beta Java runtime sources byte-identical.
+PASS Stable/Beta all app/src/main XML parse.
+PASS PlaybackService / SourceCoordinator / PlaybackUrlStore byte-identical to V84.
+PASS Stable manifest + production launcher byte-identical to V84.
+PASS Beta package/app-name/β-launcher identity audit.
+PASS Android Studio-only source workflow; no BUILD_APK.bat.
+
+BUILD ATTEMPT: Gradle wrapper could not resolve services.gradle.org while downloading Gradle 9.5.0, so Android/AGP compilation was not reachable in this container.

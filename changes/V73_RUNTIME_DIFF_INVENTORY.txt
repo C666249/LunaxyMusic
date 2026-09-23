@@ -1,0 +1,18 @@
+Lunaxy Music V73 — app/src/main runtime diff against V72
+
+BASE_RUNTIME_FILES=120
+V73_RUNTIME_FILES=119
+CHANGED=1
+ADDED=0
+DELETED=1
+
+CHANGED	app/src/main/java/com/xingyu/music/MainActivity.java
+DELETED	app/src/main/java/com/xingyu/music/ui/PlatformOrbView.java
+
+MainActivity authorized scope:
+- remove platform source orbs from song-list rows to return width to title/artist/album
+- add Song Info → available catalog sources
+- Now Playing source identity becomes restrained coloured text without orb/pill/background
+
+Deleted runtime file:
+- PlatformOrbView.java (V72 presentation-only orb; no longer referenced)

@@ -1,0 +1,876 @@
+--- LunaxyMusic-V43/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 07:53:48.341385325 +0000
++++ v44work/LunaxyMusic-V44/app/src/main/java/com/xingyu/music/MainActivity.java	2026-08-11 08:22:51.575325682 +0000
+@@ -60,6 +60,7 @@
+ import com.xingyu.music.data.QQLyricApi;
+ import com.xingyu.music.data.RecommendationEngine;
+ import com.xingyu.music.data.SearchRanker;
++import com.xingyu.music.data.SearchPaginationApi;
+ import com.xingyu.music.data.V14PlaybackStateMigration;
+ import com.xingyu.music.data.WeatherMoodProvider;
+ import com.xingyu.music.model.ImportedPlaylist;
+@@ -94,11 +95,11 @@
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Lunaxy Music V43.0 – Playback core locked; denser library UI + lyric-first search routing.
++ * Lunaxy Music V44.0 – Playback core locked; paged search loading without scroll reset.
+  *
+  * The optional music download/offline subsystem remains removed. Playback resolution, Media3 READY
+  * validation, URL cache and the V41 fixed source scheduling/health policy are treated as a locked zone;
+- * V43 changes only library/search UI behavior outside that zone.
++ * V44 changes only search-result pagination/UI behavior outside that zone.
+  */
+ public final class MainActivity extends Activity implements PlaybackService.Listener {
+     private final ExecutorService io = Executors.newFixedThreadPool(4);
+@@ -106,6 +107,7 @@
+     private final NeteaseApi netease = new NeteaseApi();
+     private final NeteaseLyricSearchApi neteaseLyricSearch = new NeteaseLyricSearchApi();
+     private final QQMusicApi qq = new QQMusicApi();
++    private final SearchPaginationApi searchPagination = new SearchPaginationApi();
+     private final QQLyricApi qqLyrics = new QQLyricApi();
+ 
+     private LibraryStore store;
+@@ -206,10 +208,15 @@
+     private List<LyricSearchResult> lyricSearchResults = new ArrayList<>();
+     private String searchSourceFilter = ""; // ""=all, wy, tx
+     private boolean searchMetadataExpanded = true;
+-    private boolean searchLyricsExpanded = false;
+-    private boolean searchLyricFirst;
++    private boolean searchLyricsExpanded = true;
+     private boolean searchMetadataPending;
+     private boolean lyricSearchPending;
++    private boolean searchMoreLoading;
++    private boolean searchWyHasMore;
++    private boolean searchTxHasMore;
++    private int searchWyNextOffset = 30;
++    private int searchTxNextPage = 2;
++    private static final int SEARCH_PAGE_SIZE = 30;
+     private int searchRequestToken;
+ 
+     private static final class LyricSearchResult {
+@@ -1725,7 +1732,7 @@
+         title.setGravity(Gravity.CENTER);
+         empty.addView(title, Ui.lp(-1, Ui.dp(this, 36)));
+ 
+-        TextView sub = Ui.text(this, "输入歌名、歌手或记得的一句歌词；普通搜索不会等待歌词匹配", 12.2f, Ui.TEXT_2, false);
++        TextView sub = Ui.text(this, "输入歌名、歌手或记得的一句歌词", 12.2f, Ui.TEXT_2, false);
+         sub.setGravity(Gravity.CENTER);
+         sub.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+         sub.setMaxLines(2);
+@@ -1749,25 +1756,28 @@
+         lastQuery = keyword;
+         searchSourceFilter = "";
+         lyricSearchResults = new ArrayList<>();
+-        // V43 search intent: 8+ normalized Chinese characters defaults to lyric-first; shorter
+-        // queries default to title/artist-first. Both sections remain manually collapsible.
+-        searchLyricFirst = normalizeSuggestion(keyword).length() >= 8;
+-        searchLyricsExpanded = searchLyricFirst;
+-        searchMetadataExpanded = !searchLyricFirst;
+-        lyricSearchPending = shouldSearchLyrics(keyword, 0);
++        // V44: section order is stable for every query. Title/artist is always first and both
++        // sections start expanded; the user can collapse either one manually.
++        searchMetadataExpanded = true;
++        searchLyricsExpanded = true;
++        final boolean runLyrics = shouldSearchLyrics(keyword, 0);
++        lyricSearchPending = runLyrics;
+         searchMetadataPending = true;
+-        // Clear previous-query presentation state before any eager lyric result can repaint.
+         searchResults = new ArrayList<>();
+         lastWySearchSongs = new ArrayList<>();
+         lastTxSearchSongs = new ArrayList<>();
++        searchMoreLoading = false;
++        searchWyHasMore = false;
++        searchTxHasMore = false;
++        searchWyNextOffset = SEARCH_PAGE_SIZE;
++        searchTxNextPage = 2;
+         lastWyCount = 0; lastTxCount = 0; lastWyError = ""; lastTxError = "";
+         searchHistory = store.addSearchHistory(keyword);
+         showBusy(true);
+ 
+-        // For an 8+ character query, lyric discovery starts immediately in parallel with the two
+-        // metadata providers. This preserves fast short-query search while making remembered-chorus
+-        // queries genuinely lyric-first instead of waiting for unrelated title results to finish.
+-        if (searchLyricFirst) {
++        // Lyric discovery is independent of ordinary metadata search. It runs in parallel when the
++        // query is long enough to be meaningful, so it cannot block title/artist results.
++        if (runLyrics) {
+             io.submit(() -> {
+                 List<NeteaseLyricSearchApi.Hit> remoteLyrics;
+                 try { remoteLyrics = neteaseLyricSearch.search(keyword, 16); }
+@@ -1778,7 +1788,9 @@
+                     if (requestToken != searchRequestToken || isFinishing()) return;
+                     lyricSearchResults = combined;
+                     lyricSearchPending = false;
+-                    showBusy(false);
++                    if (!searchMetadataPending && !lyricSearchResults.isEmpty()) {
++                        lyricSearchResults = enrichAndRerankLyricResults(keyword, lyricSearchResults);
++                    }
+                     renderSearchResults(holder);
+                 });
+             });
+@@ -1786,13 +1798,13 @@
+ 
+         Future<SearchOutcome> wyFuture = io.submit(() -> {
+             try {
+-                List<Song> songs = netease.search(keyword, 30);
++                List<Song> songs = netease.search(keyword, SEARCH_PAGE_SIZE);
+                 return new SearchOutcome(songs, "", Math.max(songs.size(), netease.lastSearchTotal()));
+             } catch (Exception e) { return new SearchOutcome(new ArrayList<>(), safeMessage(e), 0); }
+         });
+         Future<SearchOutcome> txFuture = io.submit(() -> {
+             try {
+-                List<Song> songs = qq.search(keyword, 30);
++                List<Song> songs = qq.search(keyword, SEARCH_PAGE_SIZE);
+                 return new SearchOutcome(songs, "", Math.max(songs.size(), qq.lastSearchTotal()));
+             } catch (Exception e) { return new SearchOutcome(new ArrayList<>(), safeMessage(e), 0); }
+         });
+@@ -1818,62 +1830,38 @@
+             final SearchOutcome txResult = tx;
+             final List<Song> merged = mergeSearch(keyword, wy.songs, tx.songs);
+ 
+-            // Render ordinary title/artist results first. Lyric matching (including the local cache scan)
+-            // is intentionally kept out of this critical path so adding lyric search cannot make normal
+-            // searches feel slower.
+-            final boolean runLyrics = shouldSearchLyrics(keyword, merged.size());
+             main.post(() -> {
+-                if (requestToken != searchRequestToken) return;
++                if (requestToken != searchRequestToken || isFinishing()) return;
+                 showBusy(false);
+                 searchMetadataPending = false;
+                 lastWySearchSongs = new ArrayList<>(wyResult.songs);
+                 lastTxSearchSongs = new ArrayList<>(txResult.songs);
+                 searchResults = merged;
+-                if (!searchLyricFirst) {
+-                    lyricSearchResults = new ArrayList<>();
+-                    lyricSearchPending = runLyrics;
+-                } else if (!lyricSearchResults.isEmpty()) {
++                if (!lyricSearchResults.isEmpty()) {
+                     lyricSearchResults = enrichAndRerankLyricResults(keyword, lyricSearchResults);
+                 }
+                 lastWyCount = wyResult.total;
+                 lastTxCount = txResult.total;
+                 lastWyError = wyResult.error;
+                 lastTxError = txResult.error;
+-                renderSearchResults(holder);
+-            });
+-
+-            // Commercial-style split search: lyric matching is a second, independent phase. For an
+-            // 8+ character query its section is shown first and ordinary metadata results stay collapsed
+-            // by default, so a remembered chorus does not bury the intended song under unrelated titles.
+-            if (!runLyrics || searchLyricFirst) return;
+-            Future<List<NeteaseLyricSearchApi.Hit>> lyricFuture = io.submit(() -> {
+-                try { return neteaseLyricSearch.search(keyword, 16); }
+-                catch (Exception ignored) { return new ArrayList<>(); }
+-            });
+-            final List<LyricSearchResult> localLyrics = findLocalLyricMatches(keyword, 12, wyResult.songs, txResult.songs);
+-            List<NeteaseLyricSearchApi.Hit> remote;
+-            try { remote = lyricFuture.get(12, TimeUnit.SECONDS); }
+-            catch (Exception ignored) { lyricFuture.cancel(true); remote = new ArrayList<>(); }
+-            final List<LyricSearchResult> combined = mergeLyricHits(keyword, localLyrics, remote, 16);
+-            main.post(() -> {
+-                if (requestToken != searchRequestToken || isFinishing()) return;
+-                lyricSearchResults = combined;
+-                lyricSearchPending = false;
++                searchWyNextOffset = lastWySearchSongs.size();
++                searchTxNextPage = 2; // initial QQ request is page 1; pagination continues at page 2
++                searchWyHasMore = providerHasMore(lastWySearchSongs.size(), lastWyCount, SEARCH_PAGE_SIZE);
++                searchTxHasMore = providerHasMore(lastTxSearchSongs.size(), lastTxCount, SEARCH_PAGE_SIZE);
+                 renderSearchResults(holder);
+             });
+         });
+     }
+ 
+     private List<Song> mergeSearch(String keyword, List<Song> wy, List<Song> tx) {
+-        return SearchRanker.mergeAndRank(keyword, wy, tx, 50);
++        int count = (wy == null ? 0 : wy.size()) + (tx == null ? 0 : tx.size());
++        return SearchRanker.mergeAndRank(keyword, wy, tx, Math.max(50, count));
+     }
+ 
+     private boolean shouldSearchLyrics(String keyword, int normalResultCount) {
+-        String normalized = normalizeSuggestion(keyword);
+-        int len = normalized.length();
+-        if (len >= 8) return true;
+-        if (len >= 5 && containsSentenceCue(keyword)) return true;
+-        return len >= 4 && normalResultCount <= 3;
++        // Three normalized characters is enough to make lyric lookup useful without wasting a
++        // network request on one- or two-character title searches. It runs in parallel either way.
++        return normalizeSuggestion(keyword).length() >= 3;
+     }
+ 
+     private boolean containsSentenceCue(String text) {
+@@ -1953,9 +1941,9 @@
+                 score += (int) Math.round(4200.0 * matched / Math.max(1, needle.length()));
+             }
+         }
+-        // For a long lyric query, a coincidental title containing the sentence is not evidence
+-        // that this is the intended recording. Let true lyric evidence outrank it.
+-        if (needle.length() >= 8 && metadataContainsQuery(hit.song, keyword) && !snippet.contains(needle)) score -= 1200;
++        // A metadata-only coincidence is weaker than real lyric evidence. Keep this ranking rule
++        // independent of the old 8-character presentation threshold removed in V44.
++        if (needle.length() >= 3 && metadataContainsQuery(hit.song, keyword) && !snippet.contains(needle)) score -= 1200;
+         return score;
+     }
+ 
+@@ -2011,8 +1999,14 @@
+     }
+ 
+     private List<Song> visibleSearchSongs() {
+-        if ("wy".equals(searchSourceFilter)) return new ArrayList<>(lastWySearchSongs);
+-        if ("tx".equals(searchSourceFilter)) return new ArrayList<>(lastTxSearchSongs);
++        if ("wy".equals(searchSourceFilter)) {
++            return SearchRanker.mergeAndRank(lastQuery, lastWySearchSongs, new ArrayList<>(),
++                    Math.max(1, lastWySearchSongs.size()));
++        }
++        if ("tx".equals(searchSourceFilter)) {
++            return SearchRanker.mergeAndRank(lastQuery, new ArrayList<>(), lastTxSearchSongs,
++                    Math.max(1, lastTxSearchSongs.size()));
++        }
+         return new ArrayList<>(searchResults);
+     }
+ 
+@@ -2061,25 +2055,20 @@
+             return;
+         }
+ 
+-        // 8+ characters => lyric-first. Shorter queries => title/artist-first. The alternate
+-        // section still remains one tap away and both sections can be independently collapsed.
+-        if (searchLyricFirst) {
+-            addLyricSearchSection(holder, visibleLyrics, true);
+-            addMetadataSearchSection(holder, visibleSongs, true);
+-        } else {
+-            addMetadataSearchSection(holder, visibleSongs, true);
+-            if (lyricSearchPending || !visibleLyrics.isEmpty()) addLyricSearchSection(holder, visibleLyrics, true);
+-        }
++        // V44 keeps a predictable hierarchy for every query: title/artist first, lyrics second.
++        // Both sections are independently collapsible and start expanded on each new search.
++        addMetadataSearchSection(holder, visibleSongs, true);
++        addLyricSearchSection(holder, visibleLyrics, true);
+     }
+ 
+     private void addMetadataSearchSection(LinearLayout holder, List<Song> songs, boolean allowEmpty) {
+         List<Song> safeSongs = songs == null ? new ArrayList<>() : songs;
+         if (safeSongs.isEmpty() && !allowEmpty) return;
+         String suffix = "wy".equals(searchSourceFilter) ? " · 网易" : ("tx".equals(searchSourceFilter) ? " · QQ" : "");
+-        String status = searchMetadataPending ? "匹配中…" : safeSongs.size() + " 首" + suffix;
++        String status = searchMetadataPending ? "搜索中…" : safeSongs.size() + " 首" + suffix;
+         LinearLayout content = Ui.column(this);
+         if (searchMetadataPending && safeSongs.isEmpty()) {
+-            TextView pending = Ui.text(this, "正在匹配歌名 / 歌手…", 11.2f, Ui.TEXT_2, false);
++            TextView pending = Ui.text(this, "正在搜索歌名 / 歌手…", 11.2f, Ui.TEXT_2, false);
+             pending.setGravity(Gravity.CENTER_VERTICAL);
+             content.addView(pending, Ui.lp(-1, Ui.dp(this, 40)));
+         } else if (safeSongs.isEmpty()) {
+@@ -2088,8 +2077,18 @@
+             content.addView(empty, Ui.lp(-1, Ui.dp(this, 40)));
+         } else {
+             content.addView(songList(safeSongs, safeSongs), Ui.lp(-1, -2));
++            if (searchHasMoreForCurrentFilter()) {
++                TextView more = outlineAction(searchMoreLoading ? "加载中…" : searchMoreLabel());
++                more.setEnabled(!searchMoreLoading);
++                more.setAlpha(searchMoreLoading ? .58f : 1f);
++                more.setOnClickListener(v -> loadMoreSearchResults(holder, more));
++                LinearLayout.LayoutParams mp = Ui.lp(-1, Ui.dp(this, 44));
++                mp.topMargin = Ui.dp(this, 12);
++                content.addView(more, mp);
++
++            }
+         }
+-        LinearLayout header = searchSectionHeader("歌曲 / 歌手匹配", status,
++        LinearLayout header = searchSectionHeader("歌曲 / 歌手", status,
+                 searchMetadataExpanded, expanded -> {
+                     searchMetadataExpanded = expanded;
+                     setSearchSectionExpanded(content, expanded);
+@@ -2100,28 +2099,175 @@
+         setSearchSectionExpanded(content, searchMetadataExpanded);
+     }
+ 
++    private boolean providerHasMore(int loaded, int total, int pageSize) {
++        // Some search endpoints report only the current page size as "total". A full page therefore
++        // remains probe-able even when total == loaded; one empty/partial next page will close it.
++        if (total > loaded) return true;
++        return loaded >= Math.max(1, pageSize);
++    }
++
++    private boolean searchHasMoreForCurrentFilter() {
++        if (searchMoreLoading) return true;
++        if ("wy".equals(searchSourceFilter)) return searchWyHasMore;
++        if ("tx".equals(searchSourceFilter)) return searchTxHasMore;
++        return searchWyHasMore || searchTxHasMore;
++    }
++
++    private String searchMoreLabel() {
++        if ("wy".equals(searchSourceFilter)) {
++            return "继续加载网易结果" + searchProgressText(lastWySearchSongs.size(), lastWyCount);
++        }
++        if ("tx".equals(searchSourceFilter)) {
++            return "继续加载QQ结果" + searchProgressText(lastTxSearchSongs.size(), lastTxCount);
++        }
++        if (searchWyHasMore && searchTxHasMore) return "继续加载更多结果";
++        if (searchWyHasMore) return "继续加载网易结果";
++        if (searchTxHasMore) return "继续加载QQ结果";
++        return "已加载全部结果";
++    }
++
++    private String searchProgressText(int loaded, int total) {
++        if (total <= 0) return " · 已加载 " + loaded;
++        return " · " + Math.min(loaded, total) + "/" + total;
++    }
++
++    private void loadMoreSearchResults(LinearLayout holder, TextView button) {
++        if (holder == null || searchMoreLoading || lastQuery == null || lastQuery.trim().isEmpty()) return;
++        final boolean loadWy = !"tx".equals(searchSourceFilter) && searchWyHasMore;
++        final boolean loadTx = !"wy".equals(searchSourceFilter) && searchTxHasMore;
++        if (!loadWy && !loadTx) { toast("已经加载全部搜索结果"); return; }
++
++        final int token = searchRequestToken;
++        final int wyOffset = searchWyNextOffset;
++        final int txPage = searchTxNextPage;
++        final ScrollView scroll = ancestorScrollView(holder);
++        final int savedY = scroll == null ? 0 : scroll.getScrollY();
++
++        searchMoreLoading = true;
++        if (button != null) {
++            button.setEnabled(false);
++            button.setAlpha(.58f);
++            button.setText("加载中…");
++        }
++
++        final Future<SearchPaginationApi.Page> wyFuture = loadWy
++                ? io.submit(() -> searchPagination.netease(lastQuery, wyOffset, SEARCH_PAGE_SIZE)) : null;
++        final Future<SearchPaginationApi.Page> txFuture = loadTx
++                ? io.submit(() -> searchPagination.qq(lastQuery, txPage, SEARCH_PAGE_SIZE)) : null;
++
++        io.submit(() -> {
++            SearchPaginationApi.Page wyPage = null;
++            SearchPaginationApi.Page txPageResult = null;
++            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(14);
++            try {
++                if (wyFuture != null) {
++                    long left = Math.max(1L, deadline - System.nanoTime());
++                    wyPage = wyFuture.get(left, TimeUnit.NANOSECONDS);
++                }
++            } catch (Exception e) {
++                if (wyFuture != null) wyFuture.cancel(true);
++                wyPage = new SearchPaginationApi.Page(new ArrayList<>(), lastWyCount, "请求超时或网络不可用");
++            }
++            try {
++                if (txFuture != null) {
++                    long left = Math.max(1L, deadline - System.nanoTime());
++                    txPageResult = txFuture.get(left, TimeUnit.NANOSECONDS);
++                }
++            } catch (Exception e) {
++                if (txFuture != null) txFuture.cancel(true);
++                txPageResult = new SearchPaginationApi.Page(new ArrayList<>(), lastTxCount, "请求超时或网络不可用");
++            }
++            final SearchPaginationApi.Page finalWy = wyPage;
++            final SearchPaginationApi.Page finalTx = txPageResult;
++            main.post(() -> {
++                if (token != searchRequestToken || isFinishing()) return;
++                searchMoreLoading = false;
++
++                if (loadWy && finalWy != null) {
++                    int before = lastWySearchSongs.size();
++                    appendUniqueProviderSongs(lastWySearchSongs, finalWy.songs, "wy");
++                    int added = lastWySearchSongs.size() - before;
++                    if (finalWy.total > 0) lastWyCount = Math.max(lastWyCount, finalWy.total);
++                    if (!finalWy.error.isEmpty()) lastWyError = finalWy.error;
++                    else if (added > 0) lastWyError = "";
++                    if (finalWy.error.isEmpty()) searchWyNextOffset += Math.max(1, finalWy.songs.size());
++                    searchWyHasMore = finalWy.error.isEmpty()
++                            ? !finalWy.songs.isEmpty() && providerHasMore(searchWyNextOffset, lastWyCount, SEARCH_PAGE_SIZE)
++                            : true;
++                    if (finalWy.error.isEmpty() && added == 0 && finalWy.songs.size() < SEARCH_PAGE_SIZE) searchWyHasMore = false;
++                }
++
++                if (loadTx && finalTx != null) {
++                    int before = lastTxSearchSongs.size();
++                    appendUniqueProviderSongs(lastTxSearchSongs, finalTx.songs, "tx");
++                    int added = lastTxSearchSongs.size() - before;
++                    if (finalTx.total > 0) lastTxCount = Math.max(lastTxCount, finalTx.total);
++                    if (!finalTx.error.isEmpty()) lastTxError = finalTx.error;
++                    else if (added > 0) lastTxError = "";
++                    if (finalTx.error.isEmpty()) searchTxNextPage++;
++                    int requestedThrough = Math.max(0, (searchTxNextPage - 1) * SEARCH_PAGE_SIZE);
++                    searchTxHasMore = finalTx.error.isEmpty()
++                            ? !finalTx.songs.isEmpty() && providerHasMore(requestedThrough, lastTxCount, SEARCH_PAGE_SIZE)
++                            : true;
++                    if (finalTx.error.isEmpty() && added == 0 && finalTx.songs.size() < SEARCH_PAGE_SIZE) searchTxHasMore = false;
++                }
++
++                searchResults = mergeSearch(lastQuery, lastWySearchSongs, lastTxSearchSongs);
++                if (!lyricSearchResults.isEmpty()) lyricSearchResults = enrichAndRerankLyricResults(lastQuery, lyricSearchResults);
++                renderSearchResults(holder);
++                if (scroll != null) scroll.post(() -> scroll.scrollTo(0, savedY));
++            });
++        });
++    }
++
++    private void appendUniqueProviderSongs(List<Song> target, List<Song> incoming, String source) {
++        if (target == null || incoming == null || incoming.isEmpty()) return;
++        LinkedHashSet<String> seen = new LinkedHashSet<>();
++        for (Song song : target) {
++            if (song == null) continue;
++            com.xingyu.music.model.SourceVariant v = song.variant(source);
++            seen.add(v == null || v.sourceId.isEmpty() ? song.key() : source + ":" + v.sourceId);
++        }
++        for (Song song : incoming) {
++            if (song == null) continue;
++            com.xingyu.music.model.SourceVariant v = song.variant(source);
++            String key = v == null || v.sourceId.isEmpty() ? song.key() : source + ":" + v.sourceId;
++            if (seen.add(key)) target.add(song);
++        }
++    }
++
++    private ScrollView ancestorScrollView(View view) {
++        if (view == null) return null;
++        android.view.ViewParent parent = view.getParent();
++        while (parent != null) {
++            if (parent instanceof ScrollView) return (ScrollView) parent;
++            parent = parent.getParent();
++        }
++        return null;
++    }
++
+     private void addLyricSearchSection(LinearLayout holder, List<LyricSearchResult> hits, boolean allowEmpty) {
+         List<LyricSearchResult> safeHits = hits == null ? new ArrayList<>() : hits;
+         if (safeHits.isEmpty() && !lyricSearchPending && !allowEmpty) return;
+         String suffix = "wy".equals(searchSourceFilter) ? " · 网易" : ("tx".equals(searchSourceFilter) ? " · QQ" : "");
+-        String status = lyricSearchPending ? "匹配中…" : safeHits.size() + " 首" + suffix;
++        String status = lyricSearchPending ? "搜索中…" : safeHits.size() + " 首" + suffix;
+         LinearLayout content = Ui.column(this);
+         if (lyricSearchPending && safeHits.isEmpty()) {
+             TextView pending = Ui.text(this, "正在从歌词索引中找最接近的原唱版本…", 11.2f, Ui.TEXT_2, false);
+             pending.setGravity(Gravity.CENTER_VERTICAL);
+             content.addView(pending, Ui.lp(-1, Ui.dp(this, 42)));
+         } else if (safeHits.isEmpty()) {
+-            TextView empty = Ui.text(this, "没有找到足够精准的歌词匹配", 11.2f, Ui.DIM, false);
++            TextView empty = Ui.text(this, normalizeSuggestion(lastQuery).length() < 3 ? "输入至少 3 个字可搜索歌词" : "没有找到足够精准的歌词结果", 11.2f, Ui.DIM, false);
+             empty.setGravity(Gravity.CENTER_VERTICAL);
+             content.addView(empty, Ui.lp(-1, Ui.dp(this, 40)));
+         } else {
+             content.addView(lyricSearchResultList(safeHits), Ui.lp(-1, -2));
+         }
+-        LinearLayout header = searchSectionHeader("歌词匹配", status, searchLyricsExpanded, expanded -> {
++        LinearLayout header = searchSectionHeader("歌词", status, searchLyricsExpanded, expanded -> {
+             searchLyricsExpanded = expanded;
+             setSearchSectionExpanded(content, expanded);
+         });
+-        LinearLayout.LayoutParams hp = marginTop(searchLyricFirst ? 14 : 18);
++        LinearLayout.LayoutParams hp = marginTop(18);
+         holder.addView(header, hp);
+         holder.addView(content, marginTop(4));
+         setSearchSectionExpanded(content, searchLyricsExpanded);
+
+--- /dev/null
++++ app/src/main/java/com/xingyu/music/data/SearchPaginationApi.java
++package com.xingyu.music.data;
++
++import com.xingyu.music.model.Song;
++import com.xingyu.music.model.SourceVariant;
++
++import org.json.JSONArray;
++import org.json.JSONObject;
++
++import java.net.URLEncoder;
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.util.ArrayList;
++import java.util.Base64;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Locale;
++import java.util.Map;
++
++/**
++ * Search-only pagination helper for V44.
++ *
++ * This class is deliberately separate from NeteaseApi/QQMusicApi so the locked playback +
++ * scheduling objects (and the already-proven first-page metadata adapters) remain byte-identical.
++ * It is invoked only after the user taps "继续加载". It never resolves audio URLs, never touches
++ * SourceHealthStore, and never reads/writes PlaybackUrlStore.
++ */
++public final class SearchPaginationApi {
++    private static final String WEB_UA = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/125 Safari/537.36";
++    private static final String QQ_APP_UA = "QQMusic 14090508(android 12)";
++    private static final int[] PART_1 = {23, 14, 6, 36, 16, 40, 7, 19};
++    private static final int[] PART_2 = {16, 1, 32, 12, 19, 27, 8, 5};
++    private static final int[] SCRAMBLE = {89, 39, 179, 150, 218, 82, 58, 252, 177, 52, 186, 123, 120, 64, 242, 133, 143, 161, 121, 179};
++
++    public static final class Page {
++        public final List<Song> songs;
++        public final int total;
++        public final String error;
++
++        public Page(List<Song> songs, int total, String error) {
++            this.songs = songs == null ? new ArrayList<>() : songs;
++            this.total = Math.max(0, total);
++            this.error = error == null ? "" : error;
++        }
++    }
++
++    public Page netease(String keyword, int offset, int limit) {
++        String q = keyword == null ? "" : keyword.trim();
++        if (q.isEmpty()) return new Page(new ArrayList<>(), 0, "");
++        int n = Math.max(1, Math.min(limit, 50));
++        int start = Math.max(0, offset);
++        String firstError = "";
++        try {
++            return neteaseEapi(q, start, n);
++        } catch (Exception e) {
++            firstError = message(e);
++        }
++        try {
++            return neteaseLegacy(q, start, n);
++        } catch (Exception e) {
++            String second = message(e);
++            return new Page(new ArrayList<>(), 0, firstError.isEmpty() ? second : firstError + "; fallback=" + second);
++        }
++    }
++
++    private Page neteaseEapi(String keyword, int offset, int limit) throws Exception {
++        JSONObject payload = new JSONObject();
++        payload.put("keyword", keyword);
++        payload.put("needCorrect", "1");
++        payload.put("channel", "typing");
++        payload.put("offset", offset);
++        payload.put("scene", "normal");
++        payload.put("total", true);
++        payload.put("limit", limit);
++        String route = "/api/search/song/list/page";
++        Map<String, String> form = new LinkedHashMap<>();
++        form.put("params", NeteaseCrypto.eapi(route, payload.toString()));
++        Map<String, String> headers = neteaseHeaders();
++        headers.put("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/60 Safari/537.36");
++
++        Http.Response r;
++        try {
++            r = Http.postForm("https://interface.music.163.com/eapi/batch", headers, form);
++            if (r.code < 200 || r.code >= 300) throw new Exception("HTTPS " + r.code);
++        } catch (Exception first) {
++            r = Http.postForm("http://interface.music.163.com/eapi/batch", headers, form);
++            if (r.code < 200 || r.code >= 300) throw new Exception("HTTP " + r.code);
++        }
++
++        JSONObject root = new JSONObject(r.body);
++        if (root.optInt("code", -1) != 200) throw new Exception("code=" + root.optInt("code", -1));
++        JSONObject data = root.optJSONObject("data");
++        JSONArray resources = data == null ? null : data.optJSONArray("resources");
++        int total = firstPositive(
++                data == null ? 0 : data.optInt("totalCount", 0),
++                data == null ? 0 : data.optInt("total", 0),
++                resources == null ? 0 : offset + resources.length());
++        return new Page(parseNeteaseResources(resources), total, "");
++    }
++
++    private Page neteaseLegacy(String keyword, int offset, int limit) throws Exception {
++        Map<String, String> form = new LinkedHashMap<>();
++        form.put("s", keyword);
++        form.put("type", "1");
++        form.put("offset", String.valueOf(offset));
++        form.put("total", "true");
++        form.put("limit", String.valueOf(limit));
++        Http.Response r = Http.postForm("https://music.163.com/api/search/get/", neteaseHeaders(), form);
++        if (r.code < 200 || r.code >= 300) throw new Exception("HTTP " + r.code);
++        JSONObject root = new JSONObject(r.body);
++        JSONObject result = root.optJSONObject("result");
++        JSONArray songs = result == null ? null : result.optJSONArray("songs");
++        int total = firstPositive(
++                result == null ? 0 : result.optInt("songCount", 0),
++                songs == null ? 0 : offset + songs.length());
++        return new Page(parseNeteaseSongs(songs), total, "");
++    }
++
++    public Page qq(String keyword, int page, int limit) {
++        String q = keyword == null ? "" : keyword.trim();
++        if (q.isEmpty()) return new Page(new ArrayList<>(), 0, "");
++        int n = Math.max(1, Math.min(limit, 50));
++        int p = Math.max(1, page);
++        String firstError = "";
++        try {
++            return qqSignedMobile(q, p, n);
++        } catch (Exception e) {
++            firstError = message(e);
++        }
++        try {
++            return qqLegacy(q, p, n);
++        } catch (Exception e) {
++            String second = message(e);
++            return new Page(new ArrayList<>(), 0, firstError.isEmpty() ? second : firstError + "; fallback=" + second);
++        }
++    }
++
++    private Page qqSignedMobile(String keyword, int page, int limit) throws Exception {
++        JSONObject comm = new JSONObject();
++        comm.put("ct", "11");
++        comm.put("cv", "14090508");
++        comm.put("v", "14090508");
++        comm.put("tmeAppID", "qqmusic");
++        comm.put("phonetype", "EBG-AN10");
++        comm.put("deviceScore", "553.47");
++        comm.put("devicelevel", "50");
++        comm.put("newdevicelevel", "20");
++        comm.put("rom", "HuaWei/EMOTION/EmotionUI_14.2.0");
++        comm.put("os_ver", "12");
++        String[] zeroKeys = {"OpenUDID", "OpenUDID2", "QIMEI36", "udid", "chid", "aid", "oaid", "taid", "tid", "wid", "uid", "sid"};
++        for (String key : zeroKeys) comm.put(key, "0");
++        comm.put("modeSwitch", "6");
++        comm.put("teenMode", "0");
++        comm.put("ui_mode", "2");
++        comm.put("nettype", "1020");
++        comm.put("v4ip", "");
++
++        JSONObject param = new JSONObject();
++        param.put("search_type", 0);
++        param.put("searchid", String.valueOf(new java.util.Random().nextLong() & Long.MAX_VALUE));
++        param.put("query", keyword);
++        param.put("page_num", page);
++        param.put("num_per_page", limit);
++        param.put("highlight", 0);
++        param.put("nqc_flag", 0);
++        param.put("multi_zhida", 0);
++        param.put("cat", 2);
++        param.put("grp", 1);
++        param.put("sin", Math.max(0, (page - 1) * limit));
++        param.put("sem", 0);
++
++        JSONObject req = new JSONObject();
++        req.put("module", "music.search.SearchCgiService");
++        req.put("method", "DoSearchForQQMusicMobile");
++        req.put("param", param);
++
++        JSONObject payload = new JSONObject();
++        payload.put("comm", comm);
++        payload.put("req", req);
++        String raw = payload.toString();
++        String sign = zzcSign(raw);
++
++        Map<String, String> headers = new LinkedHashMap<>();
++        headers.put("User-Agent", QQ_APP_UA);
++        headers.put("Accept", "application/json,text/plain,*/*");
++        Http.Response response = Http.postJson("https://u.y.qq.com/cgi-bin/musics.fcg?sign=" + sign, headers, raw);
++        if (response.code < 200 || response.code >= 300) throw new Exception("HTTP " + response.code);
++        JSONObject root = new JSONObject(response.body);
++        if (root.optInt("code", -1) != 0) throw new Exception("root code=" + root.optInt("code", -1));
++        JSONObject reqBody = root.optJSONObject("req");
++        if (reqBody == null) throw new Exception("缺少 req");
++        int reqCode = reqBody.optInt("code", -1);
++        if (reqCode != 0) throw new Exception(reqCode == 2001 ? "QQ 风控要求登录" : "req code=" + reqCode);
++        JSONObject data = reqBody.optJSONObject("data");
++        JSONObject body = data == null ? null : data.optJSONObject("body");
++        JSONArray items = body == null ? null : body.optJSONArray("item_song");
++        JSONObject meta = body == null ? null : body.optJSONObject("meta");
++        int total = firstPositive(
++                meta == null ? 0 : meta.optInt("sum", 0),
++                meta == null ? 0 : meta.optInt("total", 0),
++                body == null ? 0 : body.optInt("sum", 0),
++                body == null ? 0 : body.optInt("total", 0),
++                data == null ? 0 : data.optInt("sum", 0),
++                items == null ? 0 : (page - 1) * limit + items.length());
++        return new Page(parseQQMobile(items), total, "");
++    }
++
++    private Page qqLegacy(String keyword, int page, int limit) throws Exception {
++        String url = "https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=" + page + "&n=" + limit
++                + "&w=" + URLEncoder.encode(keyword, StandardCharsets.UTF_8.name())
++                + "&format=json&cr=1&g_tk=5381";
++        Http.Response r = Http.get(url, qqHeaders());
++        if (r.code < 200 || r.code >= 300) throw new Exception("HTTP " + r.code);
++        JSONObject root = new JSONObject(r.body);
++        JSONObject data = root.optJSONObject("data");
++        JSONObject song = data == null ? null : data.optJSONObject("song");
++        JSONArray list = song == null ? null : song.optJSONArray("list");
++        int total = firstPositive(
++                song == null ? 0 : song.optInt("totalnum", 0),
++                song == null ? 0 : song.optInt("total", 0),
++                list == null ? 0 : (page - 1) * limit + list.length());
++        return new Page(parseQQSongs(list), total, "");
++    }
++
++    private List<Song> parseNeteaseResources(JSONArray resources) {
++        List<Song> out = new ArrayList<>();
++        if (resources == null) return out;
++        for (int i = 0; i < resources.length(); i++) {
++            JSONObject item = resources.optJSONObject(i);
++            JSONObject base = item == null ? null : item.optJSONObject("baseInfo");
++            JSONObject simple = base == null ? null : base.optJSONObject("simpleSongData");
++            Song song = parseNeteaseSong(simple);
++            if (song != null) out.add(song);
++        }
++        return out;
++    }
++
++    private List<Song> parseNeteaseSongs(JSONArray songs) {
++        List<Song> out = new ArrayList<>();
++        if (songs == null) return out;
++        for (int i = 0; i < songs.length(); i++) {
++            Song song = parseNeteaseSong(songs.optJSONObject(i));
++            if (song != null) out.add(song);
++        }
++        return out;
++    }
++
++    private Song parseNeteaseSong(JSONObject o) {
++        if (o == null) return null;
++        long id = o.optLong("id");
++        if (id <= 0) return null;
++        JSONArray artists = o.optJSONArray("ar");
++        if (artists == null) artists = o.optJSONArray("artists");
++        StringBuilder ar = new StringBuilder();
++        if (artists != null) {
++            for (int j = 0; j < artists.length(); j++) {
++                JSONObject ao = artists.optJSONObject(j);
++                if (ao == null) continue;
++                String name = ao.optString("name", "").trim();
++                if (name.isEmpty()) continue;
++                if (ar.length() > 0) ar.append(" / ");
++                ar.append(name);
++            }
++        }
++        JSONObject album = o.optJSONObject("al");
++        if (album == null) album = o.optJSONObject("album");
++        String cover = album == null ? "" : album.optString("picUrl", "");
++        long duration = o.has("dt") ? o.optLong("dt") : o.optLong("duration");
++        boolean q128 = qualityPresent(o, "l") || qualityPresent(o, "m") || qualityPresent(o, "h")
++                || qualityPresent(o, "sq") || qualityPresent(o, "hr");
++        boolean q320 = qualityPresent(o, "h") || qualityPresent(o, "sq") || qualityPresent(o, "hr");
++        if (!o.has("l") && !o.has("m") && !o.has("h") && !o.has("sq") && !o.has("hr")) {
++            q128 = true;
++            q320 = true;
++        }
++        List<SourceVariant> variants = new ArrayList<>();
++        variants.add(new SourceVariant("wy", String.valueOf(id), q128, q320, o));
++        return new Song(o.optString("name", "未知歌曲"),
++                ar.length() == 0 ? "未知歌手" : ar.toString(),
++                album == null ? "" : album.optString("name", ""),
++                cover, duration, variants);
++    }
++
++    private List<Song> parseQQMobile(JSONArray items) {
++        List<Song> out = new ArrayList<>();
++        if (items == null) return out;
++        for (int i = 0; i < items.length(); i++) {
++            JSONObject o = items.optJSONObject(i);
++            if (o == null) continue;
++            String mid = firstNonEmpty(o.optString("mid", ""), o.optString("songmid", ""));
++            if (mid.isEmpty()) continue;
++            String title = firstNonEmpty(o.optString("title", ""), o.optString("name", ""), o.optString("songname", ""), "未知歌曲");
++            String artist = singerNames(o.optJSONArray("singer"));
++            JSONObject album = o.optJSONObject("album");
++            String albumMid = album == null ? o.optString("albummid", "") : album.optString("mid", "");
++            String cover;
++            if (!albumMid.isEmpty()) cover = "https://y.gtimg.cn/music/photo_new/T002R500x500M000" + albumMid + ".jpg";
++            else {
++                JSONArray singers = o.optJSONArray("singer");
++                JSONObject first = singers == null ? null : singers.optJSONObject(0);
++                String singerMid = first == null ? "" : first.optString("mid", "");
++                cover = singerMid.isEmpty() ? "" : "https://y.gtimg.cn/music/photo_new/T001R500x500M000" + singerMid + ".jpg";
++            }
++            JSONObject file = o.optJSONObject("file");
++            boolean knownQuality = file != null;
++            boolean q128 = !knownQuality || file.optLong("size_128mp3", 0L) > 0L || file.optLong("size_96aac", 0L) > 0L;
++            boolean q320 = !knownQuality || file.optLong("size_320mp3", 0L) > 0L || file.optLong("size_flac", 0L) > 0L;
++            long interval = o.optLong("interval", 0L);
++            List<SourceVariant> variants = new ArrayList<>();
++            variants.add(new SourceVariant("tx", mid, q128, q320, o));
++            out.add(new Song(title, artist, album == null ? "" : album.optString("name", ""), cover,
++                    interval > 0 ? interval * 1000L : 0L, variants));
++        }
++        return out;
++    }
++
++    private List<Song> parseQQSongs(JSONArray list) {
++        List<Song> out = new ArrayList<>();
++        if (list == null) return out;
++        for (int i = 0; i < list.length(); i++) {
++            JSONObject o = list.optJSONObject(i);
++            if (o == null) continue;
++            String mid = firstNonEmpty(o.optString("songmid", ""), o.optString("mid", ""));
++            if (mid.isEmpty()) continue;
++            String title = firstNonEmpty(o.optString("songname", ""), o.optString("title", ""), o.optString("name", ""), "未知歌曲");
++            String artist = singerNames(o.optJSONArray("singer"));
++            JSONObject album = o.optJSONObject("album");
++            String albumMid = firstNonEmpty(o.optString("albummid", ""), album == null ? "" : album.optString("mid", ""));
++            String albumName = firstNonEmpty(o.optString("albumname", ""), album == null ? "" : album.optString("name", ""));
++            String cover = albumMid.isEmpty() ? "" : "https://y.gtimg.cn/music/photo_new/T002R500x500M000" + albumMid + ".jpg";
++            JSONObject file = o.optJSONObject("file");
++            boolean knownQuality = file != null;
++            boolean q128 = !knownQuality || file.optLong("size_128mp3", 0L) > 0L || file.optLong("size_96aac", 0L) > 0L;
++            boolean q320 = !knownQuality || file.optLong("size_320mp3", 0L) > 0L || file.optLong("size_flac", 0L) > 0L;
++            List<SourceVariant> variants = new ArrayList<>();
++            variants.add(new SourceVariant("tx", mid, q128, q320, o));
++            out.add(new Song(title, artist, albumName, cover, o.optLong("interval", 0L) * 1000L, variants));
++        }
++        return out;
++    }
++
++    private static String singerNames(JSONArray singers) {
++        if (singers == null || singers.length() == 0) return "未知歌手";
++        StringBuilder b = new StringBuilder();
++        for (int i = 0; i < singers.length(); i++) {
++            JSONObject s = singers.optJSONObject(i);
++            if (s == null) continue;
++            String n = s.optString("name", "").trim();
++            if (n.isEmpty()) continue;
++            if (b.length() > 0) b.append(" / ");
++            b.append(n);
++        }
++        return b.length() == 0 ? "未知歌手" : b.toString();
++    }
++
++    private static boolean qualityPresent(JSONObject o, String key) {
++        if (o == null || !o.has(key) || o.isNull(key)) return false;
++        JSONObject q = o.optJSONObject(key);
++        if (q == null) return true;
++        return q.optLong("size", q.optLong("br", 1L)) > 0L;
++    }
++
++    private static Map<String, String> neteaseHeaders() {
++        Map<String, String> h = new LinkedHashMap<>();
++        h.put("User-Agent", WEB_UA);
++        h.put("Referer", "https://music.163.com/");
++        h.put("Accept", "application/json,text/plain,*/*");
++        return h;
++    }
++
++    private static Map<String, String> qqHeaders() {
++        Map<String, String> h = new LinkedHashMap<>();
++        h.put("User-Agent", WEB_UA);
++        h.put("Referer", "https://y.qq.com/");
++        h.put("Origin", "https://y.qq.com");
++        h.put("Accept", "application/json,text/plain,*/*");
++        return h;
++    }
++
++    private static String zzcSign(String text) throws Exception {
++        byte[] digest = MessageDigest.getInstance("SHA-1").digest(text.getBytes(StandardCharsets.UTF_8));
++        StringBuilder hashBuilder = new StringBuilder(40);
++        for (byte b : digest) hashBuilder.append(String.format(Locale.ROOT, "%02x", b & 0xff));
++        String hash = hashBuilder.toString();
++        StringBuilder p1 = new StringBuilder();
++        StringBuilder p2 = new StringBuilder();
++        for (int idx : PART_1) if (idx >= 0 && idx < hash.length()) p1.append(hash.charAt(idx));
++        for (int idx : PART_2) if (idx >= 0 && idx < hash.length()) p2.append(hash.charAt(idx));
++        byte[] scrambled = new byte[SCRAMBLE.length];
++        for (int i = 0; i < SCRAMBLE.length; i++) {
++            int hv = Integer.parseInt(hash.substring(i * 2, i * 2 + 2), 16);
++            scrambled[i] = (byte) (SCRAMBLE[i] ^ hv);
++        }
++        String b64 = Base64.getEncoder().encodeToString(scrambled)
++                .replace("/", "").replace("\\", "").replace("+", "").replace("=", "");
++        return ("zzc" + p1 + b64 + p2).toLowerCase(Locale.ROOT);
++    }
++
++    private static String firstNonEmpty(String... values) {
++        if (values != null) for (String v : values) if (v != null && !v.trim().isEmpty()) return v.trim();
++        return "";
++    }
++
++    private static int firstPositive(int... values) {
++        if (values != null) for (int v : values) if (v > 0) return v;
++        return 0;
++    }
++
++    private static String message(Exception e) {
++        return e == null || e.getMessage() == null || e.getMessage().trim().isEmpty() ? "unknown" : e.getMessage().trim();
++    }
++}
