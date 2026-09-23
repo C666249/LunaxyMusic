@@ -195,7 +195,7 @@ public final class Starfield3DView extends View implements SensorEventListener {
 
     public Starfield3DView(Context context) {
         super(context);
-        setBackgroundColor(Color.BLACK);
+        setBackgroundColor(Ui.BG);
         setLayerType(View.LAYER_TYPE_HARDWARE, null);
         setClickable(false);
         setFocusable(false);
@@ -222,7 +222,7 @@ public final class Starfield3DView extends View implements SensorEventListener {
 
     public void setAudioLevelProvider(AudioLevelProvider provider) {
         audioLevels = provider;
-        if (running) postInvalidateOnAnimation();
+        if (running && !SpringMotion.isReducedMotion()) postInvalidateOnAnimation();
     }
 
     public boolean hasRotationTracking() {
@@ -543,7 +543,7 @@ public final class Starfield3DView extends View implements SensorEventListener {
             clearTrails();
             resetFlightField(true);
             lastFrameMs = SystemClock.uptimeMillis();
-            postInvalidateOnAnimation();
+            if (!SpringMotion.isReducedMotion()) postInvalidateOnAnimation();
         }
         if (!rotationRegistered && sensorManager != null && rotationSensor != null) {
             rotationRegistered = sensorManager.registerListener(
@@ -577,7 +577,7 @@ public final class Starfield3DView extends View implements SensorEventListener {
         float width = getWidth();
         float height = getHeight();
         if (width <= 0f || height <= 0f) return;
-        canvas.drawColor(Color.BLACK);
+        canvas.drawColor(Ui.BG);
 
         long nowMs = SystemClock.uptimeMillis();
         float dt = Math.min(.045f, Math.max(.001f, (nowMs - lastFrameMs) / 1000f));
@@ -666,7 +666,7 @@ public final class Starfield3DView extends View implements SensorEventListener {
 
         // Never throttle because the phone is moving.  Particle time always advances while
         // the player is visible; sensors merely alter cameraQ on top of that simulation.
-        if (running) postInvalidateOnAnimation();
+        if (running && !SpringMotion.isReducedMotion()) postInvalidateOnAnimation();
     }
 
     private void updateStarMotion(Star s, float time, float dt, float surge, float swirl,
@@ -843,10 +843,12 @@ public final class Starfield3DView extends View implements SensorEventListener {
         if (!s.fadeBeforeRecycle || life < s.fadeStart)
             alpha = Math.max(Math.round(30f * starBrightnessMultiplier), alpha);
         else alpha = Math.max(0, alpha);
+        float appearanceAlpha = Ui.isLightAppearance() ? .16f : 1f;
+        alpha = Math.max(Ui.isLightAppearance() ? 5 : 0, Math.round(alpha * appearanceAlpha));
 
-        int neutralR = s.layer == LAYER_FAR ? 226 : 248;
-        int neutralG = s.layer == LAYER_FAR ? 237 : 249;
-        int neutralB = 255;
+        int neutralR = Ui.isLightAppearance() ? (s.layer == LAYER_FAR ? 70 : 44) : (s.layer == LAYER_FAR ? 226 : 248);
+        int neutralG = Ui.isLightAppearance() ? (s.layer == LAYER_FAR ? 82 : 53) : (s.layer == LAYER_FAR ? 237 : 249);
+        int neutralB = Ui.isLightAppearance() ? (s.layer == LAYER_FAR ? 112 : 78) : 255;
         float tint = clamp(s.tintWeight + life * .13f + bloom * .035f
                 + visualEnergy * .08f + visualBeat * .12f, .03f, .52f);
         int r = mix(neutralR, Color.red(accent), tint);
@@ -864,7 +866,7 @@ public final class Starfield3DView extends View implements SensorEventListener {
             boolean livingTrace = motionProfile == PROFILE_LIVING
                     && (s.motionType == MOTION_COMET || (s.layer == LAYER_NEAR && life > .74f));
             boolean trace = deepTrace || livingTrace;
-            if (trace && displacement > .60f && displacement < 29f * density) {
+            if (!Ui.isLightAppearance() && trace && displacement > .60f && displacement < 29f * density) {
                 float tail = deepTrace ? clamp(.07f + life * .10f, .07f, .17f)
                         : clamp(.07f + life * .12f, .07f, .19f);
                 float trailAlpha = deepTrace ? .045f : (s.motionType == MOTION_COMET ? .13f : .065f);
@@ -996,9 +998,11 @@ public final class Starfield3DView extends View implements SensorEventListener {
             if (!s.fadeBeforeRecycle || progress < s.fadeStart)
                 alpha = Math.max(Math.round(34f * starBrightnessMultiplier), alpha);
             else alpha = Math.max(0, alpha);
-            int neutralR = s.coolWhite ? 224 : 250;
-            int neutralG = s.coolWhite ? 236 : 250;
-            int neutralB = 255;
+            float appearanceAlpha = Ui.isLightAppearance() ? .16f : 1f;
+            alpha = Math.max(Ui.isLightAppearance() ? 5 : 0, Math.round(alpha * appearanceAlpha));
+            int neutralR = Ui.isLightAppearance() ? (s.coolWhite ? 72 : 42) : (s.coolWhite ? 224 : 250);
+            int neutralG = Ui.isLightAppearance() ? (s.coolWhite ? 84 : 52) : (s.coolWhite ? 236 : 250);
+            int neutralB = Ui.isLightAppearance() ? (s.coolWhite ? 112 : 76) : 255;
             float tint = clamp(s.tintWeight + progress * .12f
                     + visualEnergy * .10f + visualBeat * .15f, .05f, .54f);
             int r = mix(neutralR, Color.red(accent), tint);
@@ -1085,9 +1089,10 @@ public final class Starfield3DView extends View implements SensorEventListener {
         canvas.drawCircle(sx, sy, coreRadius, paint);
 
         // Sub-pixel hot nucleus: this is what gives the point a crisp photographic texture.
-        int hotR = mix(r, 255, .78f);
-        int hotG = mix(g, 255, .78f);
-        int hotB = mix(b, 255, .78f);
+        int nucleusTarget = Ui.isLightAppearance() ? 18 : 255;
+        int hotR = mix(r, nucleusTarget, .78f);
+        int hotG = mix(g, nucleusTarget, .78f);
+        int hotB = mix(b, nucleusTarget, .78f);
         float nucleusRadius = Math.max(.11f * density * starSizeMultiplier, coreRadius * .26f);
         int hotAlpha = clamp255((int) (alpha * (.92f + near * .08f)));
         canvas.drawCircle(sx, sy, nucleusRadius, colorPaint(hotAlpha, hotR, hotG, hotB));
@@ -1133,9 +1138,9 @@ public final class Starfield3DView extends View implements SensorEventListener {
     private void rebuildGlowPalette() {
         final float[] tintStops = new float[]{.05f, .16f, .28f, .41f, .55f};
         for (int i = 0; i < glowShaders.length; i++) {
-            int neutralR = i == 0 ? 228 : 247;
-            int neutralG = i == 0 ? 238 : 248;
-            int neutralB = 255;
+            int neutralR = Ui.isLightAppearance() ? (i == 0 ? 74 : 48) : (i == 0 ? 228 : 247);
+            int neutralG = Ui.isLightAppearance() ? (i == 0 ? 86 : 58) : (i == 0 ? 238 : 248);
+            int neutralB = Ui.isLightAppearance() ? (i == 0 ? 116 : 84) : 255;
             int rr = mix(neutralR, Color.red(accent), tintStops[i]);
             int gg = mix(neutralG, Color.green(accent), tintStops[i]);
             int bb = mix(neutralB, Color.blue(accent), tintStops[i]);
@@ -1144,7 +1149,8 @@ public final class Starfield3DView extends View implements SensorEventListener {
             // This alpha profile approximates pow(1-r, 3): bright center, fast organic
             // falloff, then a long almost-invisible tail.  The transparent last stop is
             // what removes the visible "bubble boundary" of solid-circle bloom.
-            int hot = Color.argb(255, mix(rr, 255, .82f), mix(gg, 255, .82f), mix(bb, 255, .82f));
+            int glowTarget = Ui.isLightAppearance() ? 18 : 255;
+            int hot = Color.argb(255, mix(rr, glowTarget, .82f), mix(gg, glowTarget, .82f), mix(bb, glowTarget, .82f));
             int body = Color.argb(196, rr, gg, bb);
             int inner = Color.argb(92, rr, gg, bb);
             int soft = Color.argb(38, rr, gg, bb);

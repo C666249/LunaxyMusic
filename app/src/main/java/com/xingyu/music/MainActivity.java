@@ -18,6 +18,7 @@ import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
@@ -32,6 +33,8 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.net.Uri;
 import android.provider.Settings;
+import android.speech.SpeechRecognizer;
+import android.speech.RecognizerIntent;
 import android.os.Environment;
 import android.text.Editable;
 import android.text.SpannableString;
@@ -43,6 +46,7 @@ import android.text.style.ClickableSpan;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.StyleSpan;
 import android.text.TextWatcher;
+import android.view.Choreographer;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -109,16 +113,22 @@ import com.xingyu.music.model.LyricWord;
 import com.xingyu.music.model.PlaybackSnapshot;
 import com.xingyu.music.model.Song;
 import com.xingyu.music.playback.PlaybackService;
+import com.xingyu.music.ui.AppearanceSystem;
 import com.xingyu.music.ui.AudioLevelProvider;
 import com.xingyu.music.ui.ArtworkMorphView;
 import com.xingyu.music.ui.ColorPickerView;
 import com.xingyu.music.ui.CoverAmbientDrawable;
 import com.xingyu.music.ui.ContextCoachOverlay;
+import com.xingyu.music.ui.CurtainRevealFrame;
+import com.xingyu.music.ui.FluidPlaceholderView;
+import com.xingyu.music.ui.FluidLoadingIconView;
 import com.xingyu.music.ui.IconView;
 import com.xingyu.music.ui.FluidTrackHaloDrawable;
+import com.xingyu.music.ui.FluidToolDock;
 import com.xingyu.music.ui.PlaybackHighlightState;
 import com.xingyu.music.ui.RecommendationGlassDrawable;
 import com.xingyu.music.ui.PlayerSurfaceMorphView;
+import com.xingyu.music.ui.PlaylistHeroMorphView;
 import com.xingyu.music.ui.VinylStackGeometry;
 import com.xingyu.music.ui.ImageLoader;
 import com.xingyu.music.ui.LyricLineView;
@@ -129,11 +139,16 @@ import com.xingyu.music.ui.StarfieldView;
 import com.xingyu.music.ui.Starfield3DView;
 import com.xingyu.music.ui.StarfieldBackdropView;
 import com.xingyu.music.ui.SpringMotion;
+import com.xingyu.music.ui.ThemeRevealOverlay;
 import com.xingyu.music.ui.SourceFlowView;
 import com.xingyu.music.ui.SwipeAwareScrollView;
 import com.xingyu.music.ui.Ui;
 import com.xingyu.music.ui.VinylRecordView;
 import com.xingyu.music.ui.VinylStackView;
+import com.xingyu.music.ui.VoiceAssistantPanel;
+import com.xingyu.music.ui.VoiceOrbView;
+import com.xingyu.music.voice.VoiceAssistantContract;
+import com.xingyu.music.voice.VoiceAssistantService;
 
 import java.text.Normalizer;
 import java.io.File;
@@ -168,6 +183,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
     // V3.2: canonical merge/ranking is CPU work, not UI work. Keep it serialized off the main
     // thread so four returning catalogs cannot stall scrolling/taps while ExactTrackMatcher runs.
     private final ExecutorService searchMergeExecutor = Executors.newSingleThreadExecutor();
+    // Local playlist filtering can scan thousands of titles without blocking the UI thread.
+    private final ExecutorService playlistFilterExecutor = Executors.newSingleThreadExecutor();
     // Beta V7: lyric-index discovery/verification is network-only and isolated from catalog/playback workers.
     // Remote lyric discovery must never queue behind LRC verification work.
     private final ExecutorService lyricIndexExecutor = Executors.newFixedThreadPool(4);
@@ -228,12 +245,31 @@ public final class MainActivity extends Activity implements PlaybackService.List
     // Optional one-shot completion for sheets that must refresh their parent only after dismissal.
     private Runnable modalDismissCompletion;
     private TextView snackbar;
+    private VoiceAssistantPanel voicePanel;
+    private Runnable voicePanelHideRunnable;
     private StarfieldView stars;
+    private ImageView startupLogo;
+    private ValueAnimator startupStarSpeedAnimator;
+    private boolean startupComplete;
+    private int libraryBootstrapGeneration;
+    private FrameLayout navHost;
     private LinearLayout navBar;
+    private View navSelectionPill;
+    private final LinearLayout[] navItems = new LinearLayout[4];
+    private final IconView[] navIcons = new IconView[4];
+    private final TextView[] navLabels = new TextView[4];
+    private final int[] rootTabScrollY = new int[4];
+    private final int[] rootTabDetailScrollY = new int[4];
+    private final ImportedPlaylist[] rootTabOpenPlaylist = new ImportedPlaylist[4];
+    private final boolean[] rootTabOfflinePlaylistOpen = new boolean[4];
+    private final SmartCollection[] rootTabSmartCollection = new SmartCollection[4];
+    private final boolean[] rootTabSearchAllResultsOpen = new boolean[4];
     private ImageView miniCover;
     private TextView miniTitle;
     private TextView miniArtist;
+    private FrameLayout miniPlayButton;
     private IconView miniPlayIcon;
+    private IconView miniQueueIcon;
     private View miniProgress;
     private FrameLayout playlistLocateButton;
     private int playlistPlaybackAccent = Ui.CYAN;
@@ -252,11 +288,43 @@ public final class MainActivity extends Activity implements PlaybackService.List
     private final WeakHashMap<View, FluidTrackHaloDrawable> playbackRowHalos = new WeakHashMap<>();
     private ValueAnimator playlistLocateAnimator;
     private ScrollView activePlaylistScroll;
+    private ListView activePlaylistList;
+    private PlaylistDetailAdapter activePlaylistAdapter;
     private LinearLayout activePlaylistSongHost;
     private int[] activePlaylistLoadedRef;
     private ImportedPlaylist activePlaylistPageModel;
+    private View activePlaylistHeroCard;
+    private View activePlaylistHeroThumb;
+    private TextView activePlaylistHeroTitle;
     private TextView activePlaylistHeroMeta;
+    private View activePlaylistDetailTitleRow;
+    private View activePlaylistDetailSubtitle;
+    private View activePlaylistDetailBack;
+    private View activePlaylistDetailSongHeader;
+    private LinearLayout activePlaylistDetailSongHost;
     private TextView activePlaylistSongCount;
+    private PlaylistHeroSnapshot playlistHeroSnapshot;
+    private View playlistHeroSourceRow;
+    private View playlistHeroSourceThumb;
+    private View playlistHeroReturnRow;
+    private View playlistHeroReturnThumb;
+    private TextView playlistHeroReturnTitle;
+    private TextView playlistHeroReturnMeta;
+    private PlaylistHeroMorphView activePlaylistHeroMorph;
+    private ValueAnimator activePlaylistSharedAnimator;
+    private View activePlaylistTransitionOutgoing;
+    private View activePlaylistTransitionIncoming;
+    private float activePlaylistSharedProgress;
+    private boolean activePlaylistTransitionPush;
+    private boolean pendingPlaylistHeroPush;
+    private boolean pendingPlaylistHeroPop;
+    private FluidLoadingIconView activePlaylistLoader;
+    private int deferredPageGeneration;
+    private int playlistLoadGeneration;
+    // Detail collections reuse the playlist row choreography. Keep already-resolved identities so
+    // a recommendation enrichment refresh does not replay the whole entrance from the beginning.
+    private final LinkedHashSet<String> smartCollectionRevealKeys = new LinkedHashSet<>();
+    private String smartCollectionRevealScope = "";
     private String activePlaylistHighlightedKey = "";
     private int activePlaylistHighlightedAccent;
     private final LinkedHashMap<String, ArrayList<View>> activePlaylistRows = new LinkedHashMap<>();
@@ -319,11 +387,18 @@ public final class MainActivity extends Activity implements PlaybackService.List
     // construction happens well before the user reaches the current tail, while keeping each
     // append small enough to avoid a large main-thread spike. Playback always receives the full
     // playlist; these constants affect presentation only.
-    private static final int PLAYLIST_INITIAL_RENDER_COUNT = 40;
-    private static final int PLAYLIST_APPEND_BATCH = 24;
-    private static final int PLAYLIST_PREFETCH_DISTANCE_DP = 1900;
+    private static final int PLAYLIST_INITIAL_RENDER_COUNT = 10;
+    private static final int PLAYLIST_APPEND_BATCH = 10;
+    private static final int PLAYLIST_PREFETCH_DISTANCE_DP = 980;
+    // V92.9.8 intentionally rolls back the V92.9.7 long-playlist ListView branch after a real-device
+    // crash report.  Every playlist now enters through the same ScrollView shell, but song rows are
+    // materialized in tiny frame-spaced batches behind structure-matched placeholders.
+    private static final int PLAYLIST_PLACEHOLDER_COUNT = 6;
     private int playlistVisibleCount = PLAYLIST_INITIAL_RENDER_COUNT;
     private int playlistScrollRestoreY;
+    private int playlistListRestorePosition;
+    private int playlistListRestoreTop;
+    private String playlistListRestoreId = "";
     private boolean restorePlaylistPosition;
     private boolean suppressNextPageAnimation;
 
@@ -375,7 +450,9 @@ public final class MainActivity extends Activity implements PlaybackService.List
     private static final int REQ_EXPORT_PLAYLIST = 2109;
     private static final int REQ_IMPORT_LUNAXY_PLAYLIST = 2110;
     private static final int REQ_DESKTOP_LYRIC_NOTIFICATIONS = 2111;
+    private static final int REQ_VOICE_AUDIO = 2112;
     private boolean pendingWeatherRadioOpen;
+    private boolean pendingVoiceEnable;
 
     private static final class SmartCollection {
         final String title;
@@ -392,12 +469,52 @@ public final class MainActivity extends Activity implements PlaybackService.List
         }
     }
 
+    private static final class PlaylistHeroSnapshot {
+        final String playlistId;
+        final String title;
+        final String subtitle;
+        final String artworkUrl;
+        final RectF sourceContainer;
+        final RectF sourceArtwork;
+        final RectF sourceTitle;
+        final RectF sourceMeta;
+        final float sourceTitleSizePx;
+        final float sourceMetaSizePx;
+        final int accent;
+        final RectF detailContainer = new RectF();
+        final RectF detailArtwork = new RectF();
+        final RectF detailTitle = new RectF();
+        final RectF detailMeta = new RectF();
+        float detailTitleSizePx;
+        float detailMetaSizePx;
+        boolean hasDetailGeometry;
+
+        PlaylistHeroSnapshot(String playlistId, String title, String subtitle, String artworkUrl,
+                             RectF sourceContainer, RectF sourceArtwork, RectF sourceTitle, RectF sourceMeta,
+                             float sourceTitleSizePx, float sourceMetaSizePx, int accent) {
+            this.playlistId = playlistId == null ? "" : playlistId;
+            this.title = title == null ? "" : title;
+            this.subtitle = subtitle == null ? "" : subtitle;
+            this.artworkUrl = artworkUrl == null ? "" : artworkUrl;
+            this.sourceContainer = new RectF(sourceContainer);
+            this.sourceArtwork = new RectF(sourceArtwork);
+            this.sourceTitle = new RectF(sourceTitle);
+            this.sourceMeta = new RectF(sourceMeta);
+            this.sourceTitleSizePx = sourceTitleSizePx;
+            this.sourceMetaSizePx = sourceMetaSizePx;
+            this.accent = accent;
+        }
+    }
+
     // V88 recommendation fast-path request generation. Older async enrichments may finish,
     // but they are never allowed to reopen or overwrite a newer recommendation page.
     private int recommendationOpenToken;
 
     private String lastQuery = "";
     private String pendingSearchQuery = "";
+    private ListView activeSearchAllList;
+    private int searchAllSavedPosition;
+    private int searchAllSavedTop;
     private int lastWyCount;
     private int lastTxCount;
     private int lastKwCount;
@@ -535,6 +652,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
     private TextView nowTime;
     private TextView nowDuration;
     private IconView nowModeIcon;
+    private FrameLayout nowModeButton;
     private SeekBar nowSeek;
     private IconView nowPlayIcon;
     private FrameLayout nowPlayButton;
@@ -607,6 +725,10 @@ public final class MainActivity extends Activity implements PlaybackService.List
     // Semantic page-motion bookkeeping. Root tabs move laterally; child pages move on the depth axis.
     private int lastRenderedMotionTab = 0;
     private int lastRenderedMotionDepth = 0;
+    // Root-tab motion owns one continuous physical velocity. Retargeting a rapid tap keeps that
+    // velocity instead of restarting a canned easing curve, which preserves spatial continuity.
+    private int rootTabPhysicsToken;
+    private float rootTabVelocityPxPerSec;
 
     // V55 visual-only starfield studio.  Stored separately from playback/library preferences.
     private static final String STARFIELD_PREFS = "lunaxy_starfield_v1";
@@ -648,6 +770,13 @@ public final class MainActivity extends Activity implements PlaybackService.List
         }
     };
 
+    private final BroadcastReceiver voiceReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (intent == null || !VoiceAssistantContract.ACTION_STATE.equals(intent.getAction())) return;
+            handleVoiceAssistantState(intent);
+        }
+    };
+
     private final ServiceConnection connection = new ServiceConnection() {
         @Override public void onServiceConnected(ComponentName name, IBinder binder) {
             playback = ((PlaybackService.LocalBinder) binder).getService();
@@ -686,6 +815,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        configureSystemSplashExit();
         // Restore V10 routing from a clean gate state before PlaybackService is bound.
         V14PlaybackStateMigration.runOnce(this);
         personalizationStore = new PersonalizationStore(this);
@@ -700,18 +830,36 @@ public final class MainActivity extends Activity implements PlaybackService.List
         searchCache = new SearchCacheStore(this);
         searchPerformance = new SearchPerformanceStore(this);
         weatherMood = new WeatherMoodProvider(this);
-        reloadLibrary();
+
+        // Theme + the launch shell are deliberately cheap and happen before any potentially large
+        // library JSON decode.  The first Activity frame therefore belongs to Lunaxy's starfield,
+        // not to Android's default grey starting window or a blocked main thread.
+        AppearanceSystem.load(this);
         loadUiPreferences();
         loadStarfieldPreferences();
         configureWindow();
         buildShell();
+        beginStartupScene();
         installSystemBackHandler();
-        renderTab();
+
         IntentFilter downloadFilter = new IntentFilter(OfflineDownloadService.ACTION_CHANGED);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(downloadReceiver, downloadFilter, Context.RECEIVER_NOT_EXPORTED);
         else registerReceiver(downloadReceiver, downloadFilter);
+        IntentFilter voiceFilter = new IntentFilter(VoiceAssistantContract.ACTION_STATE);
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(voiceReceiver, voiceFilter, Context.RECEIVER_NOT_EXPORTED);
+        else registerReceiver(voiceReceiver, voiceFilter);
         bindService(new Intent(this, PlaybackService.class), connection, BIND_AUTO_CREATE);
-        main.postDelayed(this::maybeStartOnboarding, 620L);
+
+        // Large formal libraries (hundreds of playlist rows / >1 GB app data) hydrate off the UI
+        // thread.  Navigation and the launch starfield stay responsive while the authoritative data
+        // objects are decoded, then the real first page takes ownership in one handoff.
+        bootstrapLibraryAndFirstPage();
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (startupComplete) handleVoiceLaunchIntent(intent);
     }
 
     @Override protected void onResume() {
@@ -762,6 +910,142 @@ public final class MainActivity extends Activity implements PlaybackService.List
             }
         }
         return super.dispatchTouchEvent(event);
+    }
+
+    private void configureSystemSplashExit() {
+        if (Build.VERSION.SDK_INT < 31) return;
+        try {
+            getSplashScreen().setOnExitAnimationListener(splashView -> {
+                // Android 12+ passes SplashScreenView itself to the exit callback. It is already
+                // a View; there is no getView() accessor on the framework SplashScreenView API.
+                // Animate the supplied view directly, then remove it when the hand-off completes.
+                splashView.animate().cancel();
+                splashView.setPivotX(splashView.getWidth() * .5f);
+                splashView.setPivotY(splashView.getHeight() * .5f);
+                splashView.animate().alpha(0f).scaleX(1.035f).scaleY(1.035f)
+                        .setDuration(SpringMotion.isReducedMotion() ? 90L : 220L)
+                        .setInterpolator(SpringMotion.PLAYER_OPEN)
+                        .withEndAction(splashView::remove).start();
+            });
+        } catch (Throwable ignored) { }
+    }
+
+    private void beginStartupScene() {
+        if (appRoot == null || safeLayer == null || stars == null) return;
+        startupComplete = false;
+        safeLayer.animate().cancel();
+        safeLayer.setVisibility(View.INVISIBLE);
+        safeLayer.setAlpha(0f);
+        safeLayer.setTranslationY(SpringMotion.isReducedMotion() ? 0f : Ui.dp(this, 9));
+        stars.setAccentColor(Ui.PURPLE);
+        stars.setMotionSpeedMultiplier(SpringMotion.isReducedMotion() ? 1f : 5.2f);
+
+        startupLogo = new ImageView(this);
+        startupLogo.setImageResource(getApplicationInfo().icon);
+        startupLogo.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        startupLogo.setAlpha(.96f);
+        startupLogo.setScaleX(.92f);
+        startupLogo.setScaleY(.92f);
+        startupLogo.setContentDescription(null);
+        startupLogo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        FrameLayout.LayoutParams lp = Ui.frame(Ui.dp(this, 92), Ui.dp(this, 92), Gravity.CENTER);
+        appRoot.addView(startupLogo, lp);
+        startupLogo.bringToFront();
+        if (!SpringMotion.isReducedMotion()) {
+            startupLogo.animate().scaleX(1f).scaleY(1f).setDuration(520L)
+                    .setInterpolator(SpringMotion.SOFT).start();
+        }
+    }
+
+    private void bootstrapLibraryAndFirstPage() {
+        final int generation = ++libraryBootstrapGeneration;
+        io.submit(() -> {
+            // Read each collection independently. A malformed auxiliary list must never make a
+            // healthy formal playlist library appear empty, and no catch path writes back to prefs.
+            List<Song> nextFavorites;
+            List<Song> nextHistory;
+            List<String> nextSearchHistory;
+            List<ImportedPlaylist> nextPlaylists;
+            try { nextFavorites = store.favorites(); } catch (RuntimeException ignored) { nextFavorites = new ArrayList<>(); }
+            try { nextHistory = store.history(); } catch (RuntimeException ignored) { nextHistory = new ArrayList<>(); }
+            try { nextSearchHistory = store.searchHistory(); } catch (RuntimeException ignored) { nextSearchHistory = new ArrayList<>(); }
+            try { nextPlaylists = store.playlists(); } catch (RuntimeException ignored) { nextPlaylists = new ArrayList<>(); }
+            final List<Song> f = nextFavorites;
+            final List<Song> h = nextHistory;
+            final List<String> sh = nextSearchHistory;
+            final List<ImportedPlaylist> pl = nextPlaylists;
+            main.post(() -> {
+                if (generation != libraryBootstrapGeneration || isFinishing()) return;
+                favorites = f;
+                // PlaybackService can reconnect before the large Library bootstrap finishes and may
+                // already have inserted the currently playing song into in-memory history. Merge
+                // rather than overwrite that newer session event with an older background snapshot.
+                history = mergeStartupHistory(h, history);
+                searchHistory = sh;
+                playlists = pl;
+                renderTab();
+                finishStartupScene();
+                handleVoiceLaunchIntent(getIntent());
+                if (VoiceAssistantContract.enabled(this)
+                        && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+                    main.postDelayed(() -> startVoiceAssistant(false), 540L);
+                main.postDelayed(this::maybeStartOnboarding, 460L);
+            });
+        });
+    }
+
+    private List<Song> mergeStartupHistory(List<Song> background, List<Song> live) {
+        if (live == null || live.isEmpty()) return background == null ? new ArrayList<>() : background;
+        LinkedHashMap<String, Song> merged = new LinkedHashMap<>();
+        for (Song song : live) if (song != null) merged.put(song.key(), song);
+        if (background != null) for (Song song : background) if (song != null) merged.putIfAbsent(song.key(), song);
+        ArrayList<Song> out = new ArrayList<>(merged.values());
+        return out.size() <= 50 ? out : new ArrayList<>(out.subList(0, 50));
+    }
+
+    private void finishStartupScene() {
+        startupComplete = true;
+        if (safeLayer != null) {
+            safeLayer.animate().cancel();
+            safeLayer.setVisibility(View.VISIBLE);
+            if (SpringMotion.isReducedMotion()) {
+                safeLayer.setAlpha(1f);
+                safeLayer.setTranslationY(0f);
+            } else {
+                safeLayer.animate().alpha(1f).translationY(0f).setDuration(430L)
+                        .setInterpolator(SpringMotion.PLAYER_OPEN).start();
+            }
+        }
+        if (stars != null) {
+            if (startupStarSpeedAnimator != null) startupStarSpeedAnimator.cancel();
+            if (SpringMotion.isReducedMotion()) {
+                stars.setMotionSpeedMultiplier(1f);
+            } else {
+                final float from = Math.max(1f, stars.motionSpeedMultiplier());
+                startupStarSpeedAnimator = ValueAnimator.ofFloat(from, 1f);
+                startupStarSpeedAnimator.setDuration(720L);
+                startupStarSpeedAnimator.setInterpolator(SpringMotion.PLAYER_OPEN);
+                startupStarSpeedAnimator.addUpdateListener(a -> {
+                    if (stars != null) stars.setMotionSpeedMultiplier((Float) a.getAnimatedValue());
+                });
+                startupStarSpeedAnimator.start();
+            }
+        }
+        if (startupLogo != null) {
+            final ImageView logo = startupLogo;
+            logo.animate().cancel();
+            if (SpringMotion.isReducedMotion()) {
+                if (logo.getParent() instanceof ViewGroup) ((ViewGroup) logo.getParent()).removeView(logo);
+                startupLogo = null;
+            } else {
+                logo.animate().alpha(0f).scaleX(1.07f).scaleY(1.07f).translationY(-Ui.dp(this, 8))
+                        .setDuration(300L).setInterpolator(SpringMotion.SNAPPY)
+                        .withEndAction(() -> {
+                            if (logo.getParent() instanceof ViewGroup) ((ViewGroup) logo.getParent()).removeView(logo);
+                            if (startupLogo == logo) startupLogo = null;
+                        }).start();
+            }
+        }
     }
 
     private void loadUiPreferences() {
@@ -889,14 +1173,69 @@ public final class MainActivity extends Activity implements PlaybackService.List
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
         getWindow().setStatusBarColor(Color.TRANSPARENT);
-        getWindow().setNavigationBarColor(Color.BLACK);
-        getWindow().getDecorView().setBackgroundColor(Color.BLACK);
+        getWindow().setNavigationBarColor(Ui.BG);
+        getWindow().getDecorView().setBackgroundColor(Ui.BG);
         if (Build.VERSION.SDK_INT >= 29) {
             getWindow().setStatusBarContrastEnforced(false);
             getWindow().setNavigationBarContrastEnforced(false);
             getWindow().setNavigationBarDividerColor(Color.TRANSPARENT);
         }
         applyImmersiveStatusBar();
+    }
+
+    private void applySystemBarAppearance() {
+        View decor = getWindow().getDecorView();
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                int mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                        | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                controller.setSystemBarsAppearance(AppearanceSystem.isLight() ? mask : 0, mask);
+            }
+        } else {
+            int flags = decor.getSystemUiVisibility();
+            int light = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            if (Build.VERSION.SDK_INT >= 26) light |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            flags = AppearanceSystem.isLight() ? (flags | light) : (flags & ~light);
+            decor.setSystemUiVisibility(flags);
+        }
+    }
+
+    private void applyAppearanceToShell() {
+        getWindow().setNavigationBarColor(Ui.BG);
+        getWindow().getDecorView().setBackgroundColor(Ui.BG);
+        applySystemBarAppearance();
+        if (appRoot != null) appRoot.setBackgroundColor(Ui.BG);
+        if (stars != null) {
+            stars.setBackgroundColor(Ui.BG);
+            stars.setAccentColor(playlistPlaybackAccent);
+            stars.invalidate();
+        }
+        if (playerOverlay != null) playerOverlay.setBackgroundColor(Ui.BG);
+        if (playerStars != null) {
+            playerStars.setBackgroundColor(Ui.BG);
+            playerStars.setAccentColor(resolvedStarfieldColor());
+            playerStars.invalidate();
+        }
+        if (playerStars2D != null) {
+            playerStars2D.setBackgroundColor(Ui.BG);
+            playerStars2D.setAccentColor(resolvedStarfieldColor());
+            playerStars2D.invalidate();
+        }
+        if (navHost != null) navHost.setBackground(Ui.functionalGlass(30, this));
+        if (miniBar != null) miniBar.setBackground(Ui.functionalGlass(21, this));
+        if (miniTitle != null) miniTitle.setTextColor(Ui.TEXT);
+        if (miniArtist != null) miniArtist.setTextColor(Ui.DIM);
+        if (miniPlayIcon != null) miniPlayIcon.setIconColor(Ui.TEXT);
+        if (miniQueueIcon != null) miniQueueIcon.setIconColor(Ui.TEXT_2);
+        if (miniPlayButton != null) miniPlayButton.setBackground(Ui.playerControlSurface(Ui.PURPLE, 21, this));
+        if (miniProgress != null) miniProgress.setBackground(Ui.round(Ui.PURPLE, 1.5f, this));
+        if (modalOverlay != null) modalOverlay.setBackgroundColor(AppearanceSystem.isLight()
+                ? Color.argb(88, 30, 34, 44) : Color.argb(175, 0, 0, 0));
+        if (snackbar != null) {
+            snackbar.setTextColor(Ui.TEXT);
+            snackbar.setBackground(Ui.functionalGlass(18, this));
+        }
     }
 
     /**
@@ -913,12 +1252,17 @@ public final class MainActivity extends Activity implements PlaybackService.List
                 controller.hide(WindowInsets.Type.statusBars());
             }
         } else {
-            decor.setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                            | View.SYSTEM_UI_FLAG_FULLSCREEN
-                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+            int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
+            if (AppearanceSystem.isLight()) {
+                flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                if (Build.VERSION.SDK_INT >= 26) flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            }
+            decor.setSystemUiVisibility(flags);
         }
+        applySystemBarAppearance();
     }
 
     @Override public void onWindowFocusChanged(boolean hasFocus) {
@@ -928,7 +1272,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
     private void buildShell() {
         appRoot = new FrameLayout(this);
-        appRoot.setBackgroundColor(Color.BLACK);
+        appRoot.setBackgroundColor(Ui.BG);
         stars = new StarfieldView(this);
         appRoot.addView(stars, Ui.frame(-1, -1, Gravity.FILL));
 
@@ -953,6 +1297,11 @@ public final class MainActivity extends Activity implements PlaybackService.List
                 sp.topMargin = systemTopInset + Ui.dp(this, 12);
                 snackbar.setLayoutParams(sp);
             }
+            if (voicePanel != null) {
+                FrameLayout.LayoutParams vp = (FrameLayout.LayoutParams) voicePanel.getLayoutParams();
+                vp.topMargin = systemTopInset + Ui.dp(this, 16);
+                voicePanel.setLayoutParams(vp);
+            }
             return insets;
         });
 
@@ -963,67 +1312,272 @@ public final class MainActivity extends Activity implements PlaybackService.List
         buildBusy();
         buildModalLayer();
         buildSnackbar();
+        buildVoiceLayer();
         setContentView(appRoot);
     }
 
     private void buildNav() {
-        navBar = Ui.row(this);
-        navBar.setPadding(Ui.dp(this, 6), Ui.dp(this, 5), Ui.dp(this, 6), Ui.dp(this, 5));
-        navBar.setBackground(Ui.stroke(Color.argb(236, 5, 5, 11), 30,
-                Color.argb(52, 205, 205, 230), this));
-        FrameLayout.LayoutParams fp = Ui.frame(-1, Ui.dp(this, 72), Gravity.BOTTOM);
-        Ui.margins(fp, 16, 0, 16, 10, this);
-        safeLayer.addView(navBar, fp);
-        refreshNav();
-    }
+        navHost = new FrameLayout(this);
+        navHost.setPadding(Ui.dp(this, 6), Ui.dp(this, 5), Ui.dp(this, 6), Ui.dp(this, 5));
+        navHost.setBackground(Ui.functionalGlass(30, this));
+        navHost.setElevation(Ui.dp(this, 8));
 
-    private void refreshNav() {
-        if (navBar == null) return;
-        navBar.removeAllViews();
+        navSelectionPill = new View(this);
+        navSelectionPill.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        navHost.addView(navSelectionPill, Ui.frame(Ui.dp(this, 62), Ui.dp(this, 44), Gravity.TOP | Gravity.START));
+
+        navBar = Ui.row(this);
+        navBar.setBackgroundColor(Color.TRANSPARENT);
+        navHost.addView(navBar, Ui.frame(-1, -1, Gravity.FILL));
+
         IconView.Type[] icons = {IconView.Type.HOME, IconView.Type.SEARCH, IconView.Type.PLAYLIST, IconView.Type.HEART};
         String[] labels = {"首页", "搜索", "歌单", "收藏"};
-        int[] accents = {Ui.PURPLE, Ui.CYAN, Ui.GREEN, Ui.PINK};
         for (int i = 0; i < 4; i++) {
             final int idx = i;
-            boolean selected = tab == i;
             LinearLayout item = Ui.column(this);
             item.setGravity(Gravity.CENTER);
             item.setClickable(true);
             item.setFocusable(true);
+            item.setContentDescription(labels[i]);
 
-            int accent = accents[i];
             FrameLayout iconShell = new FrameLayout(this);
-            if (selected) {
-                iconShell.setBackground(Ui.gradient(new int[]{
-                        Color.argb(48, Color.red(accent), Color.green(accent), Color.blue(accent)),
-                        Color.argb(24, Color.red(Ui.PURPLE), Color.green(Ui.PURPLE), Color.blue(Ui.PURPLE))
-                }, 15, this));
-            }
-            IconView icon = new IconView(this, icons[i], selected ? accent : Ui.DIM);
+            IconView icon = new IconView(this, icons[i], Ui.DIM);
             iconShell.addView(icon, Ui.frame(Ui.dp(this, 23), Ui.dp(this, 23), Gravity.CENTER));
-            item.addView(iconShell, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 29)));
+            item.addView(iconShell, Ui.lp(-1, Ui.dp(this, 30)));
 
-            TextView label = Ui.text(this, labels[i], 10.5f, selected ? Ui.TEXT : Ui.DIM, selected);
+            TextView label = Ui.text(this, labels[i], 10.5f, Ui.DIM, false);
             label.setGravity(Gravity.CENTER);
             item.addView(label, Ui.lp(-1, Ui.dp(this, 24)));
-            Ui.applyRipple(item, Color.argb(35, 255, 255, 255));
-            item.setOnClickListener(v -> {
-                tab = idx;
-                openPlaylist = null;
-                offlinePlaylistOpen = false;
-                openSmartCollection = null;
-                searchAllResultsOpen = false;
-                refreshNav();
-                renderTab();
-            });
+            Ui.applyRipple(item, Color.TRANSPARENT);
+            installNavPressFeedback(item);
+            item.setOnClickListener(v -> switchRootTab(idx, item));
+
+            navItems[i] = item;
+            navIcons[i] = icon;
+            navLabels[i] = label;
             navBar.addView(item, new LinearLayout.LayoutParams(0, -1, 1f));
+        }
+
+        FrameLayout.LayoutParams fp = Ui.frame(-1, Ui.dp(this, 72), Gravity.BOTTOM);
+        Ui.margins(fp, 16, 0, 16, 10, this);
+        safeLayer.addView(navHost, fp);
+        refreshNav();
+    }
+
+    /**
+     * Tab contact is a real interaction state, not an after-click decoration.  ACTION_DOWN responds
+     * immediately; releasing/cancelling retargets from the current presentation state.  Returning
+     * false keeps Android's normal click/accessibility dispatch intact.
+     */
+    private void installNavPressFeedback(View item) {
+        if (item == null) return;
+        item.setOnTouchListener((v, event) -> {
+            int action = event.getActionMasked();
+            if (SpringMotion.isReducedMotion()) {
+                if (action == MotionEvent.ACTION_DOWN) v.setAlpha(.88f);
+                else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) v.setAlpha(1f);
+                return false;
+            }
+            if (action == MotionEvent.ACTION_DOWN) {
+                v.animate().cancel();
+                v.animate().scaleX(.962f).scaleY(.962f).alpha(.86f)
+                        .setDuration(SpringMotion.pressDownDuration())
+                        .setInterpolator(SpringMotion.SNAPPY).start();
+            } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                v.animate().cancel();
+                v.animate().scaleX(1f).scaleY(1f).alpha(1f)
+                        .setDuration(SpringMotion.pressUpDuration())
+                        .setInterpolator(SpringMotion.PRESS).start();
+            }
+            return false;
+        });
+    }
+
+    private void switchRootTab(int target, View source) {
+        target = Math.max(0, Math.min(3, target));
+        boolean currentHasDetail = openPlaylist != null || offlinePlaylistOpen || openSmartCollection != null
+                || (searchAllResultsOpen && tab == 1);
+        if (target == tab && !currentHasDetail) {
+            // Reselect does not rebuild the page.  The touch state above is the immediate feedback;
+            // this small icon pulse confirms that the already-selected destination was addressed.
+            IconView icon = target >= 0 && target < navIcons.length ? navIcons[target] : null;
+            if (icon != null && !SpringMotion.isReducedMotion()) {
+                icon.animate().cancel();
+                icon.setScaleX(1.12f); icon.setScaleY(1.12f);
+                icon.animate().scaleX(1.08f).scaleY(1.08f)
+                        .setDuration(SpringMotion.selectionDuration())
+                        .setInterpolator(SpringMotion.PRESS).start();
+            }
+            return;
+        }
+
+        // Top-level tabs own independent navigation stacks. Switching away saves both the root
+        // scroll and any one-level detail destination; switching back restores that exact context.
+        // Re-tapping the active Library tab while a playlist is open uses the same shared-object
+        // reverse path as Back instead of silently bypassing the card identity.
+        if (target == tab && target == 2 && openPlaylist != null) {
+            closePlaylistToLibrary();
+            return;
+        }
+        rememberRootTabContext();
+        if (target == tab && currentHasDetail) {
+            clearRootTabDetailState(target);
+            openPlaylist = null;
+            offlinePlaylistOpen = false;
+            openSmartCollection = null;
+            searchAllResultsOpen = false;
+        } else {
+            tab = target;
+            restoreRootTabDetailState(target);
+        }
+        refreshNav();
+        renderTab();
+    }
+
+    private void clearRootTabDetailState(int target) {
+        if (target < 0 || target >= rootTabScrollY.length) return;
+        rootTabOpenPlaylist[target] = null;
+        rootTabOfflinePlaylistOpen[target] = false;
+        rootTabSmartCollection[target] = null;
+        rootTabSearchAllResultsOpen[target] = false;
+        rootTabDetailScrollY[target] = 0;
+        if (target == 1) {
+            activeSearchAllList = null;
+            searchAllSavedPosition = 0;
+            searchAllSavedTop = 0;
+        }
+    }
+
+    private void restoreRootTabDetailState(int target) {
+        if (target < 0 || target >= rootTabScrollY.length) return;
+        openPlaylist = rootTabOpenPlaylist[target];
+        offlinePlaylistOpen = rootTabOfflinePlaylistOpen[target];
+        openSmartCollection = rootTabSmartCollection[target];
+        searchAllResultsOpen = target == 1 && rootTabSearchAllResultsOpen[target];
+    }
+
+    private void refreshNav() {
+        if (navBar == null) return;
+        int[] accents = {Ui.PURPLE, Ui.CYAN, Ui.GREEN, Ui.PINK};
+        int idleNav = AppearanceSystem.isLight() ? Ui.TEXT_2 : Ui.DIM;
+        for (int i = 0; i < 4; i++) {
+            boolean selected = tab == i;
+            if (navIcons[i] != null) {
+                navIcons[i].setIconColor(selected ? accents[i] : idleNav);
+                navIcons[i].animate().cancel();
+                navIcons[i].animate().scaleX(selected ? 1.08f : 1f).scaleY(selected ? 1.08f : 1f)
+                        .setDuration(SpringMotion.selectionDuration()).setInterpolator(SpringMotion.SNAPPY).start();
+            }
+            if (navLabels[i] != null) {
+                navLabels[i].setTextColor(selected ? Ui.TEXT : idleNav);
+                navLabels[i].setTypeface(selected ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+            }
+            if (navItems[i] != null) navItems[i].setSelected(selected);
+        }
+        if (navHost != null) navHost.setBackground(Ui.functionalGlass(30, this));
+        navBar.post(this::animateNavSelectionPill);
+    }
+
+    private void animateNavSelectionPill() {
+        if (navSelectionPill == null || navHost == null || navBar == null || tab < 0 || tab >= navItems.length) return;
+        View target = navItems[tab];
+        if (target == null || target.getWidth() <= 0 || target.getHeight() <= 0) return;
+        int accent = new int[]{Ui.PURPLE, Ui.CYAN, Ui.GREEN, Ui.PINK}[tab];
+
+        // Size from the actual tab cell rather than a hard-coded shell guess.  The carrier is a
+        // visual selection plane behind the icon+label, so it should be concentric with that cell.
+        int width = Math.max(Ui.dp(this, 54), target.getWidth() - Ui.dp(this, 14));
+        int height = Math.max(Ui.dp(this, 48), target.getHeight() - Ui.dp(this, 10));
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) navSelectionPill.getLayoutParams();
+        int topMargin = Math.max(0, (target.getHeight() - height) / 2);
+        if (lp.width != width || lp.height != height || lp.topMargin != topMargin) {
+            lp.width = width;
+            lp.height = height;
+            lp.topMargin = topMargin;
+            navSelectionPill.setLayoutParams(lp);
+        }
+        navSelectionPill.setBackground(Ui.stroke(
+                Color.argb(AppearanceSystem.reduceTransparency() ? 255 : (AppearanceSystem.isLight() ? 44 : 48),
+                        Color.red(accent), Color.green(accent), Color.blue(accent)),
+                19, Color.argb(AppearanceSystem.isLight() ? 34 : 42,
+                        Color.red(accent), Color.green(accent), Color.blue(accent)), this));
+
+        // Convert the target center into navHost coordinates, then subtract the pill's own layout
+        // center.  TranslationX is relative to the pill's laid-out position; adding navBar.getLeft()
+        // directly used to count navHost padding twice and visibly shifted the color block.
+        float targetCenterInHost = navBar.getX() + target.getX() + target.getWidth() * .5f;
+        float pillBaseCenter = navSelectionPill.getLeft() + width * .5f;
+        float x = targetCenterInHost - pillBaseCenter;
+
+        navSelectionPill.animate().cancel();
+        navSelectionPill.setScaleX(1f);
+        navSelectionPill.setScaleY(1f);
+        navSelectionPill.setAlpha(1f);
+        if (SpringMotion.isReducedMotion()) {
+            SpringMotion.cancelTranslationX(navSelectionPill);
+            navSelectionPill.setTranslationX(x);
+        } else {
+            // Selection is one persistent physical carrier.  The spring keeps its current velocity
+            // when a second tab is tapped mid-flight, so the pill glides through the intermediate
+            // position instead of cancelling and restarting a separate tween.
+            SpringMotion.springTranslationX(navSelectionPill, x);
+        }
+    }
+
+    private void rememberRootTabContext() {
+        if (tab < 0 || tab >= rootTabScrollY.length || pageHost == null || pageHost.getChildCount() == 0) return;
+        rootTabOpenPlaylist[tab] = openPlaylist;
+        rootTabOfflinePlaylistOpen[tab] = offlinePlaylistOpen;
+        rootTabSmartCollection[tab] = openSmartCollection;
+        rootTabSearchAllResultsOpen[tab] = tab == 1 && searchAllResultsOpen;
+
+        View page = pageHost.getChildAt(pageHost.getChildCount() - 1);
+        boolean detail = openPlaylist != null || offlinePlaylistOpen || openSmartCollection != null
+                || (searchAllResultsOpen && tab == 1);
+        if (detail) {
+            if (page instanceof ScrollView) rootTabDetailScrollY[tab] = ((ScrollView) page).getScrollY();
+            if (openPlaylist != null && activePlaylistList != null) {
+                playlistListRestorePosition = Math.max(0, activePlaylistList.getFirstVisiblePosition());
+                View first = activePlaylistList.getChildCount() > 0 ? activePlaylistList.getChildAt(0) : null;
+                playlistListRestoreTop = first == null ? 0 : first.getTop();
+                playlistListRestoreId = openPlaylist.id;
+                restorePlaylistPosition = true;
+            }
+            if (tab == 1 && searchAllResultsOpen && activeSearchAllList != null) {
+                searchAllSavedPosition = Math.max(0, activeSearchAllList.getFirstVisiblePosition());
+                View first = activeSearchAllList.getChildCount() > 0 ? activeSearchAllList.getChildAt(0) : null;
+                searchAllSavedTop = first == null ? 0 : first.getTop();
+            }
+            return;
+        }
+        if (page instanceof ScrollView) rootTabScrollY[tab] = ((ScrollView) page).getScrollY();
+        if (tab == 0) {
+            homeScrollY = rootTabScrollY[0];
+            if (homeRecommendationCarousel != null) homeRecommendationScrollX = homeRecommendationCarousel.getScrollX();
+        }
+    }
+
+    private void restoreRootTabContext(View page, int renderedTab, int depth) {
+        if (renderedTab < 0 || renderedTab >= rootTabScrollY.length) return;
+        if (page instanceof ScrollView) {
+            int y = Math.max(0, depth == 0 ? rootTabScrollY[renderedTab] : rootTabDetailScrollY[renderedTab]);
+            ScrollView scroll = (ScrollView) page;
+            scroll.post(() -> scroll.scrollTo(0, y));
+            return;
+        }
+        if (page instanceof ListView && openPlaylist != null && openPlaylist.id.equals(playlistListRestoreId)) {
+            ListView list = (ListView) page;
+            final int pos = Math.max(0, playlistListRestorePosition);
+            final int top = playlistListRestoreTop;
+            list.post(() -> list.setSelectionFromTop(Math.min(pos, Math.max(0, list.getCount() - 1)), top));
+            restorePlaylistPosition = false;
         }
     }
 
     private void buildMiniPlayer() {
         miniBar = new FrameLayout(this);
         miniBar.setVisibility(View.GONE);
-        miniBar.setBackground(Ui.glass(232, 21, 26, this));
+        miniBar.setBackground(Ui.functionalGlass(21, this));
         miniBar.setElevation(Ui.dp(this, 8));
         miniBar.setClickable(true);
         Ui.applyRipple(miniBar, Color.argb(30, 255, 255, 255));
@@ -1052,6 +1606,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
         miniBar.addView(texts, tp);
 
         FrameLayout play = Ui.iconButton(this, IconView.Type.PLAY, 42, Ui.TEXT, Color.argb(18, 255, 255, 255));
+        miniPlayButton = play;
         miniPlayIcon = (IconView) play.getChildAt(0);
         play.setOnClickListener(v -> { if (playback != null) playback.toggle(); });
         FrameLayout.LayoutParams pp = Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.END | Gravity.CENTER_VERTICAL);
@@ -1059,6 +1614,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
         miniBar.addView(play, pp);
 
         FrameLayout queue = Ui.iconButton(this, IconView.Type.PLAYLIST, 38, Ui.TEXT_2, Color.TRANSPARENT);
+        miniQueueIcon = (IconView) queue.getChildAt(0);
         queue.setContentDescription("打开播放列表");
         queue.setOnClickListener(v -> showPlaybackQueue());
         FrameLayout.LayoutParams np = Ui.frame(Ui.dp(this, 38), Ui.dp(this, 38), Gravity.END | Gravity.CENTER_VERTICAL);
@@ -1118,7 +1674,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
     private void buildModalLayer() {
         modalOverlay = new FrameLayout(this);
-        modalOverlay.setBackgroundColor(Color.argb(175, 0, 0, 0));
+        modalOverlay.setBackgroundColor(AppearanceSystem.isLight()
+                ? Color.argb(44, 42, 50, 66) : Color.argb(175, 0, 0, 0));
         modalOverlay.setClickable(true);
         modalOverlay.setFocusable(true);
         modalOverlay.setVisibility(View.GONE);
@@ -1130,13 +1687,339 @@ public final class MainActivity extends Activity implements PlaybackService.List
         snackbar = Ui.text(this, "", 12.5f, Ui.TEXT, true);
         snackbar.setGravity(Gravity.CENTER_VERTICAL);
         snackbar.setPadding(Ui.dp(this, 16), 0, Ui.dp(this, 16), 0);
-        snackbar.setBackground(Ui.stroke(Color.argb(248, 11, 11, 18), 18,
-                Color.argb(48, 255, 255, 255), this));
+        snackbar.setBackground(Ui.functionalGlass(18, this));
         snackbar.setVisibility(View.GONE);
         FrameLayout.LayoutParams sp = Ui.frame(-1, Ui.dp(this, 48), Gravity.TOP);
         Ui.margins(sp, 18, 12, 18, 0, this);
         sp.topMargin = systemTopInset + Ui.dp(this, 12);
         appRoot.addView(snackbar, sp);
+    }
+
+    private void buildVoiceLayer() {
+        voicePanel = new VoiceAssistantPanel(this);
+        voicePanel.setVisibility(View.GONE);
+        voicePanel.setAlpha(0f);
+        voicePanel.setCloseAction(this::hideVoicePanel);
+        FrameLayout.LayoutParams vp = Ui.frame(-1, Ui.dp(this, 120), Gravity.TOP);
+        Ui.margins(vp, 14, 0, 14, 0, this);
+        vp.topMargin = systemTopInset + Ui.dp(this, 16);
+        appRoot.addView(voicePanel, vp);
+    }
+
+    private void handleVoiceAssistantState(Intent intent) {
+        if (voicePanel == null || intent == null) return;
+        String phase = intent.getStringExtra(VoiceAssistantContract.EXTRA_PHASE);
+        String heard = intent.getStringExtra(VoiceAssistantContract.EXTRA_TRANSCRIPT);
+        String detail = intent.getStringExtra(VoiceAssistantContract.EXTRA_DETAIL);
+        float level = intent.getFloatExtra(VoiceAssistantContract.EXTRA_LEVEL, 0f);
+        String query = intent.getStringExtra(VoiceAssistantContract.EXTRA_QUERY);
+        boolean openSearch = intent.getBooleanExtra(VoiceAssistantContract.EXTRA_OPEN_SEARCH, false);
+        if (VoiceAssistantContract.PHASE_ARMED.equals(phase) || VoiceAssistantContract.PHASE_OFF.equals(phase)) {
+            if (voicePanelHideRunnable != null) main.removeCallbacks(voicePanelHideRunnable);
+            voicePanelHideRunnable = this::hideVoicePanel;
+            main.postDelayed(voicePanelHideRunnable, 420L);
+            return;
+        }
+        if (voicePanelHideRunnable != null) main.removeCallbacks(voicePanelHideRunnable);
+        voicePanel.render(phase, heard, detail, level);
+        voicePanel.setPrimaryAction("", null);
+        if (VoiceAssistantContract.PHASE_ERROR.equals(phase)) {
+            voicePanel.setPrimaryAction("语音设置", this::showVoiceAssistantSettings);
+        }
+        showVoicePanel();
+        if (VoiceAssistantContract.PHASE_RESULT.equals(phase) && openSearch && query != null && !query.trim().isEmpty()) {
+            final String q = query.trim();
+            voicePanel.setPrimaryAction("查看搜索", () -> openVoiceSearch(q));
+            main.postDelayed(() -> openVoiceSearch(q), 360L);
+        }
+    }
+
+    private void showVoicePanel() {
+        if (voicePanel == null) return;
+        voicePanel.refreshAppearance();
+        voicePanel.bringToFront();
+        final boolean reduced = SpringMotion.isReducedMotion();
+        if (voicePanel.getVisibility() != View.VISIBLE) {
+            voicePanel.setVisibility(View.VISIBLE);
+            voicePanel.setAlpha(0f);
+            voicePanel.setTranslationY(reduced ? 0f : -Ui.dp(this, 12));
+            voicePanel.setScaleX(reduced ? 1f : .985f);
+            voicePanel.setScaleY(reduced ? 1f : .985f);
+        }
+        // Retarget from the current presentation state; voice updates can arrive rapidly while
+        // SpeechRecognizer moves through wake/listening/processing/result phases.
+        voicePanel.animate().cancel();
+        voicePanel.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
+                .setDuration(reduced ? SpringMotion.fadeDuration() : SpringMotion.sheetDuration())
+                .setInterpolator(reduced ? SpringMotion.TAB_PAGE : SpringMotion.SOFT).start();
+    }
+
+    private void hideVoicePanel() {
+        if (voicePanel == null || voicePanel.getVisibility() != View.VISIBLE) return;
+        final boolean reduced = SpringMotion.isReducedMotion();
+        voicePanel.animate().cancel();
+        voicePanel.animate().alpha(0f).translationY(reduced ? 0f : -Ui.dp(this, 8))
+                .scaleX(reduced ? 1f : .992f).scaleY(reduced ? 1f : .992f)
+                .setDuration(SpringMotion.fadeDuration()).setInterpolator(SpringMotion.SNAPPY)
+                .withEndAction(() -> {
+                    voicePanel.setVisibility(View.GONE);
+                    voicePanel.setTranslationY(0f);
+                    voicePanel.setScaleX(1f);
+                    voicePanel.setScaleY(1f);
+                    voicePanel.setAlpha(0f);
+                }).start();
+    }
+
+    private void handleVoiceLaunchIntent(Intent intent) {
+        if (intent == null) return;
+        if (intent.getBooleanExtra(VoiceAssistantContract.EXTRA_OPEN_VOICE_SETTINGS, false)) {
+            intent.removeExtra(VoiceAssistantContract.EXTRA_OPEN_VOICE_SETTINGS);
+            main.postDelayed(this::showVoiceAssistantSettings, 220L);
+            return;
+        }
+        String query = intent.getStringExtra(VoiceAssistantContract.EXTRA_QUERY);
+        if (query == null || query.trim().isEmpty()) return;
+        final String q = query.trim();
+        intent.removeExtra(VoiceAssistantContract.EXTRA_QUERY);
+        main.postDelayed(() -> openVoiceSearch(q), 220L);
+    }
+
+    private void openVoiceSearch(String query) {
+        String clean = query == null ? "" : query.trim();
+        if (clean.isEmpty() || isFinishing()) return;
+        pendingSearchQuery = clean;
+        // Voice search is a new search intent, not a request to resurrect an old Search detail.
+        // Preserve the current tab context first, then land on Search root so the existing opaque
+        // adjacent-page transition still shows where the command took the user.
+        rememberRootTabContext();
+        clearRootTabDetailState(1);
+        tab = 1;
+        openPlaylist = null;
+        offlinePlaylistOpen = false;
+        openSmartCollection = null;
+        searchAllResultsOpen = false;
+        refreshNav();
+        renderTab();
+    }
+
+    private boolean voiceMicGranted() {
+        return checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void startVoiceAssistant(boolean testListen) {
+        if (!voiceMicGranted()) {
+            pendingVoiceEnable = true;
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_VOICE_AUDIO);
+            return;
+        }
+        VoiceAssistantContract.prefs(this).edit().putBoolean(VoiceAssistantContract.KEY_ENABLED, true).apply();
+        Intent service = VoiceAssistantContract.serviceIntent(this,
+                testListen ? VoiceAssistantContract.ACTION_TEST_LISTEN : VoiceAssistantContract.ACTION_START);
+        try {
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(service); else startService(service);
+        } catch (Exception e) {
+            VoiceAssistantContract.prefs(this).edit().putBoolean(VoiceAssistantContract.KEY_ENABLED, false).apply();
+            toast("语音唤醒启动失败 · 请保持 Lunaxy 在前台后重试");
+        }
+    }
+
+    private void stopVoiceAssistant() {
+        VoiceAssistantContract.prefs(this).edit().putBoolean(VoiceAssistantContract.KEY_ENABLED, false).apply();
+        try { stopService(new Intent(this, VoiceAssistantService.class)); } catch (Exception ignored) { }
+        hideVoicePanel();
+        toast("Lunaxy Voice 已关闭");
+    }
+
+    private void showVoiceAssistantSettings() {
+        hideVoicePanel();
+        boolean enabled = VoiceAssistantContract.enabled(this);
+        boolean mic = voiceMicGranted();
+        boolean overlayAllowed = Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(this);
+        boolean overlayEnabled = VoiceAssistantContract.backgroundOverlayEnabled(this);
+        boolean localEngine = false;
+        if (Build.VERSION.SDK_INT >= 31) {
+            try { localEngine = SpeechRecognizer.isOnDeviceRecognitionAvailable(this); } catch (Throwable ignored) { }
+        }
+        String mode = VoiceAssistantContract.recognitionMode(this);
+
+        LinearLayout card = modalCard("Lunaxy Voice", "说一句，音乐就动起来");
+
+        LinearLayout hero = Ui.row(this);
+        hero.setGravity(Gravity.CENTER_VERTICAL);
+        hero.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12));
+        hero.setBackground(Ui.tintedGlass(enabled ? Ui.GREEN : Ui.PURPLE, 20, this));
+        VoiceOrbView voiceOrb = new VoiceOrbView(this);
+        voiceOrb.setVoiceState(enabled ? VoiceAssistantContract.PHASE_ARMED : VoiceAssistantContract.PHASE_OFF);
+        voiceOrb.setAudioLevel(enabled ? .12f : .04f);
+        hero.addView(voiceOrb, Ui.lp(Ui.dp(this, 58), Ui.dp(this, 58)));
+        LinearLayout heroText = Ui.column(this);
+        heroText.setPadding(Ui.dp(this, 12), 0, 0, 0);
+        TextView state = Ui.text(this, enabled ? "后台待命中" : "语音唤醒已关闭", 16.2f, Ui.TEXT, true);
+        heroText.addView(state, Ui.lp(-1, Ui.dp(this, 29)));
+        String engineLine = VoiceAssistantContract.recognitionModeLabel(this)
+                + " · " + (localEngine ? "本机支持离线识别" : "未检测到本地识别引擎");
+        TextView engine = Ui.text(this, engineLine, 10.8f, Ui.TEXT_2, false);
+        engine.setSingleLine(true); engine.setEllipsize(TextUtils.TruncateAt.END);
+        heroText.addView(engine, Ui.lp(-1, Ui.dp(this, 25)));
+        hero.addView(heroText, new LinearLayout.LayoutParams(0, Ui.dp(this, 58), 1f));
+        card.addView(hero, marginTop(12));
+
+        TextView modeTitle = Ui.text(this, "识别方式", 11.2f, Ui.TEXT_2, true);
+        card.addView(modeTitle, marginTop(16));
+        LinearLayout modes = Ui.row(this);
+        TextView auto = voiceModeButton("本地优先", VoiceAssistantContract.MODE_AUTO, mode);
+        TextView local = voiceModeButton("仅本地", VoiceAssistantContract.MODE_LOCAL, mode);
+        TextView system = voiceModeButton("系统识别", VoiceAssistantContract.MODE_SYSTEM, mode);
+        modes.addView(auto, new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f));
+        LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f); mlp.leftMargin = Ui.dp(this, 7); modes.addView(local, mlp);
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f); slp.leftMargin = Ui.dp(this, 7); modes.addView(system, slp);
+        card.addView(modes, marginTop(7));
+        TextView modeHint = Ui.text(this,
+                VoiceAssistantContract.MODE_LOCAL.equals(mode)
+                        ? "仅本地不会主动回退到联网识别；中文模型首次可能需要下载。"
+                        : VoiceAssistantContract.MODE_SYSTEM.equals(mode)
+                            ? "系统识别兼容性最高，但部分系统服务会联网处理语音。"
+                            : "默认先用设备本地识别；不可用时才临时回退系统识别。",
+                9.9f, Ui.DIM, false);
+        modeHint.setLineSpacing(0f, 1.14f);
+        card.addView(modeHint, marginTop(7));
+
+        LinearLayout primary = Ui.row(this);
+        TextView toggle = modalButton(enabled ? "关闭后台唤醒" : (mic ? "开启后台唤醒" : "授权并开启"), !enabled);
+        toggle.setTextSize(13.8f);
+        toggle.setOnClickListener(v -> {
+            boolean wasEnabled = VoiceAssistantContract.enabled(this);
+            dismissModalNow();
+            if (wasEnabled) {
+                stopVoiceAssistant();
+                main.postDelayed(this::showVoiceAssistantSettings, 320L);
+            } else if (voiceMicGranted()) {
+                startVoiceAssistant(false);
+                main.postDelayed(this::showVoiceAssistantSettings, 320L);
+            } else startVoiceAssistant(false);
+        });
+        primary.addView(toggle, new LinearLayout.LayoutParams(0, Ui.dp(this, 56), 1f));
+        Space gap = new Space(this); primary.addView(gap, Ui.lp(Ui.dp(this, 8), 1));
+        TextView test = modalButton("测试一句", false);
+        test.setTextSize(13.8f);
+        test.setAlpha(enabled ? 1f : .42f);
+        test.setOnClickListener(v -> {
+            if (!VoiceAssistantContract.enabled(this)) { toast("请先开启后台唤醒"); return; }
+            dismissModalNow();
+            startVoiceAssistant(true);
+        });
+        primary.addView(test, new LinearLayout.LayoutParams(0, Ui.dp(this, 56), .78f));
+        card.addView(primary, marginTop(16));
+
+        TextView wake = modalButton("唤醒词  ·  " + VoiceAssistantContract.wakeLabel(this), false);
+        wake.setGravity(Gravity.CENTER_VERTICAL); wake.setPadding(Ui.dp(this, 16), 0, Ui.dp(this, 16), 0);
+        wake.setOnClickListener(v -> {
+            dismissModalNow();
+            String current = VoiceAssistantContract.customWake(this);
+            showGlassInput("自定义唤醒词", "例如：小星同学", false, "保存", value -> {
+                VoiceAssistantContract.prefs(this).edit().putString(VoiceAssistantContract.KEY_CUSTOM_WAKE, value.trim()).apply();
+                toast("唤醒词已加入 · 默认 Lunaxy 唤醒词仍可用");
+                if (VoiceAssistantContract.enabled(this)) startVoiceAssistant(false);
+            }, view -> {
+                if (view instanceof EditText && current != null && !current.isEmpty()) {
+                    ((EditText) view).setText(current);
+                    ((EditText) view).setSelection(((EditText) view).length());
+                }
+            });
+        });
+        card.addView(wake, heightWithTop(54, 9));
+
+        TextView offline = modalButton(localEngine ? "准备中文离线模型" : "本机未检测到离线识别引擎", false);
+        offline.setGravity(Gravity.CENTER_VERTICAL); offline.setPadding(Ui.dp(this, 16), 0, Ui.dp(this, 16), 0);
+        offline.setAlpha(localEngine && Build.VERSION.SDK_INT >= 33 ? 1f : .42f);
+        offline.setOnClickListener(v -> requestVoiceOfflineModel());
+        card.addView(offline, heightWithTop(54, 8));
+
+        TextView overlay = modalButton(overlayAllowed
+                ? (overlayEnabled ? "后台液态浮窗  ·  已开启" : "后台液态浮窗  ·  已关闭")
+                : "后台液态浮窗  ·  需要系统授权", false);
+        overlay.setGravity(Gravity.CENTER_VERTICAL); overlay.setPadding(Ui.dp(this, 16), 0, Ui.dp(this, 16), 0);
+        overlay.setOnClickListener(v -> {
+            if (!overlayAllowed && Build.VERSION.SDK_INT >= 23) {
+                try {
+                    startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName())));
+                    toast("授权后，后台唤醒可显示液态语音浮窗");
+                } catch (Exception e) { toast("无法打开悬浮窗权限设置"); }
+            } else {
+                VoiceAssistantContract.prefs(this).edit().putBoolean(VoiceAssistantContract.KEY_OVERLAY, !overlayEnabled).apply();
+                dismissModalNow();
+                main.postDelayed(this::showVoiceAssistantSettings, 140L);
+            }
+        });
+        card.addView(overlay, heightWithTop(54, 8));
+
+        TextView help = Ui.text(this, "为什么有时需要联网？  ·  隐私与兼容说明", 10.5f, Ui.CYAN, true);
+        help.setGravity(Gravity.CENTER_VERTICAL);
+        help.setClickable(true); Ui.applyRipple(help, Color.TRANSPARENT);
+        help.setOnClickListener(v -> showGlassMessage("语音识别说明",
+                "Lunaxy 不保存原始录音。Android 的系统 SpeechRecognizer 由手机里的识别服务实现，部分厂商会把音频交给在线服务，因此“系统识别”可能需要联网。“本地优先”会先尝试设备本地引擎；“仅本地”不会主动回退到系统在线识别。首次使用中文离线识别时，系统可能需要下载语言模型。后台唤醒仍会持续占用麦克风并显示 Android 麦克风指示。",
+                "知道了", () -> {}, "", null));
+        card.addView(help, heightWithTop(38, 10));
+
+        TextView done = modalButton("完成", true);
+        done.setTextSize(14f);
+        done.setOnClickListener(v -> hideModal());
+        card.addView(done, heightWithTop(56, 12));
+        presentModal(card);
+    }
+
+    private TextView voiceModeButton(String label, String mode, String currentMode) {
+        boolean selected = mode.equals(currentMode);
+        TextView button = Ui.text(this, label, 11.4f, selected ? Ui.TEXT : Ui.TEXT_2, true);
+        button.setGravity(Gravity.CENTER);
+        button.setClickable(true); button.setFocusable(true);
+        button.setBackground(selected ? Ui.playerControlSurface(Ui.CYAN, 15, this) : Ui.contentSurface(15, this));
+        Ui.applyRipple(button, Color.TRANSPARENT);
+        button.setOnClickListener(v -> {
+            VoiceAssistantContract.prefs(this).edit().putString(VoiceAssistantContract.KEY_RECOGNITION_MODE, mode).apply();
+            if (VoiceAssistantContract.enabled(this)) {
+                try {
+                    Intent reload = VoiceAssistantContract.serviceIntent(this, VoiceAssistantContract.ACTION_RELOAD_ENGINE);
+                    if (Build.VERSION.SDK_INT >= 26) startForegroundService(reload); else startService(reload);
+                } catch (Exception ignored) { }
+            }
+            dismissModalNow();
+            main.postDelayed(this::showVoiceAssistantSettings, 120L);
+        });
+        return button;
+    }
+
+    private LinearLayout.LayoutParams heightWithTop(int heightDp, int topDp) {
+        LinearLayout.LayoutParams p = Ui.lp(-1, Ui.dp(this, heightDp));
+        p.topMargin = Ui.dp(this, topDp);
+        return p;
+    }
+
+    private void requestVoiceOfflineModel() {
+        if (Build.VERSION.SDK_INT < 31) { toast("当前 Android 版本没有系统本地语音识别接口"); return; }
+        boolean available;
+        try { available = SpeechRecognizer.isOnDeviceRecognitionAvailable(this); }
+        catch (Throwable ignored) { available = false; }
+        if (!available) { toast("本机没有可用的系统本地语音识别引擎"); return; }
+        if (Build.VERSION.SDK_INT < 33) {
+            toast("请到系统语音设置中下载中文离线语言包");
+            return;
+        }
+        SpeechRecognizer local = null;
+        try {
+            local = SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
+            Intent request = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                    .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                    .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+            local.triggerModelDownload(request);
+            toast("已请求系统准备中文离线模型");
+            final SpeechRecognizer cleanup = local;
+            main.postDelayed(() -> { try { cleanup.destroy(); } catch (Exception ignored) { } }, 8000L);
+        } catch (Throwable e) {
+            if (local != null) try { local.destroy(); } catch (Exception ignored) { }
+            toast("无法请求离线模型 · 请到系统语音设置中下载中文语言包");
+        }
     }
 
     private void installModalOutsideDismiss() {
@@ -1193,13 +2076,13 @@ public final class MainActivity extends Activity implements PlaybackService.List
                     modalDismissSuppressedUntil = SystemClock.uptimeMillis() + 260L;
                     shell.animate().cancel();
                     shell.animate().translationY(Math.max(shell.getHeight() * .46f, dy + Ui.dp(this, 90)))
-                            .alpha(.20f).scaleX(.985f).scaleY(.985f).setDuration(180L)
+                            .alpha(.20f).scaleX(.985f).scaleY(.985f).setDuration(SpringMotion.fadeDuration())
                             .withEndAction(this::hideModal).start();
                 } else {
                     shell.animate().cancel();
                     shell.animate().translationY(0f).alpha(1f).scaleX(1f).scaleY(1f)
-                            .setDuration(245L).setInterpolator(SpringMotion.LAND).start();
-                    if (modalOverlay != null) modalOverlay.animate().alpha(1f).setDuration(190L).start();
+                            .setDuration(SpringMotion.sheetDuration()).setInterpolator(SpringMotion.LAND).start();
+                    if (modalOverlay != null) modalOverlay.animate().alpha(1f).setDuration(SpringMotion.fadeDuration()).start();
                 }
                 return true;
             }
@@ -1213,7 +2096,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
         downloadCenterOpen = false;
         downloadCenterGeneration++;
         if (modalOverlay == null) return;
-        modalOverlay.animate().alpha(0f).setDuration(130).withEndAction(() -> {
+        modalOverlay.animate().alpha(0f).setDuration(SpringMotion.fadeDuration()).withEndAction(() -> {
             modalOverlay.removeAllViews();
             modalOverlay.setVisibility(View.GONE);
             modalOverlay.setAlpha(1f);
@@ -1254,7 +2137,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
     private LinearLayout modalCard(String title, String subtitle) {
         LinearLayout card = Ui.column(this);
         card.setPadding(Ui.dp(this, 20), Ui.dp(this, 18), Ui.dp(this, 20), Ui.dp(this, 18));
-        card.setBackground(Ui.glass(250, 25, 30, this));
+        card.setBackground(Ui.transientGlass(25, this));
         card.setElevation(Ui.dp(this, 10));
         TextView t = Ui.text(this, title, 18.5f, Ui.TEXT, true);
         card.addView(t, Ui.lp(-1, Ui.dp(this, 34)));
@@ -1286,9 +2169,9 @@ public final class MainActivity extends Activity implements PlaybackService.List
         modalOverlay.addView(shell, cp);
         shell.setTranslationY(Ui.dp(this, 28));
         shell.setScaleX(.985f); shell.setScaleY(.985f); shell.setAlpha(.94f);
-        modalOverlay.animate().alpha(1f).setDuration(155).start();
+        modalOverlay.animate().alpha(1f).setDuration(SpringMotion.fadeDuration()).start();
         shell.animate().translationY(0f).scaleX(1f).scaleY(1f).alpha(1f)
-                .setInterpolator(SpringMotion.SOFT).setDuration(255L).start();
+                .setInterpolator(SpringMotion.SOFT).setDuration(SpringMotion.sheetDuration()).start();
     }
 
     private void presentFractionModal(View card, float fraction) {
@@ -1311,9 +2194,9 @@ public final class MainActivity extends Activity implements PlaybackService.List
         modalOverlay.addView(shell, cp);
         shell.setTranslationY(Ui.dp(this, 30));
         shell.setScaleX(.985f); shell.setScaleY(.985f); shell.setAlpha(.94f);
-        modalOverlay.animate().alpha(1f).setDuration(150).start();
+        modalOverlay.animate().alpha(1f).setDuration(SpringMotion.fadeDuration()).start();
         shell.animate().translationY(0f).scaleX(1f).scaleY(1f).alpha(1f)
-                .setInterpolator(SpringMotion.SOFT).setDuration(260L).start();
+                .setInterpolator(SpringMotion.SOFT).setDuration(SpringMotion.sheetDuration()).start();
     }
 
     private TextView modalButton(String label, boolean primary) {
@@ -1388,7 +2271,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
         Ui.margins(cp, 18, 0, 18, 0, this);
         modalOverlay.addView(card, cp);
         card.setScaleX(.97f); card.setScaleY(.97f);
-        modalOverlay.animate().alpha(1f).setDuration(150).start();
+        modalOverlay.animate().alpha(1f).setDuration(SpringMotion.fadeDuration()).start();
         card.animate().scaleX(1f).scaleY(1f).setDuration(180).start();
     }
 
@@ -2300,12 +3183,619 @@ public final class MainActivity extends Activity implements PlaybackService.List
         playlists = store.playlists();
     }
 
+    private void startRootTabPhysics(View outgoing, View incoming, int direction, float width) {
+        if (outgoing == null || incoming == null || pageHost == null) return;
+        final int token = ++rootTabPhysicsToken;
+        final float safeWidth = Math.max(1f, width);
+        final float density = Math.max(.75f, getResources().getDisplayMetrics().density);
+        final float start = outgoing.getTranslationX() + direction * safeWidth;
+        final float[] position = {start};
+        float carriedVelocity = rootTabVelocityPxPerSec;
+        if (Math.abs(carriedVelocity) < 80f * density) carriedVelocity = -direction * 920f * density;
+        final float[] velocity = {Math.max(-6200f * density, Math.min(6200f * density, carriedVelocity))};
+        final long[] lastFrame = {0L};
+
+        outgoing.animate().cancel();
+        incoming.animate().cancel();
+        outgoing.setAlpha(1f); outgoing.setScaleX(1f); outgoing.setScaleY(1f); outgoing.setTranslationY(0f);
+        incoming.setAlpha(1f); incoming.setScaleX(1f); incoming.setScaleY(1f); incoming.setTranslationY(0f);
+        incoming.setTranslationX(start);
+        outgoing.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        incoming.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        pageHost.addView(incoming);
+        incoming.bringToFront();
+
+        Choreographer.getInstance().postFrameCallback(new Choreographer.FrameCallback() {
+            @Override public void doFrame(long frameTimeNanos) {
+                if (token != rootTabPhysicsToken || incoming.getParent() != pageHost) return;
+                if (lastFrame[0] == 0L) lastFrame[0] = frameTimeNanos - 16_000_000L;
+                float dt = Math.max(.006f, Math.min(.032f, (frameTimeNanos - lastFrame[0]) / 1_000_000_000f));
+                lastFrame[0] = frameTimeNanos;
+
+                // Near-critical page spring: enough carried momentum to read as physical travel,
+                // but damped enough that a full-screen surface never visibly bounces at rest.
+                final float omega = 12.6f;
+                final float dampingRatio = .96f;
+                float a = -omega * omega * position[0] - 2f * dampingRatio * omega * velocity[0];
+                velocity[0] += a * dt;
+                float maxVelocity = 6200f * density;
+                velocity[0] = Math.max(-maxVelocity, Math.min(maxVelocity, velocity[0]));
+                position[0] += velocity[0] * dt;
+
+                // Keep the two surfaces locked exactly one viewport apart.
+                incoming.setTranslationX(position[0]);
+                outgoing.setTranslationX(position[0] - direction * safeWidth);
+                rootTabVelocityPxPerSec = velocity[0];
+
+                if (Math.abs(position[0]) <= .32f * density && Math.abs(velocity[0]) <= 9f * density) {
+                    incoming.setTranslationX(0f);
+                    outgoing.setTranslationX(-direction * safeWidth);
+                    rootTabVelocityPxPerSec = 0f;
+                    if (outgoing.getParent() == pageHost) pageHost.removeView(outgoing);
+                    outgoing.setLayerType(View.LAYER_TYPE_NONE, null);
+                    incoming.setLayerType(View.LAYER_TYPE_NONE, null);
+                    return;
+                }
+                Choreographer.getInstance().postFrameCallback(this);
+            }
+        });
+    }
+
+    /**
+     * Opaque same-tab depth transition.  The previous implementation cross-faded two complete
+     * pages, which made text/cards flash as double images.  Push/pop now keeps both surfaces fully
+     * opaque and preserves a reversible left/right spatial relationship.
+     */
+    private void startDepthPageTransition(View outgoing, View incoming, boolean push, float width) {
+        if (outgoing == null || incoming == null || pageHost == null) return;
+        final float safeWidth = Math.max(1f, width);
+        outgoing.animate().cancel();
+        incoming.animate().cancel();
+        outgoing.setAlpha(1f); outgoing.setScaleX(1f); outgoing.setScaleY(1f); outgoing.setTranslationY(0f);
+        incoming.setAlpha(1f); incoming.setScaleX(1f); incoming.setScaleY(1f); incoming.setTranslationY(0f);
+        outgoing.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        incoming.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+
+        if (push) {
+            incoming.setTranslationX(safeWidth);
+            pageHost.addView(incoming);
+            incoming.bringToFront();
+            outgoing.animate().translationX(-safeWidth)
+                    .setDuration(330L).setInterpolator(SpringMotion.TAB_PAGE).start();
+            incoming.animate().translationX(0f)
+                    .setDuration(330L).setInterpolator(SpringMotion.TAB_PAGE)
+                    .withEndAction(() -> {
+                        if (outgoing.getParent() == pageHost) pageHost.removeView(outgoing);
+                        incoming.setLayerType(View.LAYER_TYPE_NONE, null);
+                    }).start();
+        } else {
+            incoming.setTranslationX(-safeWidth);
+            pageHost.addView(incoming, 0);
+            incoming.animate().translationX(0f)
+                    .setDuration(330L).setInterpolator(SpringMotion.TAB_PAGE).start();
+            outgoing.bringToFront();
+            outgoing.animate().translationX(safeWidth)
+                    .setDuration(330L).setInterpolator(SpringMotion.TAB_PAGE)
+                    .withEndAction(() -> {
+                        if (outgoing.getParent() == pageHost) pageHost.removeView(outgoing);
+                        incoming.setLayerType(View.LAYER_TYPE_NONE, null);
+                    }).start();
+        }
+    }
+
+
+    private static float playlistStage(float value, float start, float end) {
+        if (end <= start) return value >= end ? 1f : 0f;
+        float t = Math.max(0f, Math.min(1f, (value - start) / (end - start)));
+        return t * t * (3f - 2f * t);
+    }
+
+    /**
+     * Shared-object entrance starts from a real list card, so all destination chrome must stay
+     * quiet until the card is visibly travelling.  This prevents the common "tap -> detail page
+     * flashes in -> hero overlay catches up" failure and makes the motion itself the response.
+     */
+    private void preparePlaylistDetailForSharedEntrance() {
+        if (activePlaylistHeroCard != null) activePlaylistHeroCard.setAlpha(0f);
+        if (activePlaylistDetailTitleRow != null) {
+            activePlaylistDetailTitleRow.setAlpha(0f);
+            activePlaylistDetailTitleRow.setTranslationY(-Ui.dp(this, 12));
+        }
+        if (activePlaylistDetailSubtitle != null) {
+            activePlaylistDetailSubtitle.setAlpha(0f);
+            activePlaylistDetailSubtitle.setTranslationY(-Ui.dp(this, 8));
+        }
+        if (activePlaylistDetailBack != null) {
+            activePlaylistDetailBack.setAlpha(0f);
+            activePlaylistDetailBack.setTranslationX(-Ui.dp(this, 12));
+        }
+        if (activePlaylistDetailSongHeader != null) {
+            activePlaylistDetailSongHeader.setAlpha(0f);
+            activePlaylistDetailSongHeader.setTranslationY(Ui.dp(this, 18));
+        }
+        if (activePlaylistDetailSongHost != null) {
+            activePlaylistDetailSongHost.setAlpha(1f);
+            for (int i = 0; i < activePlaylistDetailSongHost.getChildCount(); i++) {
+                View child = activePlaylistDetailSongHost.getChildAt(i);
+                child.setAlpha(0f);
+                child.setTranslationY(Ui.dp(this, 24 + Math.min(14, i * 2)));
+            }
+        }
+        if (activePlaylistLoader != null && activePlaylistLoader.getParent() instanceof View) {
+            View loader = (View) activePlaylistLoader.getParent();
+            loader.setAlpha(0f);
+            loader.setTranslationY(Ui.dp(this, 18));
+        }
+    }
+
+    private void resetPlaylistDetailTransitionViews() {
+        View[] views = new View[]{activePlaylistDetailTitleRow, activePlaylistDetailSubtitle,
+                activePlaylistDetailBack, activePlaylistDetailSongHeader};
+        for (View view : views) {
+            if (view == null) continue;
+            view.setAlpha(1f);
+            view.setTranslationX(0f);
+            view.setTranslationY(0f);
+        }
+        if (activePlaylistDetailSongHost != null) {
+            activePlaylistDetailSongHost.setAlpha(1f);
+            activePlaylistDetailSongHost.setTranslationX(0f);
+            activePlaylistDetailSongHost.setTranslationY(0f);
+            for (int i = 0; i < activePlaylistDetailSongHost.getChildCount(); i++) {
+                View child = activePlaylistDetailSongHost.getChildAt(i);
+                child.setAlpha(1f);
+                child.setTranslationX(0f);
+                child.setTranslationY(0f);
+            }
+        }
+        if (activePlaylistLoader != null && activePlaylistLoader.getParent() instanceof View) {
+            View loader = (View) activePlaylistLoader.getParent();
+            loader.setAlpha(1f);
+            loader.setTranslationX(0f);
+            loader.setTranslationY(0f);
+        }
+    }
+
+    /**
+     * One choreography value owns the entire playlist push/pop.  The card moves first, then page
+     * chrome and song skeletons follow in overlapping waves.  Reverse navigation uses the exact
+     * same progress backwards, so there is no separate "exit animation" to drift out of sync.
+     */
+    private void applyPlaylistDetailChoreography(float progress) {
+        float p = Math.max(0f, Math.min(1f, progress));
+        float titleP = playlistStage(p, .28f, .58f);
+        float subP = playlistStage(p, .34f, .64f);
+        float backP = playlistStage(p, .38f, .68f);
+        float headerP = playlistStage(p, .52f, .78f);
+
+        if (activePlaylistDetailTitleRow != null) {
+            activePlaylistDetailTitleRow.setAlpha(titleP);
+            activePlaylistDetailTitleRow.setTranslationY(-Ui.dp(this, 12) * (1f - titleP));
+        }
+        if (activePlaylistDetailSubtitle != null) {
+            activePlaylistDetailSubtitle.setAlpha(subP);
+            activePlaylistDetailSubtitle.setTranslationY(-Ui.dp(this, 8) * (1f - subP));
+        }
+        if (activePlaylistDetailBack != null) {
+            activePlaylistDetailBack.setAlpha(backP);
+            activePlaylistDetailBack.setTranslationX(-Ui.dp(this, 12) * (1f - backP));
+        }
+        if (activePlaylistDetailSongHeader != null) {
+            activePlaylistDetailSongHeader.setAlpha(headerP);
+            activePlaylistDetailSongHeader.setTranslationY(Ui.dp(this, 18) * (1f - headerP));
+        }
+        if (activePlaylistDetailSongHost != null) {
+            for (int i = 0; i < activePlaylistDetailSongHost.getChildCount(); i++) {
+                View child = activePlaylistDetailSongHost.getChildAt(i);
+                float start = .58f + Math.min(.18f, i * .035f);
+                float rowP = playlistStage(p, start, Math.min(.98f, start + .22f));
+                child.setAlpha(rowP);
+                child.setTranslationY(Ui.dp(this, 26 + Math.min(12, i * 2)) * (1f - rowP));
+            }
+        }
+        if (activePlaylistLoader != null && activePlaylistLoader.getParent() instanceof View) {
+            float loaderP = playlistStage(p, .72f, .94f);
+            View loader = (View) activePlaylistLoader.getParent();
+            loader.setAlpha(loaderP);
+            loader.setTranslationY(Ui.dp(this, 18) * (1f - loaderP));
+        }
+    }
+
+    private void capturePlaylistDetailHeroGeometry(PlaylistHeroSnapshot snapshot) {
+        if (snapshot == null || activePlaylistHeroCard == null || activePlaylistHeroThumb == null
+                || activePlaylistHeroTitle == null || activePlaylistHeroMeta == null) return;
+        RectF card = rectInAppRoot(activePlaylistHeroCard);
+        RectF art = rectInAppRoot(activePlaylistHeroThumb);
+        RectF title = rectInAppRoot(activePlaylistHeroTitle);
+        RectF meta = rectInAppRoot(activePlaylistHeroMeta);
+        if (card.width() < 2f || art.width() < 2f || title.width() < 2f) return;
+        snapshot.detailContainer.set(card);
+        snapshot.detailArtwork.set(art);
+        snapshot.detailTitle.set(title);
+        snapshot.detailMeta.set(meta);
+        snapshot.detailTitleSizePx = activePlaylistHeroTitle.getTextSize();
+        snapshot.detailMetaSizePx = activePlaylistHeroMeta.getTextSize();
+        snapshot.hasDetailGeometry = true;
+    }
+
+    private Bitmap playlistSharedArtwork(PlaylistHeroSnapshot snapshot, View fallbackArtwork) {
+        if (snapshot == null) return null;
+        Bitmap cached = ImageLoader.peek(snapshot.artworkUrl);
+        if (cached != null && !cached.isRecycled()) return cached;
+        // If the visible thumbnail is backed by ImageLoader's original bitmap, reuse that bitmap
+        // directly. Never rasterize the 52dp thumbnail and enlarge it into the detail hero: that was
+        // the same low-resolution ownership bug that once made Mini Player -> Player briefly blur.
+        if (fallbackArtwork instanceof ImageView) {
+            Drawable drawable = ((ImageView) fallbackArtwork).getDrawable();
+            if (drawable instanceof android.graphics.drawable.BitmapDrawable) {
+                Bitmap b = ((android.graphics.drawable.BitmapDrawable) drawable).getBitmap();
+                if (b != null && !b.isRecycled()) return b;
+            }
+        }
+        return null;
+    }
+
+    private RectF playlistReturnRect(View actual, RectF fallback) {
+        RectF measured = rectInAppRoot(actual);
+        return measured.width() >= 2f && measured.height() >= 2f ? measured : new RectF(fallback);
+    }
+
+    private void startPlaylistSharedTransition(View outgoing, View incoming, boolean push) {
+        PlaylistHeroSnapshot snapshot = playlistHeroSnapshot;
+        if (snapshot == null || outgoing == null || incoming == null || pageHost == null || appRoot == null) {
+            startDepthPageTransition(outgoing, incoming, push, Math.max(1f, pageHost == null ? 1f : pageHost.getWidth()));
+            pendingPlaylistHeroPush = false;
+            pendingPlaylistHeroPop = false;
+            return;
+        }
+        if (activePlaylistSharedAnimator != null) activePlaylistSharedAnimator.cancel();
+        if (activePlaylistHeroMorph != null && activePlaylistHeroMorph.getParent() instanceof ViewGroup)
+            ((ViewGroup) activePlaylistHeroMorph.getParent()).removeView(activePlaylistHeroMorph);
+
+        rootTabPhysicsToken++;
+        rootTabVelocityPxPerSec = 0f;
+        outgoing.animate().cancel();
+        incoming.animate().cancel();
+        outgoing.setAlpha(1f); incoming.setAlpha(1f);
+        outgoing.setTranslationX(0f); incoming.setTranslationX(0f);
+        outgoing.setTranslationY(0f); incoming.setTranslationY(0f);
+        outgoing.setScaleX(1f); outgoing.setScaleY(1f);
+        incoming.setScaleX(1f); incoming.setScaleY(1f);
+        outgoing.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        incoming.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+
+        activePlaylistTransitionOutgoing = outgoing;
+        activePlaylistTransitionIncoming = incoming;
+        activePlaylistTransitionPush = push;
+        pendingPlaylistHeroPush = false;
+        pendingPlaylistHeroPop = false;
+
+        if (push) {
+            pageHost.addView(incoming);
+            incoming.bringToFront();
+            incoming.setClipBounds(null);
+            // The destination shell is already present, but its chrome is staged.  The source card
+            // therefore remains the only strong object in motion during the first half of travel.
+            if (!SpringMotion.isReducedMotion()) preparePlaylistDetailForSharedEntrance();
+        } else {
+            // Root lives below the outgoing detail.  The reverse path reuses the same shared-object
+            // progress rather than revealing a second full page from an edge.
+            pageHost.addView(incoming, 0);
+            incoming.setAlpha(.12f);
+            outgoing.bringToFront();
+        }
+
+        final int[] geometryAttempt = new int[]{0};
+        final Runnable[] prepareRef = new Runnable[1];
+        prepareRef[0] = () -> {
+            if (activePlaylistTransitionOutgoing != outgoing || activePlaylistTransitionIncoming != incoming) return;
+            final RectF listCard;
+            final RectF listArtwork;
+            final RectF listTitle;
+            final RectF listMeta;
+            final float listTitleSize;
+            final float listMetaSize;
+            final View listRow;
+            final View listThumb;
+
+            if (push) {
+                capturePlaylistDetailHeroGeometry(snapshot);
+                listCard = new RectF(snapshot.sourceContainer);
+                listArtwork = new RectF(snapshot.sourceArtwork);
+                listTitle = new RectF(snapshot.sourceTitle);
+                listMeta = new RectF(snapshot.sourceMeta);
+                listTitleSize = snapshot.sourceTitleSizePx;
+                listMetaSize = snapshot.sourceMetaSizePx;
+                listRow = playlistHeroSourceRow;
+                listThumb = playlistHeroSourceThumb;
+            } else {
+                listCard = playlistReturnRect(playlistHeroReturnRow, snapshot.sourceContainer);
+                listArtwork = playlistReturnRect(playlistHeroReturnThumb, snapshot.sourceArtwork);
+                listTitle = playlistReturnRect(playlistHeroReturnTitle, snapshot.sourceTitle);
+                listMeta = playlistReturnRect(playlistHeroReturnMeta, snapshot.sourceMeta);
+                listTitleSize = playlistHeroReturnTitle == null ? snapshot.sourceTitleSizePx : playlistHeroReturnTitle.getTextSize();
+                listMetaSize = playlistHeroReturnMeta == null ? snapshot.sourceMetaSizePx : playlistHeroReturnMeta.getTextSize();
+                listRow = playlistHeroReturnRow;
+                listThumb = playlistHeroReturnThumb;
+            }
+
+            if (!snapshot.hasDetailGeometry || listCard.width() < 2f || listArtwork.width() < 2f) {
+                // A newly-built ScrollView can need more than one display turn before the hero has
+                // stable app-root coordinates. Keep the real source card on screen while waiting;
+                // only fall back after several pre-draw opportunities instead of silently skipping
+                // the shared-element animation on a fast tap/device.
+                if (geometryAttempt[0]++ < 5 && incoming.isAttachedToWindow()) {
+                    incoming.postOnAnimation(prepareRef[0]);
+                } else {
+                    abandonPlaylistSharedTransition(push);
+                }
+                return;
+            }
+
+            PlaylistHeroMorphView morph = new PlaylistHeroMorphView(this);
+            Bitmap art = playlistSharedArtwork(snapshot, push ? playlistHeroSourceThumb : listThumb);
+            morph.configure(listCard, snapshot.detailContainer,
+                    listArtwork, snapshot.detailArtwork,
+                    listTitle, snapshot.detailTitle,
+                    listMeta, snapshot.detailMeta,
+                    listTitleSize, snapshot.detailTitleSizePx,
+                    listMetaSize, snapshot.detailMetaSizePx,
+                    snapshot.title, snapshot.subtitle, snapshot.accent, art);
+            morph.setClickable(true);
+            morph.setFocusable(false);
+            // Paint the proxy at the exact source geometry before visual ownership moves away from
+            // the list row. This keeps one continuous object on screen with no one-frame disappearance.
+            morph.setProgress(push ? 0f : 1f);
+            activePlaylistHeroMorph = morph;
+            appRoot.addView(morph, Ui.frame(-1, -1, Gravity.FILL));
+            morph.bringToFront();
+            if (activePlaylistHeroCard != null) activePlaylistHeroCard.setAlpha(0f);
+            if (listRow != null) listRow.setAlpha(0f);
+
+            // The shared element owns the attention. Dense page content uses a non-alpha curtain so
+            // old/new text never double-exposes while the card expands or contracts.
+            activePlaylistSharedProgress = push ? 0f : 1f;
+            applyPlaylistSharedProgress(activePlaylistSharedProgress);
+            animatePlaylistSharedProgress(push ? 1f : 0f);
+        };
+
+        // Pop needs one extra frame because root scroll restoration is posted by renderTab(); this
+        // lets the exact source card settle back into its saved slot before geometry is measured.
+        if (push) incoming.postOnAnimation(prepareRef[0]);
+        else incoming.postOnAnimation(() -> incoming.postOnAnimation(prepareRef[0]));
+    }
+
+    private void abandonPlaylistSharedTransition(boolean push) {
+        View outgoing = activePlaylistTransitionOutgoing;
+        View incoming = activePlaylistTransitionIncoming;
+        clearPlaylistSharedOverlay(false);
+        if (outgoing == null || incoming == null || pageHost == null) return;
+        outgoing.setClipBounds(null);
+        incoming.setClipBounds(null);
+        outgoing.setAlpha(1f); incoming.setAlpha(1f);
+        outgoing.setTranslationX(0f); incoming.setTranslationX(0f);
+        outgoing.setLayerType(View.LAYER_TYPE_NONE, null);
+        incoming.setLayerType(View.LAYER_TYPE_NONE, null);
+        if (activePlaylistHeroCard != null) activePlaylistHeroCard.setAlpha(1f);
+        resetPlaylistDetailTransitionViews();
+        if (playlistHeroSourceRow != null) playlistHeroSourceRow.setAlpha(1f);
+        if (playlistHeroReturnRow != null) playlistHeroReturnRow.setAlpha(1f);
+        // Geometry can disappear after a very fast scroll/layout mutation. Fall back to the proven
+        // opaque depth transition rather than snapping or cross-fading two dense pages.
+        if (incoming.getParent() == pageHost) pageHost.removeView(incoming);
+        if (outgoing.getParent() != pageHost) pageHost.addView(outgoing);
+        startDepthPageTransition(outgoing, incoming, push, Math.max(1f, pageHost.getWidth()));
+    }
+
+
+    private void animatePlaylistSharedProgress(float target) {
+        if (activePlaylistTransitionOutgoing == null || activePlaylistTransitionIncoming == null) return;
+        if (activePlaylistSharedAnimator != null) activePlaylistSharedAnimator.cancel();
+        float start = activePlaylistSharedProgress;
+        float distance = Math.abs(target - start);
+        if (distance < .001f) {
+            applyPlaylistSharedProgress(target);
+            finishPlaylistSharedProgress(target);
+            return;
+        }
+        activePlaylistSharedAnimator = ValueAnimator.ofFloat(start, target);
+        activePlaylistSharedAnimator.setDuration(Math.max(170L, Math.round(840L * distance)));
+        activePlaylistSharedAnimator.setInterpolator(SpringMotion.PLAYER_OPEN);
+        activePlaylistSharedAnimator.addUpdateListener(a -> applyPlaylistSharedProgress((Float) a.getAnimatedValue()));
+        final float endpoint = target;
+        activePlaylistSharedAnimator.addListener(new android.animation.AnimatorListenerAdapter() {
+            private boolean cancelled;
+            @Override public void onAnimationCancel(android.animation.Animator animation) { cancelled = true; }
+            @Override public void onAnimationEnd(android.animation.Animator animation) {
+                if (activePlaylistSharedAnimator == animation) activePlaylistSharedAnimator = null;
+                if (!cancelled) finishPlaylistSharedProgress(endpoint);
+            }
+        });
+        activePlaylistSharedAnimator.start();
+    }
+
+    private void applyPlaylistSharedProgress(float value) {
+        activePlaylistSharedProgress = Math.max(0f, Math.min(1f, value));
+        float p = activePlaylistSharedProgress;
+        if (activePlaylistHeroMorph != null) activePlaylistHeroMorph.setProgress(p);
+        View outgoing = activePlaylistTransitionOutgoing;
+        View incoming = activePlaylistTransitionIncoming;
+        if (outgoing == null || incoming == null) return;
+
+        // The source library and detail page never cross-fade as two complete screens.  Instead the
+        // source recedes while individual detail elements arrive after the shared card is already
+        // moving.  This is what makes the transition readable even when destination data is late.
+        float rootExit = playlistStage(p, .16f, .78f);
+        View root = activePlaylistTransitionPush ? outgoing : incoming;
+        View detail = activePlaylistTransitionPush ? incoming : outgoing;
+        root.setAlpha(1f - .88f * rootExit);
+        root.setTranslationX(-Ui.dp(this, 20) * rootExit);
+        detail.setAlpha(1f);
+        detail.setTranslationX(0f);
+        detail.setClipBounds(null);
+        applyPlaylistDetailChoreography(p);
+    }
+
+    private void finishPlaylistSharedProgress(float endpoint) {
+        final boolean detailVisible = endpoint >= .999f;
+        View outgoing = activePlaylistTransitionOutgoing;
+        View incoming = activePlaylistTransitionIncoming;
+        if (pageHost == null || outgoing == null || incoming == null) {
+            clearPlaylistSharedOverlay(true);
+            return;
+        }
+
+        if (detailVisible) {
+            incoming.setClipBounds(null);
+            incoming.setTranslationX(0f);
+            outgoing.setTranslationX(0f);
+            if (outgoing.getParent() == pageHost) pageHost.removeView(outgoing);
+            if (activePlaylistHeroCard != null) activePlaylistHeroCard.setAlpha(1f);
+            if (playlistHeroSourceRow != null) playlistHeroSourceRow.setAlpha(1f);
+            resetPlaylistDetailTransitionViews();
+            incoming.setAlpha(1f);
+            incoming.setLayerType(View.LAYER_TYPE_NONE, null);
+            outgoing.setLayerType(View.LAYER_TYPE_NONE, null);
+            // Preserve the destination geometry for an exact reverse path later.
+            capturePlaylistDetailHeroGeometry(playlistHeroSnapshot);
+            clearPlaylistSharedOverlay(true);
+        } else {
+            outgoing.setClipBounds(null);
+            incoming.setClipBounds(null);
+            incoming.setTranslationX(0f);
+            outgoing.setTranslationX(0f);
+            // On a reversed in-flight push, outgoing is already the library root. On a normal pop,
+            // incoming is the library root. Keep whichever root is actually meant to survive.
+            View root = activePlaylistTransitionPush ? outgoing : incoming;
+            View detail = activePlaylistTransitionPush ? incoming : outgoing;
+            if (detail.getParent() == pageHost) pageHost.removeView(detail);
+            if (root.getParent() != pageHost) pageHost.addView(root);
+            root.setLayerType(View.LAYER_TYPE_NONE, null);
+            detail.setLayerType(View.LAYER_TYPE_NONE, null);
+            if (playlistHeroSourceRow != null) playlistHeroSourceRow.setAlpha(1f);
+            if (playlistHeroReturnRow != null) playlistHeroReturnRow.setAlpha(1f);
+            if (activePlaylistHeroCard != null) activePlaylistHeroCard.setAlpha(1f);
+            resetPlaylistDetailTransitionViews();
+            root.setAlpha(1f);
+            root.setTranslationX(0f);
+            lastRenderedMotionTab = 2;
+            lastRenderedMotionDepth = 0;
+            clearPlaylistSharedOverlay(true);
+            playlistHeroSnapshot = null;
+            playlistHeroSourceRow = null;
+            playlistHeroSourceThumb = null;
+            playlistHeroReturnRow = null;
+            playlistHeroReturnThumb = null;
+            playlistHeroReturnTitle = null;
+            playlistHeroReturnMeta = null;
+            clearActivePlaylistUiRefs();
+            updatePlaylistLocateButtonVisibility();
+        }
+    }
+
+    private void clearPlaylistSharedOverlay(boolean nextFrame) {
+        final PlaylistHeroMorphView morph = activePlaylistHeroMorph;
+        activePlaylistHeroMorph = null;
+        activePlaylistTransitionOutgoing = null;
+        activePlaylistTransitionIncoming = null;
+        activePlaylistTransitionPush = false;
+        activePlaylistSharedProgress = 0f;
+        if (morph == null) return;
+        Runnable remove = () -> {
+            if (morph.getParent() instanceof ViewGroup) ((ViewGroup) morph.getParent()).removeView(morph);
+            morph.releaseArtwork();
+        };
+        if (nextFrame && appRoot != null) appRoot.postOnAnimation(remove); else remove.run();
+    }
+
+    private View buildCurrentPageNow() {
+        if (offlinePlaylistOpen) return offlinePlaylistPage();
+        if (openSmartCollection != null) return smartCollectionPage(openSmartCollection);
+        if (openPlaylist != null) return playlistDetailPage(openPlaylist);
+        if (searchAllResultsOpen && tab == 1) return searchAllResultsPage();
+        if (tab == 0) return homePage();
+        if (tab == 1) return searchPage();
+        if (tab == 2) return playlistsPage();
+        return favoritesPage();
+    }
+
+    private boolean shouldDeferNavigationPage(int targetTab, int targetDepth) {
+        // Object/list detail pages own their own progressive row choreography. Do not wrap them in
+        // one full-screen CurtainRevealFrame: a single travelling seam across the whole viewport is
+        // visually mechanical and competes with the row-by-row staircase the user is following.
+        if (targetDepth > 0 && (openPlaylist != null || openSmartCollection != null
+                || (targetTab == 1 && searchAllResultsOpen))) return false;
+        if (targetDepth > 0) return true;
+        if (targetTab == 2) return playlists != null && playlists.size() > 18;
+        if (targetTab == 3) return favorites != null && favorites.size() > 72;
+        if (targetTab == 0) return (history != null && history.size() > 72) || (playlists != null && playlists.size() > 28);
+        return false;
+    }
+
+    private View deferredNavigationPage(final int targetTab, final int targetDepth, final int generation) {
+        CurtainRevealFrame shell = new CurtainRevealFrame(this);
+        shell.setPlaceholder(navigationSkeletonPage(targetTab, targetDepth));
+        long delay = SpringMotion.isReducedMotion() ? 48L : 360L;
+        shell.postDelayed(() -> {
+            if (generation != deferredPageGeneration || tab != targetTab || shell.getParent() == null) return;
+            View actual = buildCurrentPageNow();
+            if (generation != deferredPageGeneration || tab != targetTab || shell.getParent() == null) return;
+            shell.reveal(actual);
+            restoreDeferredPageContext(actual, targetTab, targetDepth);
+        }, delay);
+        return shell;
+    }
+
+    private View navigationSkeletonPage(int targetTab, int targetDepth) {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout body = Ui.column(this);
+        body.setPadding(Ui.dp(this, 20), Ui.dp(this, 24), Ui.dp(this, 20), Ui.dp(this, 170));
+        int accent = new int[]{Ui.PURPLE, Ui.CYAN, Ui.GREEN, Ui.PINK}[Math.max(0, Math.min(3, targetTab))];
+
+        FluidPlaceholderView title = new FluidPlaceholderView(this, FluidPlaceholderView.TITLE, accent);
+        body.addView(title, Ui.lp(-1, Ui.dp(this, 72)));
+        FluidPlaceholderView hero = new FluidPlaceholderView(this, FluidPlaceholderView.CARD, accent);
+        LinearLayout.LayoutParams hp = Ui.lp(-1, Ui.dp(this, targetDepth > 0 ? 126 : 108)); hp.topMargin = Ui.dp(this, 20);
+        body.addView(hero, hp);
+        for (int i = 0; i < 4; i++) {
+            FluidPlaceholderView row = new FluidPlaceholderView(this, FluidPlaceholderView.SONG_ROW, accent);
+            LinearLayout.LayoutParams rp = Ui.lp(-1, Ui.dp(this, 72)); rp.topMargin = Ui.dp(this, i == 0 ? 22 : 7);
+            body.addView(row, rp);
+        }
+        scroll.addView(body, Ui.lp(-1, -2));
+        return scroll;
+    }
+
+    private void restoreDeferredPageContext(View actual, int targetTab, int targetDepth) {
+        if (actual == null || targetTab != tab) return;
+        restoreRootTabContext(actual, targetTab, targetDepth);
+        boolean homeRoot = targetTab == 0 && targetDepth == 0 && openSmartCollection == null
+                && openPlaylist == null && !offlinePlaylistOpen;
+        if (homeRoot && restoreHomePosition && actual instanceof ScrollView) {
+            ScrollView homeScroll = (ScrollView) actual;
+            int y = Math.max(0, homeScrollY);
+            int x = Math.max(0, homeRecommendationScrollX);
+            homeScroll.post(() -> {
+                homeScroll.scrollTo(0, y);
+                if (homeRecommendationCarousel != null) homeRecommendationCarousel.scrollTo(x, 0);
+            });
+            restoreHomePosition = false;
+        }
+        if (openPlaylist != null && restorePlaylistPosition && actual instanceof ScrollView) {
+            ScrollView playlistScroll = (ScrollView) actual;
+            int y = Math.max(0, playlistScrollRestoreY);
+            playlistScroll.post(() -> playlistScroll.scrollTo(0, y));
+            restorePlaylistPosition = false;
+        }
+    }
+
     private void renderTab() {
         hideSearchSuggestions();
         activeSearchSuggestions = null;
         stopHomeLyricQuoteTicker();
-        if (openPlaylist == null) clearActivePlaylistUiRefs();
-        pageHost.animate().cancel();
+        if (openPlaylist == null && !pendingPlaylistHeroPop) clearActivePlaylistUiRefs();
 
         final int previousTab = lastRenderedMotionTab;
         final int previousDepth = lastRenderedMotionDepth;
@@ -2313,72 +3803,98 @@ public final class MainActivity extends Activity implements PlaybackService.List
                 || (searchAllResultsOpen && tab == 1)) ? 1 : 0;
         final boolean renderingHomeRoot = openSmartCollection == null && openPlaylist == null && !offlinePlaylistOpen && tab == 0;
 
-        View page;
-        if (offlinePlaylistOpen) page = offlinePlaylistPage();
-        else if (openSmartCollection != null) page = smartCollectionPage(openSmartCollection);
-        else if (openPlaylist != null) page = playlistDetailPage(openPlaylist);
-        else if (searchAllResultsOpen && tab == 1) page = searchAllResultsPage();
-        else if (tab == 0) page = homePage();
-        else if (tab == 1) page = searchPage();
-        else if (tab == 2) page = playlistsPage();
-        else page = favoritesPage();
+        final int renderGeneration = ++deferredPageGeneration;
+        final boolean lateralNavigation = tab != previousTab;
+        final boolean depthNavigation = nextDepth != previousDepth;
+        // Navigation must own the next frame.  Lateral tab travel and same-tab push/pop can both move
+        // a tiny structure-matched shell immediately, then construct a heavy destination only after
+        // the physical transition is underway.  Routine same-depth enrichment stays in-place and is
+        // never replaced with a skeleton again.
+        final boolean playlistSharedNavigation = !SpringMotion.isReducedMotion()
+                && playlistHeroSnapshot != null
+                && (pendingPlaylistHeroPush || pendingPlaylistHeroPop)
+                && tab == 2;
+        boolean deferNavigation = (lateralNavigation || depthNavigation)
+                && !playlistSharedNavigation
+                && shouldDeferNavigationPage(tab, nextDepth);
+        View page = deferNavigation
+                ? deferredNavigationPage(tab, nextDepth, renderGeneration)
+                : buildCurrentPageNow();
 
         boolean animatePage = !suppressNextPageAnimation;
         suppressNextPageAnimation = false;
         View outgoing = pageHost.getChildCount() == 0 ? null : pageHost.getChildAt(pageHost.getChildCount() - 1);
-        // Clear any stale transition layer from a previously interrupted navigation, retaining only the latest page.
+        // Interrupted navigation keeps the most recently presented page at its current presentation
+        // state. Older stale layers are discarded, so new input retargets rather than queues.
         while (pageHost.getChildCount() > 1) pageHost.removeViewAt(0);
 
         if (!animatePage || outgoing == null) {
+            rootTabPhysicsToken++;
+            rootTabVelocityPxPerSec = 0f;
+            if (outgoing != null) outgoing.animate().cancel();
             pageHost.removeAllViews();
             page.setAlpha(1f); page.setTranslationX(0f); page.setTranslationY(0f); page.setScaleX(1f); page.setScaleY(1f);
             pageHost.addView(page);
         } else {
-            final boolean lateral = nextDepth == 0 && previousDepth == 0 && tab != previousTab;
-            final boolean push = nextDepth > previousDepth;
-            final boolean pop = nextDepth < previousDepth;
+            // Root-tab changes are always lateral spaces, even when a destination restores a nested
+            // detail.  Depth motion is reserved for push/pop inside the same tab.
+            final boolean lateral = tab != previousTab;
+            final boolean push = !lateral && nextDepth > previousDepth;
+            final boolean pop = !lateral && nextDepth < previousDepth;
             final int direction = tab >= previousTab ? 1 : -1;
+            final boolean reduced = SpringMotion.isReducedMotion();
+            final float width = Math.max(1f, pageHost.getWidth());
 
-            if (lateral) {
-                page.setAlpha(.46f); page.setTranslationX(direction * Ui.dp(this, 26));
-                outgoing.animate().cancel();
-                outgoing.animate().translationX(-direction * Ui.dp(this, 14)).alpha(.16f)
-                        .setDuration(155L).setInterpolator(SpringMotion.SNAPPY)
-                        .withEndAction(() -> { if (outgoing.getParent() == pageHost) pageHost.removeView(outgoing); }).start();
-            } else if (push) {
-                page.setAlpha(.18f); page.setScaleX(.965f); page.setScaleY(.965f); page.setTranslationY(Ui.dp(this, 7));
-                outgoing.animate().cancel();
-                outgoing.animate().scaleX(.982f).scaleY(.982f).translationY(-Ui.dp(this, 4)).alpha(.12f)
-                        .setDuration(165L).setInterpolator(SpringMotion.SNAPPY)
-                        .withEndAction(() -> { if (outgoing.getParent() == pageHost) pageHost.removeView(outgoing); }).start();
-            } else if (pop) {
-                page.setAlpha(.22f); page.setScaleX(1.018f); page.setScaleY(1.018f); page.setTranslationY(-Ui.dp(this, 4));
-                outgoing.animate().cancel();
-                outgoing.animate().scaleX(1.028f).scaleY(1.028f).translationY(Ui.dp(this, 5)).alpha(.10f)
-                        .setDuration(155L).setInterpolator(SpringMotion.SNAPPY)
-                        .withEndAction(() -> { if (outgoing.getParent() == pageHost) pageHost.removeView(outgoing); }).start();
-            } else {
-                // Same destination receiving enriched data (search/recommendation/skeleton -> content):
-                // cross-dissolve in place instead of flashing/rebuilding the whole screen.
-                page.setAlpha(.30f); page.setScaleX(.996f); page.setScaleY(.996f);
-                outgoing.animate().cancel();
-                outgoing.animate().alpha(0f).setDuration(125L)
-                        .withEndAction(() -> { if (outgoing.getParent() == pageHost) pageHost.removeView(outgoing); }).start();
-            }
-            pageHost.addView(page);
-            page.bringToFront();
+            outgoing.animate().cancel();
             page.animate().cancel();
-            page.animate().alpha(1f).translationX(0f).translationY(0f).scaleX(1f).scaleY(1f)
-                    .setDuration(lateral ? 225L : 245L).setInterpolator(SpringMotion.PAGE).start();
+            if (lateral && !reduced) {
+                // V92.9.4: root tabs are one continuous physical strip.  The page pair remains fully
+                // opaque and one viewport apart, but settling is now a frame-driven near-critical
+                // spring.  Rapid retargets inherit the current velocity instead of starting a fresh
+                // easing curve, which gives the slide real inertia without the old double exposure.
+                startRootTabPhysics(outgoing, page, direction, width);
+            } else if (lateral) {
+                rootTabPhysicsToken++;
+                rootTabVelocityPxPerSec = 0f;
+                // Reduced Motion keeps the state change but removes large spatial travel and avoids
+                // translucent overlap entirely.
+                pageHost.removeView(outgoing);
+                page.setAlpha(.88f); page.setTranslationX(0f); page.setTranslationY(0f); page.setScaleX(1f); page.setScaleY(1f);
+                pageHost.addView(page);
+                page.animate().alpha(1f).setDuration(SpringMotion.fadeDuration()).setInterpolator(SpringMotion.TAB_PAGE).start();
+            } else {
+                rootTabPhysicsToken++;
+                rootTabVelocityPxPerSec = 0f;
+                if ((push || pop) && !reduced) {
+                    if (playlistSharedNavigation) {
+                        // V92.9.9: the playlist card itself owns navigation. Container, cover and
+                        // labels keep one identity while the destination is revealed underneath it.
+                        startPlaylistSharedTransition(outgoing, page, push);
+                    } else {
+                        // V92.9.5: no alpha overlap. Detail pages push from the right; popping performs
+                        // the exact inverse path, so Recently Played / playlists / Daily Mix never flash.
+                        startDepthPageTransition(outgoing, page, push, width);
+                    }
+                } else {
+                    // Enrichment/reduced-motion renders are state replacement, not navigation.
+                    // Swap atomically instead of cross-fading two dense pages.
+                    if (outgoing.getParent() == pageHost) pageHost.removeView(outgoing);
+                    page.setAlpha(1f); page.setTranslationX(0f); page.setTranslationY(0f);
+                    page.setScaleX(1f); page.setScaleY(1f);
+                    pageHost.addView(page);
+                }
+            }
         }
 
         lastRenderedMotionTab = tab;
         lastRenderedMotionDepth = nextDepth;
         updatePlaylistLocateButtonVisibility();
+        restoreRootTabContext(page, tab, nextDepth);
         if (renderingHomeRoot && restoreHomePosition && page instanceof ScrollView) {
             final ScrollView homeScroll = (ScrollView) page;
             final int savedY = Math.max(0, homeScrollY);
             final int savedRecommendationX = Math.max(0, homeRecommendationScrollX);
+            rootTabScrollY[0] = savedY;
             homeScroll.post(() -> {
                 homeScroll.scrollTo(0, savedY);
                 if (homeRecommendationCarousel != null) homeRecommendationCarousel.scrollTo(savedRecommendationX, 0);
@@ -2390,12 +3906,20 @@ public final class MainActivity extends Activity implements PlaybackService.List
             final int savedY = Math.max(0, playlistScrollRestoreY);
             playlistScroll.post(() -> playlistScroll.scrollTo(0, savedY));
             restorePlaylistPosition = false;
+        } else if (openPlaylist != null && restorePlaylistPosition && page instanceof ListView
+                && openPlaylist.id.equals(playlistListRestoreId)) {
+            final ListView playlistList = (ListView) page;
+            final int savedPosition = Math.max(0, playlistListRestorePosition);
+            final int savedTop = playlistListRestoreTop;
+            playlistList.post(() -> playlistList.setSelectionFromTop(
+                    Math.min(savedPosition, Math.max(0, playlistList.getCount() - 1)), savedTop));
+            restorePlaylistPosition = false;
         }
     }
 
     private void rememberHomePosition() {
         if (tab != 0 || openSmartCollection != null || openPlaylist != null || offlinePlaylistOpen || pageHost == null || pageHost.getChildCount() == 0) return;
-        View page = pageHost.getChildAt(0);
+        View page = pageHost.getChildAt(pageHost.getChildCount() - 1);
         if (page instanceof ScrollView) homeScrollY = ((ScrollView) page).getScrollY();
         if (homeRecommendationCarousel != null) homeRecommendationScrollX = homeRecommendationCarousel.getScrollX();
     }
@@ -2409,6 +3933,29 @@ public final class MainActivity extends Activity implements PlaybackService.List
     }
 
     private void closePlaylistToLibrary() {
+        // Back during an unfinished shared push reverses the same physical object immediately.
+        // It does not wait for the forward animation to finish and does not build a second root page.
+        if (activePlaylistTransitionPush
+                && activePlaylistTransitionOutgoing != null && activePlaylistTransitionIncoming != null) {
+            openPlaylist = null;
+            offlinePlaylistOpen = false;
+            pendingPlaylistHeroPush = false;
+            pendingPlaylistHeroPop = false;
+            tab = 2;
+            refreshNav();
+            animatePlaylistSharedProgress(0f);
+            return;
+        }
+        if (openPlaylist != null && playlistHeroSnapshot != null
+                && playlistHeroSnapshot.playlistId.equals(openPlaylist.id)
+                && !SpringMotion.isReducedMotion()) {
+            capturePlaylistDetailHeroGeometry(playlistHeroSnapshot);
+            pendingPlaylistHeroPop = playlistHeroSnapshot.hasDetailGeometry;
+        } else {
+            pendingPlaylistHeroPop = false;
+            if (SpringMotion.isReducedMotion()) playlistHeroSnapshot = null;
+        }
+        pendingPlaylistHeroPush = false;
         openPlaylist = null;
         offlinePlaylistOpen = false;
         tab = 2;
@@ -2428,47 +3975,37 @@ public final class MainActivity extends Activity implements PlaybackService.List
         LinearLayout root = Ui.column(this);
         root.setPadding(Ui.dp(this, 20), Ui.dp(this, 23), Ui.dp(this, 20), Ui.dp(this, 162));
 
-        // V91: the Home engine action lives with the rotating lyric, not beside the hero title.
-        // Other pages keep their existing title-row actions.
-        boolean subtitleAction = rotatingHomeLyric && titleAction != null;
-        if (titleAction == null || subtitleAction) {
+        // V92.9.5: Home utilities are progressive disclosure anchored to the hero's top-right.
+        // The rotating lyric keeps the full row below and never competes with floating actions.
+        if (titleAction == null) {
             TextView t = Ui.text(this, title, 30.5f, Ui.TEXT, true);
             t.setSingleLine(true);
             t.setEllipsize(TextUtils.TruncateAt.END);
             root.addView(t, Ui.lp(-1, Ui.dp(this, 48)));
         } else {
             LinearLayout titleRow = Ui.row(this);
-            titleRow.setGravity(Gravity.CENTER_VERTICAL);
+            titleRow.setGravity(Gravity.TOP);
             TextView t = Ui.text(this, title, 30.5f, Ui.TEXT, true);
             t.setSingleLine(true);
             t.setEllipsize(TextUtils.TruncateAt.END);
             titleRow.addView(t, new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f));
-            LinearLayout.LayoutParams actionLp = new LinearLayout.LayoutParams(-2, Ui.dp(this, 48));
+            LinearLayout.LayoutParams actionLp = new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48));
             actionLp.leftMargin = Ui.dp(this, 8);
             titleRow.addView(titleAction, actionLp);
-            root.addView(titleRow, Ui.lp(-1, Ui.dp(this, 48)));
+            titleRow.setMinimumHeight(Ui.dp(this, 48));
+            root.addView(titleRow, Ui.lp(-1, -2));
         }
         if (rotatingHomeLyric || subtitle != null) {
             TextView sub = Ui.text(this, subtitle == null ? "" : subtitle, 13.5f, Ui.TEXT_2, false);
             sub.setSingleLine(true);
             sub.setEllipsize(TextUtils.TruncateAt.END);
-            if (subtitleAction) {
-                LinearLayout subRow = Ui.row(this);
-                subRow.setGravity(Gravity.CENTER_VERTICAL);
-                subRow.addView(sub, new LinearLayout.LayoutParams(0, Ui.dp(this, 38), 1f));
-                LinearLayout.LayoutParams actionLp = Ui.lp(Ui.dp(this, 36), Ui.dp(this, 36));
-                actionLp.leftMargin = Ui.dp(this, 8);
-                subRow.addView(titleAction, actionLp);
-                root.addView(subRow, Ui.lp(-1, Ui.dp(this, 38)));
-            } else {
-                root.addView(sub, Ui.lp(-1, Ui.dp(this, 31)));
-            }
+            root.addView(sub, Ui.lp(-1, Ui.dp(this, 31)));
             if (rotatingHomeLyric) startHomeLyricQuoteTicker(sub);
         }
 
         if (body != null) {
             LinearLayout.LayoutParams bp = Ui.lp(-1, -2);
-            bp.topMargin = Ui.dp(this, subtitleAction ? 12 : 15);
+            bp.topMargin = Ui.dp(this, 15);
             root.addView(body, bp);
         }
 
@@ -2513,7 +4050,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
             @Override public void onViewAttachedToWindow(View v) { bindPlaybackHalo(homeSearchHalo, quick); }
             @Override public void onViewDetachedFromWindow(View v) { homeSearchHalo.stopRendering(); }
         });
-        IconView qIcon = new IconView(this, IconView.Type.SEARCH, Ui.mix(quickAccent, Color.WHITE, .28f));
+        IconView qIcon = new IconView(this, IconView.Type.SEARCH, AppearanceSystem.isLight()
+                ? Ui.playerControlIconColor(quickAccent) : Ui.mix(quickAccent, Color.WHITE, .28f));
         quick.addView(qIcon, Ui.lp(Ui.dp(this, 24), Ui.dp(this, 24)));
         TextView qText = Ui.text(this, "搜索歌曲、歌手", 13.2f, Ui.TEXT_2, false);
         qText.setPadding(Ui.dp(this, 10), 0, 0, 0);
@@ -2523,7 +4061,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
         quick.addView(qGo, Ui.lp(Ui.dp(this, 38), Ui.dp(this, 38)));
         quick.setClickable(true);
         Ui.applyRipple(quick, Color.argb(30, 255, 255, 255));
-        View.OnClickListener openSearch = v -> { tab = 1; refreshNav(); renderTab(); };
+        View.OnClickListener openSearch = v -> switchRootTab(1, navItems[1]);
         quick.setOnClickListener(openSearch);
         qGo.setOnClickListener(openSearch);
         onboardingSearchTarget = quick;
@@ -2544,17 +4082,31 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
         View recommendationHeader = recommendationSectionHeader();
         onboardingRecommendationTarget = recommendationHeader;
-        body.addView(recommendationHeader, marginTop(24));
-        body.addView(recommendationCarousel(), marginTop(8));
+        body.addView(recommendationHeader, marginTop(10));
+        body.addView(recommendationCarousel(), marginTop(7));
 
         if (!playlists.isEmpty()) {
             body.addView(sectionHeader("最近导入", "歌单"), marginTop(24));
             for (int i = 0; i < Math.min(3, playlists.size()); i++) body.addView(playlistCard(playlists.get(i)), marginTop(8));
         }
 
-        View homeEngine = engineInsightAction(Ui.CYAN, "引擎矩阵", () -> showEngineMatrixCenter(0), () -> showEngineMatrixCenter(0), 34);
-        onboardingSourceTarget = homeEngine;
-        View page = pageScaffold(greetingTitle(), "", body, homeEngine, true);
+        // V92.9.5: one quiet top-right hub owns secondary Home utilities. It grows vertically
+        // from the touched source, so microphone and engine diagnostics do not crowd Search.
+        FluidToolDock homeTools = new FluidToolDock(this, FluidToolDock.Direction.DOWN,
+                IconView.Type.GRID, Ui.CYAN, "首页工具，点击展开语音与引擎矩阵");
+        FrameLayout voiceTool = homeTools.addAction(IconView.Type.MIC,
+                VoiceAssistantContract.enabled(this) ? Ui.CYAN : Ui.PURPLE,
+                VoiceAssistantContract.enabled(this) ? "Lunaxy Voice，立即聆听" : "Lunaxy Voice 设置",
+                () -> { if (VoiceAssistantContract.enabled(this)) startVoiceAssistant(true); else showVoiceAssistantSettings(); });
+        voiceTool.setOnLongClickListener(v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+            showVoiceAssistantSettings();
+            return true;
+        });
+        FrameLayout engineTool = homeTools.addAction(IconView.Type.SCAN, Ui.CYAN, "引擎矩阵",
+                () -> showEngineMatrixCenter(0));
+        onboardingSourceTarget = homeTools.hubView();
+        View page = pageScaffold(greetingTitle(), "", body, homeTools, true);
         onboardingHomeScroll = page instanceof ScrollView ? (ScrollView) page : null;
         return page;
     }
@@ -2590,7 +4142,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
             case 1:
                 target = onboardingSourceTarget;
                 title = "多平台会自动选路";
-                body = "QQ、酷我、酷狗、网易会自动匹配同一首歌。路线经验会随时间衰减：最近成功更重要，久远成功/失败会慢慢回到中性。点随机歌词同一排最右侧的引擎键，可以查看播放链、个性化与最近一次搜索矩阵。";
+                body = "QQ、酷我、酷狗、网易会自动匹配同一首歌。路线经验会随时间衰减：最近成功更重要，久远成功/失败会慢慢回到中性。点首页右上角工具键，再点引擎图标，可以查看播放链、个性化与最近一次搜索矩阵。";
                 break;
             case 2:
                 target = onboardingRecentTarget;
@@ -2977,7 +4529,11 @@ public final class MainActivity extends Activity implements PlaybackService.List
     private void applyRecommendationCardMaterial(View card, int tint, boolean animated) {
         int style = recommendationCardStyle();
         if (style == RecommendationGlassDrawable.STYLE_ORIGINAL) {
-            card.setBackground(Ui.glass(164, 20, 22, this));
+            // Moonlight original is a white/pastel content card rather than dark glass translated
+            // onto a white canvas. Dark/OLED keep the long-stable original material.
+            card.setBackground(AppearanceSystem.isLight()
+                    ? Ui.tintedGlass(tint, 20, this)
+                    : Ui.glass(164, 20, 22, this));
             return;
         }
         card.setBackground(new RecommendationGlassDrawable(
@@ -2986,14 +4542,18 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
     private View recommendationSectionHeader() {
         LinearLayout row = Ui.row(this);
+        row.setClipChildren(false);
+        row.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = Ui.text(this, "为你推荐", 16.5f, Ui.TEXT, true);
-        row.addView(title, new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
+        row.addView(title, new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f));
 
-        FrameLayout style = Ui.iconButton(this, IconView.Type.PALETTE, 32, Ui.TEXT_2, Color.TRANSPARENT);
-        style.setContentDescription("切换推荐卡片样式");
-        style.setBackground(Ui.glass(34, 16, 28, this));
-        style.setOnClickListener(v -> showRecommendationStyleDrawer());
-        row.addView(style, Ui.lp(Ui.dp(this, 32), Ui.dp(this, 32)));
+        // Progressive disclosure: one compact adjustment hub expands left into two secondary
+        // actions. Each child still opens its existing second-level surface, keeping Home quiet.
+        FluidToolDock dock = new FluidToolDock(this, FluidToolDock.Direction.LEFT,
+                IconView.Type.TUNE, Ui.TEXT_2, "推荐设置，点击展开卡片样式与主题");
+        dock.addAction(IconView.Type.LAYERS, Ui.CYAN, "卡片样式", this::showRecommendationStyleDrawer);
+        dock.addAction(IconView.Type.PALETTE, Ui.PURPLE, "主题与动效", this::showAppearanceSheet);
+        row.addView(dock, Ui.lp(Ui.dp(this, 48), Ui.dp(this, 48)));
         return row;
     }
 
@@ -3001,7 +4561,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
         int selected = recommendationCardStyle();
         LinearLayout sheet = Ui.column(this);
         sheet.setPadding(Ui.dp(this, 18), Ui.dp(this, 10), Ui.dp(this, 18), Ui.dp(this, 16));
-        sheet.setBackground(Ui.glass(250, 25, 30, this));
+        sheet.setBackground(Ui.transientGlass(25, this));
         sheet.setElevation(Ui.dp(this, 10));
 
         FrameLayout handleHost = new FrameLayout(this);
@@ -3024,14 +4584,19 @@ public final class MainActivity extends Activity implements PlaybackService.List
             LinearLayout option = Ui.column(this);
             option.setGravity(Gravity.CENTER_HORIZONTAL);
             option.setPadding(Ui.dp(this, 4), Ui.dp(this, 5), Ui.dp(this, 4), Ui.dp(this, 5));
-            int outline = i == selected ? Ui.mix(previewTints[i], Color.WHITE, .42f) : Color.argb(24, 255, 255, 255);
-            option.setBackground(Ui.stroke(Color.argb(i == selected ? 22 : 8, 255, 255, 255), 16, outline, this));
+            // Selection is carried by a real theme-aware tonal surface. Using low-alpha white
+            // strokes here made Moonlight choices disappear into the sheet background.
+            option.setBackground(i == selected
+                    ? Ui.tintedGlass(previewTints[i], 16, this)
+                    : Ui.contentSurface(16, this));
             option.setClickable(true); option.setFocusable(true);
             Ui.applyRipple(option, Color.TRANSPARENT);
 
             FrameLayout preview = new FrameLayout(this);
             if (i == RecommendationGlassDrawable.STYLE_ORIGINAL) {
-                preview.setBackground(Ui.glass(164, 13, 22, this));
+                preview.setBackground(AppearanceSystem.isLight()
+                        ? Ui.tintedGlass(previewTints[i], 13, this)
+                        : Ui.glass(164, 13, 22, this));
             } else {
                 preview.setBackground(new RecommendationGlassDrawable(
                         getResources().getDisplayMetrics().density, i, previewTints[i], false));
@@ -3063,6 +4628,191 @@ public final class MainActivity extends Activity implements PlaybackService.List
         cp.topMargin = Ui.dp(this, 8);
         sheet.addView(scroller, cp);
         presentModal(sheet);
+    }
+
+    /** V92.9 global appearance sheet: theme, material accessibility, and motion accessibility. */
+    private void showAppearanceSheet() {
+        LinearLayout card = Ui.column(this);
+        card.setPadding(Ui.dp(this, 18), Ui.dp(this, 12), Ui.dp(this, 18), Ui.dp(this, 16));
+        card.setBackground(Ui.transientGlass(27, this));
+        card.setElevation(Ui.dp(this, 12));
+
+        LinearLayout header = Ui.row(this);
+        LinearLayout titles = Ui.column(this);
+        TextView title = Ui.text(this, "外观与动效", 18.8f, Ui.TEXT, true);
+        TextView subtitle = Ui.text(this, "Lunaxy Visual System · 全局生效", 10.7f, Ui.TEXT_2, false);
+        titles.addView(title, Ui.lp(-1, Ui.dp(this, 29)));
+        titles.addView(subtitle, Ui.lp(-1, Ui.dp(this, 22)));
+        header.addView(titles, new LinearLayout.LayoutParams(0, Ui.dp(this, 54), 1f));
+        TextView done = Ui.text(this, "完成", 10.8f, Color.rgb(12, 16, 22), true);
+        done.setGravity(Gravity.CENTER);
+        done.setBackground(Ui.primaryFill(Ui.PURPLE, 14, this));
+        done.setClickable(true); Ui.applyRipple(done, Color.TRANSPARENT);
+        done.setOnClickListener(v -> hideModal());
+        header.addView(done, Ui.lp(Ui.dp(this, 58), Ui.dp(this, 34)));
+        card.addView(header, Ui.lp(-1, Ui.dp(this, 56)));
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout body = Ui.column(this);
+        body.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        scroll.addView(body);
+        card.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        final Runnable[] redraw = new Runnable[1];
+        redraw[0] = () -> {
+            card.setBackground(Ui.transientGlass(27, this));
+            title.setTextColor(Ui.TEXT);
+            subtitle.setTextColor(Ui.TEXT_2);
+            done.setBackground(Ui.primaryFill(Ui.PURPLE, 14, this));
+            body.removeAllViews();
+            body.addView(appearanceHero(), marginTop(2));
+            body.addView(starStudioSection("主题", "四套外观共享同一信息结构；跟随系统会在深色与月白之间自动选择。"), marginTop(14));
+
+            LinearLayout row1 = Ui.row(this);
+            row1.addView(appearanceModeChoice("跟随系统", AppearanceSystem.effectiveMode() == AppearanceSystem.MODE_MOONLIGHT ? "当前：月白" : "当前：深空",
+                    AppearanceSystem.MODE_SYSTEM, Ui.CYAN, redraw[0]), new LinearLayout.LayoutParams(0, Ui.dp(this, 66), 1f));
+            LinearLayout.LayoutParams r12 = new LinearLayout.LayoutParams(0, Ui.dp(this, 66), 1f); r12.leftMargin = Ui.dp(this, 8);
+            row1.addView(appearanceModeChoice("深空", "Lunaxy 默认", AppearanceSystem.MODE_DEEP, Ui.PURPLE, redraw[0]), r12);
+            body.addView(row1, marginTop(8));
+
+            LinearLayout row2 = Ui.row(this);
+            row2.addView(appearanceModeChoice("OLED", "纯黑 · 更克制", AppearanceSystem.MODE_OLED, Ui.GREEN, redraw[0]), new LinearLayout.LayoutParams(0, Ui.dp(this, 66), 1f));
+            LinearLayout.LayoutParams r22 = new LinearLayout.LayoutParams(0, Ui.dp(this, 66), 1f); r22.leftMargin = Ui.dp(this, 8);
+            row2.addView(appearanceModeChoice("月白", "浅色 · 清透纸白", AppearanceSystem.MODE_MOONLIGHT, Ui.GOLD, redraw[0]), r22);
+            body.addView(row2, marginTop(8));
+
+            body.addView(starStudioSection("可访问性", "减少动态效果会保留状态变化但缩短空间运动；减少透明度会把玻璃层降级为更实的色调表面。"), marginTop(18));
+            body.addView(appearanceToggle("减少动态效果", "大型页面位移、主题扩散与持续星空运动会自动降级",
+                    AppearanceSystem.reduceMotion(), Ui.CYAN, v -> {
+                        AppearanceSystem.setReduceMotion(this, !AppearanceSystem.reduceMotion());
+                        if (stars != null) stars.invalidate();
+                        if (playerStars != null) playerStars.invalidate();
+                        if (playerStars2D != null) playerStars2D.invalidate();
+                        if (nowVinyl != null) nowVinyl.invalidate();
+                        if (nowVinylStack != null) nowVinylStack.invalidate();
+                        redraw[0].run();
+                    }), marginTop(8));
+            body.addView(appearanceToggle("减少透明度", "Navigation、Mini Player、Sheet 使用更实的表面并保持层级",
+                    AppearanceSystem.reduceTransparency(), Ui.PINK, v -> {
+                        AppearanceSystem.setReduceTransparency(this, !AppearanceSystem.reduceTransparency());
+                        rebuildHiddenPlayerForAppearance();
+                        applyAppearanceToShell();
+                        rememberRootTabContext();
+                        suppressNextPageAnimation = true;
+                        renderTab();
+                        refreshNav();
+                        redraw[0].run();
+                    }), marginTop(8));
+
+            body.addView(starInfoCard("材质层级", "内容层保持稳定阅读；Navigation / Mini Player 属于功能悬浮层；Sheet 属于临时交互层。玻璃不再作为所有卡片的默认装饰。", Ui.PURPLE), marginTop(14));
+        };
+        redraw[0].run();
+        presentFractionModal(card, .76f);
+    }
+
+    private View appearanceHero() {
+        int mode = AppearanceSystem.selectedMode();
+        int accent = mode == AppearanceSystem.MODE_MOONLIGHT ? Ui.GOLD
+                : mode == AppearanceSystem.MODE_OLED ? Ui.GREEN : mode == AppearanceSystem.MODE_DEEP ? Ui.PURPLE : Ui.CYAN;
+        return starStudioHero("当前 · " + AppearanceSystem.modeName(mode),
+                (AppearanceSystem.reduceMotion() ? "减少动态 · " : "流体动态 · ")
+                        + (AppearanceSystem.reduceTransparency() ? "实色材质" : "分层玻璃"), accent);
+    }
+
+    private View appearanceModeChoice(String title, String subtitle, int mode, int accent, Runnable redraw) {
+        boolean selected = AppearanceSystem.selectedMode() == mode;
+        LinearLayout c = Ui.column(this);
+        c.setGravity(Gravity.CENTER_VERTICAL);
+        c.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 12), 0);
+        c.setBackground(selected ? Ui.tintedGlass(accent, 17, this) : Ui.contentSurface(17, this));
+        c.setClickable(true); c.setFocusable(true); Ui.applyRipple(c, Color.TRANSPARENT);
+        TextView t = Ui.text(this, (selected ? "✓  " : "") + title, 12f, selected ? Ui.TEXT : Ui.TEXT_2, true);
+        TextView sub = Ui.text(this, subtitle, 9.8f, Ui.DIM, false);
+        c.addView(t, Ui.lp(-1, Ui.dp(this, 31)));
+        c.addView(sub, Ui.lp(-1, Ui.dp(this, 23)));
+        c.setOnClickListener(v -> applyAppearanceMode(v, mode, redraw));
+        return c;
+    }
+
+    private View appearanceToggle(String title, String subtitle, boolean selected, int accent, View.OnClickListener action) {
+        LinearLayout c = Ui.row(this);
+        c.setPadding(Ui.dp(this, 13), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8));
+        c.setBackground(selected ? Ui.tintedGlass(accent, 18, this) : Ui.contentSurface(18, this));
+        LinearLayout texts = Ui.column(this);
+        texts.addView(Ui.text(this, title, 12.4f, Ui.TEXT, true), new LinearLayout.LayoutParams(-1, 0, 1f));
+        texts.addView(Ui.text(this, subtitle, 9.8f, Ui.DIM, false), new LinearLayout.LayoutParams(-1, 0, 1f));
+        c.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(this, 50), 1f));
+        TextView state = Ui.text(this, selected ? "已开启" : "关闭", 10.2f, selected ? accent : Ui.DIM, true);
+        state.setGravity(Gravity.CENTER);
+        c.addView(state, Ui.lp(Ui.dp(this, 52), Ui.dp(this, 40)));
+        c.setClickable(true); c.setFocusable(true); Ui.applyRipple(c, Color.TRANSPARENT); c.setOnClickListener(action);
+        return c;
+    }
+
+    private void applyAppearanceMode(View source, int mode, Runnable redraw) {
+        if (AppearanceSystem.selectedMode() == mode) return;
+        Bitmap oldFrame = null;
+        float sourceX = appRoot == null ? 0f : appRoot.getWidth() * .5f;
+        float sourceY = appRoot == null ? 0f : appRoot.getHeight() * .5f;
+        if (!AppearanceSystem.reduceMotion() && appRoot != null && appRoot.getWidth() > 0 && appRoot.getHeight() > 0) {
+            try {
+                oldFrame = Bitmap.createBitmap(appRoot.getWidth(), appRoot.getHeight(), Bitmap.Config.ARGB_8888);
+                Canvas snapshotCanvas = new Canvas(oldFrame);
+                appRoot.draw(snapshotCanvas);
+                if (source != null) {
+                    int[] root = new int[2], loc = new int[2];
+                    appRoot.getLocationOnScreen(root); source.getLocationOnScreen(loc);
+                    sourceX = loc[0] - root[0] + source.getWidth() * .5f;
+                    sourceY = loc[1] - root[1] + source.getHeight() * .5f;
+                }
+            } catch (Throwable ignored) {
+                if (oldFrame != null && !oldFrame.isRecycled()) oldFrame.recycle();
+                oldFrame = null;
+            }
+        }
+
+        AppearanceSystem.setMode(this, mode);
+        rebuildHiddenPlayerForAppearance();
+        applyAppearanceToShell();
+        rememberRootTabContext();
+        suppressNextPageAnimation = true;
+        renderTab();
+        refreshNav();
+        if (redraw != null) redraw.run();
+
+        if (oldFrame == null || appRoot == null || SpringMotion.isReducedMotion()) {
+            if (appRoot != null) {
+                appRoot.animate().cancel();
+                appRoot.setAlpha(.84f);
+                appRoot.animate().alpha(1f).setDuration(SpringMotion.fadeDuration()).start();
+            }
+            return;
+        }
+
+        final Bitmap frame = oldFrame;
+        ThemeRevealOverlay reveal = new ThemeRevealOverlay(this, frame, sourceX, sourceY);
+        appRoot.addView(reveal, Ui.frame(-1, -1, Gravity.FILL));
+        float r1 = (float) Math.hypot(sourceX, sourceY);
+        float r2 = (float) Math.hypot(appRoot.getWidth() - sourceX, sourceY);
+        float r3 = (float) Math.hypot(sourceX, appRoot.getHeight() - sourceY);
+        float r4 = (float) Math.hypot(appRoot.getWidth() - sourceX, appRoot.getHeight() - sourceY);
+        final float maxRadius = Math.max(Math.max(r1, r2), Math.max(r3, r4)) + Ui.dp(this, 12);
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        animator.setDuration(SpringMotion.themeRevealDuration());
+        animator.setInterpolator(SpringMotion.PLAYER_OPEN);
+        animator.addUpdateListener(a -> reveal.setRadius(maxRadius * (Float) a.getAnimatedValue()));
+        animator.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator animation) {
+                if (reveal.getParent() == appRoot) appRoot.removeView(reveal);
+                if (!frame.isRecycled()) frame.recycle();
+            }
+            @Override public void onAnimationCancel(android.animation.Animator animation) {
+                if (reveal.getParent() == appRoot) appRoot.removeView(reveal);
+                if (!frame.isRecycled()) frame.recycle();
+            }
+        });
+        animator.start();
     }
 
     /** Lightweight peek/parallax for recommendation cards; transforms only, never relayouts while scrolling. */
@@ -3134,6 +4884,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
     private void openRecentHistory() {
         rememberHomePosition();
+        resetSmartCollectionReveal("recent");
         List<Song> songs = new ArrayList<>(history);
         if (songs.isEmpty()) {
             toast("还没有最近播放");
@@ -3146,6 +4897,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
     private void openDailyRecommendations() {
         rememberHomePosition();
+        resetSmartCollectionReveal("daily");
         if (recommendations == null || !recommendations.hasTaste(favorites, playlists, history)) {
             toast("先收藏、导入歌单或听几首歌，推荐会更懂你");
             return;
@@ -3194,6 +4946,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
     private void openPrivateRadio() {
         rememberHomePosition();
+        resetSmartCollectionReveal("private");
         if (recommendations == null || !recommendations.hasTaste(favorites, playlists, history)) {
             toast("先收藏、导入歌单或听几首歌，再开启私人电台");
             return;
@@ -3280,6 +5033,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
     private void openWeatherRadio() {
         rememberHomePosition();
+        resetSmartCollectionReveal("weather");
         if (recommendations == null || !recommendations.hasTaste(favorites, playlists, history)) {
             toast("先收藏、导入歌单或听几首歌，天气电台会更适合你");
             return;
@@ -3406,6 +5160,17 @@ public final class MainActivity extends Activity implements PlaybackService.List
             }
             return;
         }
+        if (requestCode == REQ_VOICE_AUDIO) {
+            boolean wanted = pendingVoiceEnable;
+            pendingVoiceEnable = false;
+            if (wanted && granted) {
+                VoiceAssistantContract.prefs(this).edit().putBoolean(VoiceAssistantContract.KEY_ENABLED, true).apply();
+                startVoiceAssistant(false);
+                toast("Lunaxy Voice 已开启 · " + VoiceAssistantContract.wakeLabel(this));
+                main.postDelayed(this::showVoiceAssistantSettings, 220L);
+            } else if (wanted) toast("未授予麦克风权限 · 语音唤醒不会启动");
+            return;
+        }
         if (requestCode == REQ_LOCAL_AUDIO) {
             boolean wanted = pendingLocalMusicScan; pendingLocalMusicScan = false;
             if (wanted && granted) scanLocalMusic();
@@ -3447,6 +5212,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
             card.setClipChildren(false);
             card.setTag("lunaxy_recent_card");
             card.setClickable(true);
+            card.setFocusable(true);
+            Ui.applyRipple(card, Color.TRANSPARENT);
             card.setOnClickListener(v -> playPickedSong(song));
 
             FrameLayout artwork = new FrameLayout(this);
@@ -3546,7 +5313,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
         LinearLayout searchRow = Ui.row(this);
 
         FrameLayout field = new FrameLayout(this);
-        field.setBackground(Ui.glass(190, 26, 28, this));
+        field.setBackground(Ui.contentSurface(26, this));
 
         EditText input = new EditText(this);
         input.setHint("歌名、歌手或一句歌词…");
@@ -3579,7 +5346,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
         body.addView(suggestionHost, sgp);
 
         LinearLayout resultsHolder = Ui.column(this);
-        LinearLayout.LayoutParams rh = marginTop(18);
+        LinearLayout.LayoutParams rh = marginTop(9);
         body.addView(resultsHolder, rh);
 
         Runnable doSearch = () -> {
@@ -3624,10 +5391,13 @@ public final class MainActivity extends Activity implements PlaybackService.List
             doSearch.run();
         } else if (!searchResults.isEmpty()) renderSearchResults(resultsHolder);
         else {
-            resultsHolder.addView(searchIntro());
+            // V92.9.6: Search is already self-explanatory from the field itself. Keep recent
+            // searches and recent playback contiguous instead of inserting a large decorative
+            // empty-state island between them. This keeps useful music above the fold.
             if (!history.isEmpty()) {
-                resultsHolder.addView(sectionHeader("最近听过", "点一下直接播放"), marginTop(28));
-                resultsHolder.addView(songList(history.subList(0, Math.min(5, history.size())), history), marginTop(8));
+                resultsHolder.addView(songList(history.subList(0, Math.min(6, history.size())), history), marginTop(1));
+            } else {
+                resultsHolder.addView(compactEmpty("最近播放会出现在这里"), marginTop(10));
             }
         }
         FrameLayout engine = engineInsightAction(Ui.CYAN, "搜索引擎洞察",
@@ -3808,7 +5578,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
         // Beta V8: give recent history its own visual section before the primary result tabs.
         View divider = new View(this);
-        divider.setBackgroundColor(Color.argb(24, 255, 255, 255));
+        divider.setBackgroundColor(AppearanceSystem.isLight()
+                ? Color.argb(24, 70, 78, 96) : Color.argb(24, 255, 255, 255));
         LinearLayout.LayoutParams dp = Ui.lp(-1, Ui.dp(this, 1));
         dp.topMargin = Ui.dp(this, 14);
         wrap.addView(divider, dp);
@@ -3869,6 +5640,12 @@ public final class MainActivity extends Activity implements PlaybackService.List
         searchSnapshotVersion = 0;
         searchFirstPaintDelivered = false;
         searchFirstMergeInFlight = false;
+        if (!keyword.equals(lastQuery)) {
+            searchAllSavedPosition = 0;
+            searchAllSavedTop = 0;
+            rootTabSearchAllResultsOpen[1] = false;
+            rootTabDetailScrollY[1] = 0;
+        }
         lastQuery = keyword;
         searchSourceFilter = "";
         searchAllResultsOpen = false;
@@ -4194,10 +5971,17 @@ public final class MainActivity extends Activity implements PlaybackService.List
     private void scheduleSearchMerge(String keyword, int requestToken, LinearLayout holder, boolean finished) {
         final int snapshotVersion = ++searchSnapshotVersion;
         final Map<String,List<Song>> catalogs = snapshotSearchCatalogs();
-        Runnable launch = () -> launchSearchMerge(keyword, requestToken, holder, finished, snapshotVersion, catalogs, false);
+        // Once the user has a usable first paint, keep those rows physically stable. Capture that
+        // head when the coalesced merge actually launches, not when it is scheduled: a second
+        // provider can return while the first merge is still in flight, and an early empty snapshot
+        // would otherwise re-rank/flash the rows that just became visible.
+        Runnable launch = () -> {
+            List<Song> frozenHead = searchFirstPaintDelivered ? new ArrayList<>(searchResults) : new ArrayList<>();
+            launchSearchMerge(keyword, requestToken, holder, finished, snapshotVersion, catalogs, frozenHead, false);
+        };
         if (!searchFirstPaintDelivered && !searchFirstMergeInFlight) {
             searchFirstMergeInFlight = true;
-            launchSearchMerge(keyword, requestToken, holder, finished, snapshotVersion, catalogs, true);
+            launchSearchMerge(keyword, requestToken, holder, finished, snapshotVersion, catalogs, new ArrayList<>(), true);
             return;
         }
         if (pendingSearchMergeRunnable != null) main.removeCallbacks(pendingSearchMergeRunnable);
@@ -4206,9 +5990,11 @@ public final class MainActivity extends Activity implements PlaybackService.List
     }
 
     private void launchSearchMerge(String keyword, int requestToken, LinearLayout holder, boolean finished,
-                                   int snapshotVersion, Map<String,List<Song>> catalogs, boolean firstLaunch) {
+                                   int snapshotVersion, Map<String,List<Song>> catalogs, List<Song> frozenHead, boolean firstLaunch) {
         searchMergeExecutor.submit(() -> {
-            final List<Song> merged = mergeSearchSnapshot(keyword, catalogs);
+            final List<Song> merged = frozenHead != null && !frozenHead.isEmpty()
+                    ? appendSearchPageStable(keyword, frozenHead, catalogs)
+                    : mergeSearchSnapshot(keyword, catalogs);
             main.post(() -> {
                 if (firstLaunch) searchFirstMergeInFlight = false;
                 if (requestToken != searchRequestToken || isFinishing()) return;
@@ -4563,10 +6349,12 @@ public final class MainActivity extends Activity implements PlaybackService.List
                 .append(lyricSearchPending).append('|').append(lyricVerificationPending).append('|')
                 .append(searchMetadataExpanded).append('|').append(searchLyricsExpanded);
         int songLimit = Math.min(SEARCH_SUMMARY_COUNT, songs == null ? 0 : songs.size());
-        b.append("|s:").append(songs == null ? 0 : songs.size());
+        b.append("|s-visible:").append(songLimit);
         for (int i = 0; i < songLimit; i++) {
             Song song = songs.get(i); if (song == null) continue;
-            b.append('|').append(song.key()).append('@').append(song.variants() == null ? 0 : song.variants().size());
+            // Source variants can arrive after first paint without changing the visible row. Keep
+            // the row identity stable and let the source/filter strip reflect background progress.
+            b.append('|').append(song.key());
         }
         int lyricLimit = Math.min(8, lyrics == null ? 0 : lyrics.size());
         b.append("|l:").append(lyrics == null ? 0 : lyrics.size());
@@ -4939,6 +6727,10 @@ public final class MainActivity extends Activity implements PlaybackService.List
         back.setContentDescription("返回搜索综合页");
         back.setOnClickListener(v -> {
             searchAllResultsOpen = false;
+            activeSearchAllList = null;
+            searchAllSavedPosition = 0;
+            searchAllSavedTop = 0;
+            rootTabSearchAllResultsOpen[1] = false;
             suppressNextPageAnimation = true;
             renderTab();
         });
@@ -4983,7 +6775,9 @@ public final class MainActivity extends Activity implements PlaybackService.List
         list.setSelector(android.R.color.transparent);
         list.setCacheColorHint(Color.TRANSPARENT);
         list.setVerticalScrollBarEnabled(false);
-        list.setScrollingCacheEnabled(true);
+        // Avoid the legacy bitmap scrolling cache: recycled rows + async artwork already provide
+        // bounded work, while a cached translucent list can consume memory and show stale frames.
+        list.setScrollingCacheEnabled(false);
         list.setClipToPadding(false);
         list.setPadding(0, 0, 0, Ui.dp(this, 158));
         list.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
@@ -4996,6 +6790,15 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
         SearchAllAdapter adapter = new SearchAllAdapter(visibleSearchSongs());
         list.setAdapter(adapter);
+        activeSearchAllList = list;
+        if (searchAllSavedPosition > 0 || searchAllSavedTop != 0) {
+            final int savedPosition = searchAllSavedPosition;
+            final int savedTop = searchAllSavedTop;
+            list.post(() -> {
+                if (activeSearchAllList == list && searchAllResultsOpen)
+                    list.setSelectionFromTop(Math.min(savedPosition, Math.max(0, adapter.getCount() - 1)), savedTop);
+            });
+        }
         list.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
             @Override public void onScrollStateChanged(android.widget.AbsListView view, int scrollState) { }
             @Override public void onScroll(android.widget.AbsListView view, int firstVisibleItem,
@@ -5214,6 +7017,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
     }
 
     private static final class SearchAllHolder {
+        CurtainRevealFrame frame;
+        LinearLayout wrapper;
         LinearLayout row;
         ImageView cover;
         TextView title;
@@ -5226,6 +7031,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
     private final class SearchAllAdapter extends BaseAdapter {
         private final List<Song> items = new ArrayList<>();
+        private final LinkedHashSet<String> revealedKeys = new LinkedHashSet<>();
         SearchAllAdapter(List<Song> source) { replace(source); }
         void replace(List<Song> source) {
             items.clear();
@@ -5243,10 +7049,12 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
         @Override public View getView(int position, View convertView, ViewGroup parent) {
             SearchAllHolder holder;
-            LinearLayout wrapper;
+            CurtainRevealFrame frame;
             if (convertView == null) {
-                wrapper = Ui.column(MainActivity.this);
+                frame = new CurtainRevealFrame(MainActivity.this);
                 holder = new SearchAllHolder();
+                holder.frame = frame;
+                holder.wrapper = Ui.column(MainActivity.this);
                 holder.row = Ui.row(MainActivity.this);
                 holder.row.setGravity(Gravity.CENTER_VERTICAL);
                 holder.row.setPadding(Ui.dp(MainActivity.this, 9), Ui.dp(MainActivity.this, 7), Ui.dp(MainActivity.this, 7), Ui.dp(MainActivity.this, 7));
@@ -5280,12 +7088,12 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
                 holder.more = Ui.iconButton(MainActivity.this, IconView.Type.MORE, 30, Ui.DIM, Color.TRANSPARENT);
                 holder.row.addView(holder.more, Ui.lp(Ui.dp(MainActivity.this, 29), Ui.dp(MainActivity.this, 29)));
-                wrapper.addView(holder.row, Ui.lp(-1, Ui.dp(MainActivity.this, 68)));
-                wrapper.addView(new Space(MainActivity.this), Ui.lp(-1, Ui.dp(MainActivity.this, 7)));
-                wrapper.setTag(holder);
+                holder.wrapper.addView(holder.row, Ui.lp(-1, Ui.dp(MainActivity.this, 68)));
+                holder.wrapper.addView(new Space(MainActivity.this), Ui.lp(-1, Ui.dp(MainActivity.this, 7)));
+                frame.setTag(holder);
             } else {
-                wrapper = (LinearLayout) convertView;
-                holder = (SearchAllHolder) wrapper.getTag();
+                frame = (CurtainRevealFrame) convertView;
+                holder = (SearchAllHolder) frame.getTag();
             }
 
             Song song = items.get(position);
@@ -5314,7 +7122,19 @@ public final class MainActivity extends Activity implements PlaybackService.List
             });
             holder.more.setOnClickListener(v -> showSongActions(song));
             holder.row.setOnClickListener(v -> playPickedSong(song));
-            return wrapper;
+
+            String revealKey = song.key() + "#" + position;
+            if (SpringMotion.isReducedMotion() || revealedKeys.contains(revealKey)) {
+                frame.showImmediately(holder.wrapper);
+            } else {
+                revealedKeys.add(revealKey);
+                FluidPlaceholderView placeholder = new FluidPlaceholderView(MainActivity.this, FluidPlaceholderView.SONG_ROW, Ui.CYAN);
+                long step = position < 10 ? position * 58L : 0L;
+                placeholder.setShimmerStartDelay(step);
+                frame.setPlaceholder(placeholder);
+                frame.reveal(holder.wrapper, position < 10 ? 42L + step : 0L);
+            }
+            return frame;
         }
     }
 
@@ -7369,26 +9189,12 @@ public final class MainActivity extends Activity implements PlaybackService.List
         LinearLayout box = Ui.column(this);
         int rows = Math.max(2, Math.min(7, count));
         for (int i = 0; i < rows; i++) {
-            LinearLayout row = Ui.row(this);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(Ui.dp(this, 9), Ui.dp(this, 8), Ui.dp(this, 10), Ui.dp(this, 8));
-            row.setBackground(Ui.glass(72 + (i % 2) * 12, 17, 18, this));
-            View cover = new View(this);
-            cover.setBackground(Ui.tintedGlass(accent, 13 + i * 2, this));
-            row.addView(cover, Ui.lp(Ui.dp(this, 56), Ui.dp(this, 56)));
-            LinearLayout bars = Ui.column(this);
-            bars.setGravity(Gravity.CENTER_VERTICAL);
-            bars.setPadding(Ui.dp(this, 12), 0, 0, 0);
-            View topBar = new View(this); topBar.setBackground(Ui.round(Color.argb(34, 255, 255, 255), 5, this));
-            View bottomBar = new View(this); bottomBar.setBackground(Ui.round(Color.argb(20, 255, 255, 255), 5, this));
-            LinearLayout.LayoutParams bp1 = Ui.lp(i % 3 == 0 ? Ui.dp(this, 150) : Ui.dp(this, 118), Ui.dp(this, 10));
-            LinearLayout.LayoutParams bp2 = Ui.lp(i % 2 == 0 ? Ui.dp(this, 94) : Ui.dp(this, 126), Ui.dp(this, 8)); bp2.topMargin = Ui.dp(this, 9);
-            bars.addView(topBar, bp1); bars.addView(bottomBar, bp2);
-            row.addView(bars, new LinearLayout.LayoutParams(0, Ui.dp(this, 56), 1f));
-            LinearLayout.LayoutParams rp = Ui.lp(-1, Ui.dp(this, 72)); if (i > 0) rp.topMargin = Ui.dp(this, 5);
+            FluidPlaceholderView row = new FluidPlaceholderView(this, FluidPlaceholderView.SONG_ROW, accent);
+            row.setShimmerStartDelay(i * 62L);
+            LinearLayout.LayoutParams rp = Ui.lp(-1, Ui.dp(this, 72));
+            if (i > 0) rp.topMargin = Ui.dp(this, 7);
             box.addView(row, rp);
         }
-        box.setAlpha(.82f);
         return box;
     }
 
@@ -7447,7 +9253,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
         } else if (collection.songs.isEmpty()) {
             body.addView(compactEmpty("暂时没有生成歌曲"), marginTop(6));
         } else {
-            body.addView(smartCollectionSongList(collection.songs), marginTop(6));
+            body.addView(smartCollectionSongList(collection), marginTop(6));
         }
         String pageSub;
         if ("weather".equals(collection.kind)) pageSub = "天气 × 时间 × 你的口味";
@@ -7521,17 +9327,43 @@ public final class MainActivity extends Activity implements PlaybackService.List
         showGlassMessage("为什么推荐《" + song.title + "》", body, "知道了", null, "个性化矩阵", this::showPersonalizationMatrix);
     }
 
-    private View smartCollectionSongList(List<Song> songs) {
+    private void resetSmartCollectionReveal(String scope) {
+        smartCollectionRevealScope = scope == null ? "" : scope;
+        smartCollectionRevealKeys.clear();
+    }
+
+    private View smartCollectionSongList(SmartCollection collection) {
         LinearLayout box = Ui.column(this);
-        for (int i = 0; i < songs.size(); i++) {
+        if (collection == null || collection.songs == null) return box;
+        if (!collection.kind.equals(smartCollectionRevealScope)) resetSmartCollectionReveal(collection.kind);
+        int stagedIndex = 0;
+        for (int i = 0; i < collection.songs.size(); i++) {
             final int queueIndex = i;
-            Song song = songs.get(i);
-            View row = songRow(song, songs, i);
+            Song song = collection.songs.get(i);
+            View row = songRow(song, collection.songs, i);
             // Recommendation collections behave like real playlists: tapping a row installs the
             // whole generated list as the queue and begins from that selected song. Child action
             // buttons keep their own favorite / next / more listeners.
-            row.setOnClickListener(v -> playQueue(songs, queueIndex));
-            box.addView(row, marginTop(i == 0 ? 0 : 7));
+            row.setOnClickListener(v -> playQueue(collection.songs, queueIndex));
+
+            String revealKey = song.key() + "#" + i;
+            boolean shouldStage = !smartCollectionRevealKeys.contains(revealKey);
+            if (!shouldStage || SpringMotion.isReducedMotion()) {
+                box.addView(row, marginTop(i == 0 ? 0 : 7));
+                smartCollectionRevealKeys.add(revealKey);
+                continue;
+            }
+
+            CurtainRevealFrame frame = new CurtainRevealFrame(this);
+            FluidPlaceholderView placeholder = new FluidPlaceholderView(this, FluidPlaceholderView.SONG_ROW, collection.accent);
+            placeholder.setShimmerStartDelay(stagedIndex * 62L);
+            frame.setPlaceholder(placeholder);
+            LinearLayout.LayoutParams fp = Ui.lp(-1, Ui.dp(this, 72));
+            if (i > 0) fp.topMargin = Ui.dp(this, 7);
+            box.addView(frame, fp);
+            smartCollectionRevealKeys.add(revealKey);
+            frame.reveal(row, 48L + stagedIndex * 62L);
+            stagedIndex++;
         }
         return box;
     }
@@ -7539,6 +9371,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
     private View playlistDetailPage(ImportedPlaylist p) {
         clearActivePlaylistUiRefs();
         activePlaylistPageModel = p;
+        final int loadGeneration = ++playlistLoadGeneration;
+
         LinearLayout body = Ui.column(this);
         LinearLayout back = Ui.row(this);
         back.setGravity(Gravity.CENTER_VERTICAL);
@@ -7548,67 +9382,72 @@ public final class MainActivity extends Activity implements PlaybackService.List
         back.addView(bt, new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
         back.setClickable(true);
         back.setOnClickListener(v -> closePlaylistToLibrary());
+        activePlaylistDetailBack = back;
         body.addView(back, Ui.lp(-1, Ui.dp(this, 38)));
 
         LinearLayout hero = Ui.column(this);
-        hero.setPadding(Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16));
-        hero.setBackground(Ui.tintedGlass(Ui.CYAN, 23, this));
-
+        hero.setPadding(Ui.dp(this, 18), Ui.dp(this, 18), Ui.dp(this, 18), Ui.dp(this, 18));
+        hero.setBackground(Ui.tintedGlass(playlistAccent(p), 23, this));
+        activePlaylistHeroCard = hero;
         LinearLayout heroTop = Ui.row(this);
-        View coverView = playlistThumb(p, 78);
-        heroTop.addView(coverView, Ui.lp(Ui.dp(this, 78), Ui.dp(this, 78)));
+        View heroThumb = playlistThumb(p, 88);
+        activePlaylistHeroThumb = heroThumb;
+        heroTop.addView(heroThumb, Ui.lp(Ui.dp(this, 88), Ui.dp(this, 88)));
         LinearLayout heroText = Ui.column(this);
         heroText.setPadding(Ui.dp(this, 14), Ui.dp(this, 4), 0, Ui.dp(this, 2));
-        TextView name = Ui.text(this, p.name, 20, Ui.TEXT, true);
+        TextView name = Ui.text(this, p.name, 21.2f, Ui.TEXT, true);
+        activePlaylistHeroTitle = name;
         name.setSingleLine(true); name.setEllipsize(TextUtils.TruncateAt.END);
         heroText.addView(name, new LinearLayout.LayoutParams(-1, 0, 1f));
-        String playlistKind = p.source.equals("local") ? "本地歌单" : (p.source.equals("tx") ? "QQ 音乐" : (p.source.equals("kw") ? "酷我音乐" : (p.source.equals("kg") ? "酷狗音乐" : "网易云")));
+        String playlistKind = p.source.equals("local") ? "本地歌单" : (p.source.equals("tx") ? "QQ 音乐"
+                : (p.source.equals("kw") ? "酷我音乐" : (p.source.equals("kg") ? "酷狗音乐" : "网易云")));
         activePlaylistHeroMeta = Ui.text(this, p.songs.size() + " 首 · " + playlistKind, 11.5f, Ui.TEXT_2, false);
         heroText.addView(activePlaylistHeroMeta, new LinearLayout.LayoutParams(-1, 0, 1f));
-        heroTop.addView(heroText, new LinearLayout.LayoutParams(0, Ui.dp(this, 78), 1f));
-        hero.addView(heroTop, Ui.lp(-1, Ui.dp(this, 78)));
-
+        heroTop.addView(heroText, new LinearLayout.LayoutParams(0, Ui.dp(this, 88), 1f));
+        hero.addView(heroTop, Ui.lp(-1, Ui.dp(this, 88)));
         body.addView(hero, Ui.lp(-1, -2));
 
         View playlistHeader = sortableSongsHeader("歌曲", p.songs.size(), () -> showManualSongOrder(p.name, p.songs, p.id));
         if (playlistHeader instanceof ViewGroup && ((ViewGroup) playlistHeader).getChildCount() > 1
                 && ((ViewGroup) playlistHeader).getChildAt(1) instanceof TextView)
             activePlaylistSongCount = (TextView) ((ViewGroup) playlistHeader).getChildAt(1);
+        activePlaylistDetailSongHeader = playlistHeader;
         body.addView(playlistHeader, marginTop(22));
-        final LinearLayout[] lazySongHost = new LinearLayout[1];
-        final int[] lazyLoaded = new int[]{0};
-        final boolean[] lazyAppendScheduled = new boolean[]{false};
+
+        final LinearLayout host = Ui.column(this);
+        activePlaylistDetailSongHost = host;
+        final int[] loadedRef = new int[]{0};
+        final boolean[] scheduledRef = new boolean[]{false};
+        activePlaylistSongHost = host;
+        activePlaylistLoadedRef = loadedRef;
         if (p.songs.isEmpty()) {
             body.addView(compactEmpty("这个歌单还没有歌曲，点上方 + 从收藏、搜索或其他歌单添加"), marginTop(6));
         } else {
-            int visible = Math.min(Math.max(PLAYLIST_INITIAL_RENDER_COUNT, playlistVisibleCount), p.songs.size());
-            LinearLayout host = Ui.column(this);
-            lazySongHost[0] = host;
-            activePlaylistSongHost = host;
-            activePlaylistLoadedRef = lazyLoaded;
-            lazyLoaded[0] = visible;
-            appendPlaylistRows(host, p, 0, visible);
             body.addView(host, marginTop(6));
+            // The page is usable immediately.  The first rows are only lightweight geometry until
+            // the next UI turns, then each real row wipes in from left to right without moving layout.
+            appendPlaylistPlaceholderBatch(host, Math.min(PLAYLIST_PLACEHOLDER_COUNT, p.songs.size()), Ui.CYAN);
+            FrameLayout loaderSlot = new FrameLayout(this);
+            activePlaylistLoader = new FluidLoadingIconView(this, Ui.CYAN);
+            FrameLayout.LayoutParams lip = Ui.frame(Ui.dp(this, 32), Ui.dp(this, 32), Gravity.CENTER);
+            loaderSlot.addView(activePlaylistLoader, lip);
+            body.addView(loaderSlot, Ui.lp(-1, Ui.dp(this, 54)));
         }
+
         LinearLayout playlistActions = Ui.row(this);
         playlistActions.setGravity(Gravity.CENTER_VERTICAL);
-
         FrameLayout manage = Ui.iconButton(this, IconView.Type.MORE, 42, Ui.GOLD,
                 Color.argb(22, Color.red(Ui.GOLD), Color.green(Ui.GOLD), Color.blue(Ui.GOLD)));
         manage.setContentDescription("批量管理歌曲");
         manage.setOnClickListener(v -> showSongBatchManager(p.name, p.songs, p.id));
         playlistActions.addView(manage, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
-
-        Space actionGap1 = new Space(this);
-        playlistActions.addView(actionGap1, Ui.lp(Ui.dp(this, 7), 1));
+        Space actionGap1 = new Space(this); playlistActions.addView(actionGap1, Ui.lp(Ui.dp(this, 7), 1));
         FrameLayout add = Ui.iconButton(this, IconView.Type.PLUS, 42, Ui.GREEN,
                 Color.argb(22, Color.red(Ui.GREEN), Color.green(Ui.GREEN), Color.blue(Ui.GREEN)));
         add.setContentDescription("向歌单添加歌曲");
         add.setOnClickListener(v -> showAddSongsToPlaylist(p));
         playlistActions.addView(add, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
-
-        Space actionGap2 = new Space(this);
-        playlistActions.addView(actionGap2, Ui.lp(Ui.dp(this, 7), 1));
+        Space actionGap2 = new Space(this); playlistActions.addView(actionGap2, Ui.lp(Ui.dp(this, 7), 1));
         FrameLayout playlistSearch = Ui.iconButton(this, IconView.Type.SEARCH, 42, Ui.CYAN,
                 Color.argb(22, Color.red(Ui.CYAN), Color.green(Ui.CYAN), Color.blue(Ui.CYAN)));
         playlistSearch.setContentDescription("搜索当前歌单");
@@ -7616,71 +9455,498 @@ public final class MainActivity extends Activity implements PlaybackService.List
         playlistActions.addView(playlistSearch, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
 
         View page = pageScaffold("歌单详情", "已保存到本机", body, playlistActions);
+        if (page instanceof ScrollView && ((ScrollView) page).getChildCount() > 0
+                && ((ScrollView) page).getChildAt(0) instanceof ViewGroup) {
+            ViewGroup scaffold = (ViewGroup) ((ScrollView) page).getChildAt(0);
+            if (scaffold.getChildCount() > 0) activePlaylistDetailTitleRow = scaffold.getChildAt(0);
+            if (scaffold.getChildCount() > 1) activePlaylistDetailSubtitle = scaffold.getChildAt(1);
+        }
+        if (pendingPlaylistHeroPush && !SpringMotion.isReducedMotion()) preparePlaylistDetailForSharedEntrance();
         if (page instanceof ScrollView) {
             activePlaylistScroll = (ScrollView) page;
             ScrollView scroll = (ScrollView) page;
-            if (lazySongHost[0] != null && lazyLoaded[0] < p.songs.size()) {
-                scroll.setOnScrollChangeListener((v, scrollX, scrollY, oldScrollX, oldScrollY) -> {
-                    ImportedPlaylist live = activePlaylistPageModel != null && p.id.equals(activePlaylistPageModel.id)
-                            ? activePlaylistPageModel : p;
-                    maybeAppendPlaylistRows(scroll, lazySongHost[0], live, lazyLoaded, lazyAppendScheduled);
-                });
+            scroll.setOnScrollChangeListener((v, scrollX, scrollY, oldScrollX, oldScrollY) -> {
+                if (loadGeneration != playlistLoadGeneration || activePlaylistPageModel == null
+                        || !p.id.equals(activePlaylistPageModel.id)) return;
+                maybeAppendPlaylistRows(scroll, host, p, loadedRef, scheduledRef);
+            });
+            if (!p.songs.isEmpty()) {
+                // Give navigation one rendered frame first.  Heavy row construction must never own
+                // the tap that opened the page.
+                final long firstMaterializeDelay = pendingPlaylistHeroPush && !SpringMotion.isReducedMotion() ? 560L : 34L;
+                page.postOnAnimation(() -> page.postDelayed(() -> {
+                    if (loadGeneration == playlistLoadGeneration && activePlaylistPageModel != null
+                            && p.id.equals(activePlaylistPageModel.id))
+                        materializePlaylistBatch(host, p, loadedRef, scheduledRef, PLAYLIST_INITIAL_RENDER_COUNT, loadGeneration);
+                }, firstMaterializeDelay));
+                // A small prewarm continues after the page has landed, never enough to inflate an
+                // 800-song list at once.  The user sees a calm stream of resolved rows, then deeper
+                // batches are driven by actual scrolling.
+                page.postDelayed(() -> {
+                    if (loadGeneration == playlistLoadGeneration && activePlaylistPageModel != null
+                            && p.id.equals(activePlaylistPageModel.id) && !scheduledRef[0])
+                        materializePlaylistBatch(host, p, loadedRef, scheduledRef,
+                                Math.min(p.songs.size(), PLAYLIST_INITIAL_RENDER_COUNT + PLAYLIST_APPEND_BATCH), loadGeneration);
+                }, pendingPlaylistHeroPush && !SpringMotion.isReducedMotion() ? 980L : 430L);
+                page.postDelayed(() -> {
+                    if (loadGeneration == playlistLoadGeneration && activePlaylistPageModel != null
+                            && p.id.equals(activePlaylistPageModel.id) && !scheduledRef[0])
+                        materializePlaylistBatch(host, p, loadedRef, scheduledRef,
+                                Math.min(p.songs.size(), PLAYLIST_INITIAL_RENDER_COUNT + PLAYLIST_APPEND_BATCH * 2), loadGeneration);
+                }, pendingPlaylistHeroPush && !SpringMotion.isReducedMotion() ? 1460L : 820L);
             }
         }
-        if (!p.songs.isEmpty() && lazySongHost[0] != null) {
+
+        if (!p.songs.isEmpty()) {
+            final long playlistCoachDelay = pendingPlaylistHeroPush && !SpringMotion.isReducedMotion() ? 1180L : 420L;
             page.postDelayed(() -> {
-                View target = firstPlaylistCoachTarget(lazySongHost[0]);
+                if (loadGeneration != playlistLoadGeneration) return;
+                View target = firstPlaylistCoachTarget(host);
                 maybeShowContextCoach(COACH_PLAYLIST_QUEUE, target,
                         "点一首，会从这里接管整张歌单",
-                        "在真正的歌单详情里点击任意歌曲，会把这张歌单完整设为播放队列，并从你点的这一首开始。搜索页点歌仍然只是临时插入，不会改变这条规则。" );
-            }, 180L);
+                        "歌单会边看边补齐：点击任意已经出现的歌曲仍会把完整歌单设为播放队列，并从你点的这一首开始。" );
+            }, playlistCoachDelay);
         }
         return page;
     }
 
-    private View firstPlaylistCoachTarget(LinearLayout lazyHost) {
-        if (lazyHost == null || lazyHost.getChildCount() == 0) return null;
-        View chunk = lazyHost.getChildAt(0);
-        if (chunk instanceof ViewGroup && ((ViewGroup) chunk).getChildCount() > 0)
-            return ((ViewGroup) chunk).getChildAt(0);
-        return chunk;
+    private View playlistDetailVirtualPage(ImportedPlaylist p) {
+        clearActivePlaylistUiRefs();
+        activePlaylistPageModel = p;
+
+        ListView list = new ListView(this);
+        list.setDivider(null);
+        list.setDividerHeight(0);
+        list.setSelector(android.R.color.transparent);
+        list.setCacheColorHint(Color.TRANSPARENT);
+        list.setVerticalScrollBarEnabled(false);
+        list.setScrollingCacheEnabled(true);
+        list.setClipToPadding(false);
+        list.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        list.setRecyclerListener(view -> {
+            if (view == null) return;
+            View row = view;
+            if (view instanceof ViewGroup && ((ViewGroup) view).getChildCount() > 0)
+                row = ((ViewGroup) view).getChildAt(0);
+            FluidTrackHaloDrawable halo = playbackRowHalos.get(row);
+            if (halo != null) halo.stopRendering();
+        });
+
+        LinearLayout header = Ui.column(this);
+        header.setPadding(Ui.dp(this, 20), Ui.dp(this, 23), Ui.dp(this, 20), 0);
+
+        LinearLayout titleRow = Ui.row(this);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = Ui.text(this, "歌单详情", 30.5f, Ui.TEXT, true);
+        title.setSingleLine(true); title.setEllipsize(TextUtils.TruncateAt.END);
+        titleRow.addView(title, new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f));
+
+        LinearLayout playlistActions = Ui.row(this);
+        playlistActions.setGravity(Gravity.CENTER_VERTICAL);
+        FrameLayout manage = Ui.iconButton(this, IconView.Type.MORE, 42, Ui.GOLD,
+                Color.argb(22, Color.red(Ui.GOLD), Color.green(Ui.GOLD), Color.blue(Ui.GOLD)));
+        manage.setContentDescription("批量管理歌曲");
+        manage.setOnClickListener(v -> showSongBatchManager(p.name, p.songs, p.id));
+        playlistActions.addView(manage, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
+        Space actionGap1 = new Space(this); playlistActions.addView(actionGap1, Ui.lp(Ui.dp(this, 5), 1));
+        FrameLayout add = Ui.iconButton(this, IconView.Type.PLUS, 42, Ui.GREEN,
+                Color.argb(22, Color.red(Ui.GREEN), Color.green(Ui.GREEN), Color.blue(Ui.GREEN)));
+        add.setContentDescription("向歌单添加歌曲");
+        add.setOnClickListener(v -> showAddSongsToPlaylist(p));
+        playlistActions.addView(add, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
+        Space actionGap2 = new Space(this); playlistActions.addView(actionGap2, Ui.lp(Ui.dp(this, 5), 1));
+        FrameLayout playlistSearch = Ui.iconButton(this, IconView.Type.SEARCH, 42, Ui.CYAN,
+                Color.argb(22, Color.red(Ui.CYAN), Color.green(Ui.CYAN), Color.blue(Ui.CYAN)));
+        playlistSearch.setContentDescription("搜索当前歌单");
+        playlistSearch.setOnClickListener(v -> showPlaylistSearch(p));
+        playlistActions.addView(playlistSearch, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
+        titleRow.addView(playlistActions, Ui.lp(-2, Ui.dp(this, 48)));
+        header.addView(titleRow, Ui.lp(-1, Ui.dp(this, 48)));
+        header.addView(Ui.text(this, "已保存到本机", 13.5f, Ui.TEXT_2, false), Ui.lp(-1, Ui.dp(this, 31)));
+
+        LinearLayout back = Ui.row(this);
+        back.setGravity(Gravity.CENTER_VERTICAL);
+        IconView bi = new IconView(this, IconView.Type.BACK, Ui.CYAN);
+        back.addView(bi, Ui.lp(Ui.dp(this, 24), Ui.dp(this, 24)));
+        TextView bt = Ui.text(this, "返回", 13, Ui.CYAN, true);
+        back.addView(bt, new LinearLayout.LayoutParams(0, Ui.dp(this, 34), 1f));
+        back.setClickable(true); back.setFocusable(true); Ui.applyRipple(back, Color.TRANSPARENT);
+        back.setOnClickListener(v -> closePlaylistToLibrary());
+        LinearLayout.LayoutParams bp = Ui.lp(-1, Ui.dp(this, 38)); bp.topMargin = Ui.dp(this, 15);
+        header.addView(back, bp);
+
+        LinearLayout hero = Ui.column(this);
+        hero.setPadding(Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16));
+        hero.setBackground(Ui.tintedGlass(Ui.CYAN, 23, this));
+        LinearLayout heroTop = Ui.row(this);
+        heroTop.addView(playlistThumb(p, 78), Ui.lp(Ui.dp(this, 78), Ui.dp(this, 78)));
+        LinearLayout heroText = Ui.column(this);
+        heroText.setPadding(Ui.dp(this, 14), Ui.dp(this, 4), 0, Ui.dp(this, 2));
+        TextView name = Ui.text(this, p.name, 20, Ui.TEXT, true);
+        name.setSingleLine(true); name.setEllipsize(TextUtils.TruncateAt.END);
+        heroText.addView(name, new LinearLayout.LayoutParams(-1, 0, 1f));
+        String playlistKind = p.source.equals("local") ? "本地歌单" : (p.source.equals("tx") ? "QQ 音乐"
+                : (p.source.equals("kw") ? "酷我音乐" : (p.source.equals("kg") ? "酷狗音乐" : "网易云")));
+        activePlaylistHeroMeta = Ui.text(this, p.songs.size() + " 首 · " + playlistKind, 11.5f, Ui.TEXT_2, false);
+        heroText.addView(activePlaylistHeroMeta, new LinearLayout.LayoutParams(-1, 0, 1f));
+        heroTop.addView(heroText, new LinearLayout.LayoutParams(0, Ui.dp(this, 78), 1f));
+        hero.addView(heroTop, Ui.lp(-1, Ui.dp(this, 78)));
+        LinearLayout.LayoutParams hp = Ui.lp(-1, -2); hp.topMargin = Ui.dp(this, 4); header.addView(hero, hp);
+
+        View playlistHeader = sortableSongsHeader("歌曲", p.songs.size(), () -> showManualSongOrder(p.name, p.songs, p.id));
+        if (playlistHeader instanceof ViewGroup && ((ViewGroup) playlistHeader).getChildCount() > 1
+                && ((ViewGroup) playlistHeader).getChildAt(1) instanceof TextView)
+            activePlaylistSongCount = (TextView) ((ViewGroup) playlistHeader).getChildAt(1);
+        LinearLayout.LayoutParams shp = marginTop(22); header.addView(playlistHeader, shp);
+
+        list.addHeaderView(header, null, false);
+        Space footer = new Space(this);
+        footer.setLayoutParams(Ui.lp(-1, Ui.dp(this, 162)));
+        list.addFooterView(footer, null, false);
+
+        PlaylistDetailAdapter adapter = new PlaylistDetailAdapter(p);
+        list.setAdapter(adapter);
+        activePlaylistList = list;
+        activePlaylistAdapter = adapter;
+
+        if (restorePlaylistPosition && p.id.equals(playlistListRestoreId)) {
+            final int pos = Math.max(0, playlistListRestorePosition);
+            final int top = playlistListRestoreTop;
+            list.post(() -> {
+                if (activePlaylistList == list && activePlaylistPageModel != null && p.id.equals(activePlaylistPageModel.id))
+                    list.setSelectionFromTop(Math.min(pos, Math.max(0, list.getCount() - 1)), top);
+            });
+            restorePlaylistPosition = false;
+        }
+        list.postDelayed(() -> {
+            View target = list.getChildCount() > 1 ? list.getChildAt(1) : list;
+            maybeShowContextCoach(COACH_PLAYLIST_QUEUE, target,
+                    "点一首，会从这里接管整张歌单",
+                    "长歌单只渲染屏幕附近的行，但点击任意歌曲时仍会把完整歌单设为播放队列，并从你点的这一首开始。" );
+        }, 180L);
+        return list;
     }
 
+    private static final class PlaylistDetailHolder {
+        LinearLayout row;
+        ImageView cover;
+        TextView title;
+        TextView artist;
+        FrameLayout favorite;
+        IconView favoriteIcon;
+        FrameLayout next;
+        FrameLayout more;
+    }
+
+    private final class PlaylistDetailAdapter extends BaseAdapter {
+        private final ImportedPlaylist playlist;
+        PlaylistDetailAdapter(ImportedPlaylist playlist) { this.playlist = playlist; }
+        @Override public int getCount() { return playlist == null || playlist.songs == null ? 0 : playlist.songs.size(); }
+        @Override public Object getItem(int position) { return playlist.songs.get(position); }
+        @Override public long getItemId(int position) { return position; }
+
+        @Override public View getView(int position, View convertView, ViewGroup parent) {
+            PlaylistDetailHolder holder;
+            LinearLayout wrapper;
+            if (convertView == null) {
+                wrapper = Ui.column(MainActivity.this);
+                wrapper.setPadding(Ui.dp(MainActivity.this, 20), 0, Ui.dp(MainActivity.this, 20), 0);
+                holder = new PlaylistDetailHolder();
+                holder.row = Ui.row(MainActivity.this);
+                holder.row.setGravity(Gravity.CENTER_VERTICAL);
+                holder.row.setPadding(Ui.dp(MainActivity.this, 9), Ui.dp(MainActivity.this, 8), Ui.dp(MainActivity.this, 8), Ui.dp(MainActivity.this, 8));
+                holder.row.setClickable(true); holder.row.setFocusable(true);
+                Ui.applyRipple(holder.row, Color.argb(33, 255, 255, 255));
+
+                holder.cover = new ImageView(MainActivity.this);
+                holder.cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                holder.cover.setBackground(Ui.round(Color.rgb(22, 22, 28), 12, MainActivity.this));
+                holder.cover.setClipToOutline(true);
+                holder.row.addView(holder.cover, Ui.lp(Ui.dp(MainActivity.this, 56), Ui.dp(MainActivity.this, 56)));
+
+                LinearLayout text = Ui.column(MainActivity.this);
+                text.setPadding(Ui.dp(MainActivity.this, 12), Ui.dp(MainActivity.this, 2), Ui.dp(MainActivity.this, 7), Ui.dp(MainActivity.this, 2));
+                holder.title = Ui.text(MainActivity.this, "", 14.2f, Ui.TEXT, true);
+                holder.title.setSingleLine(true); holder.title.setEllipsize(TextUtils.TruncateAt.END);
+                holder.artist = Ui.text(MainActivity.this, "", 11.2f, Ui.TEXT_2, false);
+                holder.artist.setSingleLine(true); holder.artist.setEllipsize(TextUtils.TruncateAt.END);
+                text.addView(holder.title, new LinearLayout.LayoutParams(-1, 0, 1f));
+                text.addView(holder.artist, new LinearLayout.LayoutParams(-1, 0, 1f));
+                holder.row.addView(text, new LinearLayout.LayoutParams(0, Ui.dp(MainActivity.this, 56), 1f));
+
+                holder.favorite = Ui.iconButton(MainActivity.this, IconView.Type.HEART, 38, Ui.DIM, Color.TRANSPARENT);
+                holder.favoriteIcon = (IconView) holder.favorite.getChildAt(0);
+                holder.row.addView(holder.favorite, Ui.lp(Ui.dp(MainActivity.this, 34), Ui.dp(MainActivity.this, 34)));
+                holder.next = Ui.iconButton(MainActivity.this, IconView.Type.PLUS, 34, Ui.TEXT_2, Color.TRANSPARENT);
+                holder.next.setContentDescription("添加到下一首");
+                holder.row.addView(holder.next, Ui.lp(Ui.dp(MainActivity.this, 32), Ui.dp(MainActivity.this, 32)));
+                holder.more = Ui.iconButton(MainActivity.this, IconView.Type.MORE, 31, Ui.DIM, Color.TRANSPARENT);
+                holder.row.addView(holder.more, Ui.lp(Ui.dp(MainActivity.this, 30), Ui.dp(MainActivity.this, 30)));
+                wrapper.addView(holder.row, Ui.lp(-1, Ui.dp(MainActivity.this, 72)));
+                wrapper.addView(new Space(MainActivity.this), Ui.lp(-1, Ui.dp(MainActivity.this, 7)));
+                wrapper.setTag(holder);
+            } else {
+                wrapper = (LinearLayout) convertView;
+                holder = (PlaylistDetailHolder) wrapper.getTag();
+            }
+
+            Song song = playlist.songs.get(position);
+            holder.row.animate().cancel(); holder.row.setAlpha(1f); holder.row.setTranslationX(0f);
+            holder.title.setText(song.title);
+            holder.artist.setText(subtitleFor(song));
+            String coverKey = song.coverUrl == null ? "" : song.coverUrl;
+            Object oldCoverKey = holder.cover.getTag();
+            if (!coverKey.equals(oldCoverKey == null ? "" : String.valueOf(oldCoverKey))) {
+                holder.cover.setImageDrawable(null);
+                holder.cover.setTag(coverKey);
+                if (!coverKey.trim().isEmpty()) ImageLoader.load(coverKey, holder.cover, null);
+            }
+            boolean favorite = isFavorite(song);
+            holder.favoriteIcon.setIconColor(favorite ? Ui.PINK : Ui.DIM);
+            holder.favoriteIcon.setFavoriteState(favorite, false);
+            PlaylistDetailHolder bound = holder;
+            holder.favorite.setOnClickListener(v -> {
+                favorites = store.toggleFavorite(song);
+                boolean nowFavorite = isFavorite(song);
+                bound.favoriteIcon.setIconColor(nowFavorite ? Ui.PINK : Ui.DIM);
+                bound.favoriteIcon.setFavoriteState(nowFavorite, true);
+                if (nowFavorite) animateHeartBurst(bound.favorite, Ui.PINK);
+            });
+            holder.next.setOnClickListener(v -> {
+                ensurePlaybackServiceStarted();
+                if (playback != null) playback.enqueueNext(song); else pendingNextSongs.add(song);
+                toast("已添加到下一首");
+            });
+            holder.more.setOnClickListener(v -> showSongActions(song, playlist.id, bound.row));
+            holder.row.setOnClickListener(v -> playQueue(playlist.songs, position));
+            applyActivePlaylistRowState(holder.row, song);
+            return wrapper;
+        }
+    }
+
+
+    private final class PlaylistFilterAdapter extends BaseAdapter {
+        private final ImportedPlaylist owner;
+        private final List<Song> items = new ArrayList<>();
+        PlaylistFilterAdapter(ImportedPlaylist owner) { this.owner = owner; }
+        void replace(List<Song> source) {
+            items.clear();
+            if (source != null) items.addAll(source);
+            notifyDataSetChanged();
+        }
+        @Override public int getCount() { return items.size(); }
+        @Override public Object getItem(int position) { return items.get(position); }
+        @Override public long getItemId(int position) { return position; }
+
+        @Override public View getView(int position, View convertView, ViewGroup parent) {
+            PlaylistDetailHolder holder;
+            LinearLayout wrapper;
+            if (convertView == null) {
+                wrapper = Ui.column(MainActivity.this);
+                holder = new PlaylistDetailHolder();
+                holder.row = Ui.row(MainActivity.this);
+                holder.row.setGravity(Gravity.CENTER_VERTICAL);
+                holder.row.setPadding(Ui.dp(MainActivity.this, 9), Ui.dp(MainActivity.this, 8), Ui.dp(MainActivity.this, 8), Ui.dp(MainActivity.this, 8));
+                holder.row.setBackground(Ui.glass(128, 17, 18, MainActivity.this));
+                holder.row.setClickable(true); holder.row.setFocusable(true);
+                Ui.applyRipple(holder.row, Color.argb(33, 255, 255, 255));
+                holder.cover = new ImageView(MainActivity.this);
+                holder.cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                holder.cover.setBackground(Ui.round(Color.rgb(22, 22, 28), 12, MainActivity.this));
+                holder.cover.setClipToOutline(true);
+                holder.row.addView(holder.cover, Ui.lp(Ui.dp(MainActivity.this, 54), Ui.dp(MainActivity.this, 54)));
+                LinearLayout text = Ui.column(MainActivity.this);
+                text.setPadding(Ui.dp(MainActivity.this, 11), Ui.dp(MainActivity.this, 1), Ui.dp(MainActivity.this, 6), Ui.dp(MainActivity.this, 1));
+                holder.title = Ui.text(MainActivity.this, "", 13.8f, Ui.TEXT, true);
+                holder.title.setSingleLine(true); holder.title.setEllipsize(TextUtils.TruncateAt.END);
+                holder.artist = Ui.text(MainActivity.this, "", 10.9f, Ui.TEXT_2, false);
+                holder.artist.setSingleLine(true); holder.artist.setEllipsize(TextUtils.TruncateAt.END);
+                text.addView(holder.title, new LinearLayout.LayoutParams(-1, 0, 1f));
+                text.addView(holder.artist, new LinearLayout.LayoutParams(-1, 0, 1f));
+                holder.row.addView(text, new LinearLayout.LayoutParams(0, Ui.dp(MainActivity.this, 54), 1f));
+                holder.favorite = Ui.iconButton(MainActivity.this, IconView.Type.HEART, 36, Ui.DIM, Color.TRANSPARENT);
+                holder.favoriteIcon = (IconView) holder.favorite.getChildAt(0);
+                holder.row.addView(holder.favorite, Ui.lp(Ui.dp(MainActivity.this, 32), Ui.dp(MainActivity.this, 32)));
+                holder.next = Ui.iconButton(MainActivity.this, IconView.Type.PLUS, 32, Ui.TEXT_2, Color.TRANSPARENT);
+                holder.row.addView(holder.next, Ui.lp(Ui.dp(MainActivity.this, 30), Ui.dp(MainActivity.this, 30)));
+                holder.more = Ui.iconButton(MainActivity.this, IconView.Type.MORE, 30, Ui.DIM, Color.TRANSPARENT);
+                holder.row.addView(holder.more, Ui.lp(Ui.dp(MainActivity.this, 29), Ui.dp(MainActivity.this, 29)));
+                wrapper.addView(holder.row, Ui.lp(-1, Ui.dp(MainActivity.this, 70)));
+                wrapper.addView(new Space(MainActivity.this), Ui.lp(-1, Ui.dp(MainActivity.this, 7)));
+                wrapper.setTag(holder);
+            } else {
+                wrapper = (LinearLayout) convertView;
+                holder = (PlaylistDetailHolder) wrapper.getTag();
+            }
+            Song song = items.get(position);
+            holder.title.setText(song.title);
+            holder.artist.setText(subtitleFor(song));
+            holder.row.setBackground(Ui.glass(128, 17, 18, MainActivity.this));
+            String coverKey = song.coverUrl == null ? "" : song.coverUrl;
+            Object oldCoverKey = holder.cover.getTag();
+            if (!coverKey.equals(oldCoverKey == null ? "" : String.valueOf(oldCoverKey))) {
+                holder.cover.setImageDrawable(null); holder.cover.setTag(coverKey);
+                if (!coverKey.trim().isEmpty()) ImageLoader.load(coverKey, holder.cover, null);
+            }
+            boolean favorite = isFavorite(song);
+            holder.favoriteIcon.setIconColor(favorite ? Ui.PINK : Ui.DIM);
+            holder.favoriteIcon.setFavoriteState(favorite, false);
+            PlaylistDetailHolder bound = holder;
+            holder.favorite.setOnClickListener(v -> {
+                favorites = store.toggleFavorite(song);
+                boolean nowFavorite = isFavorite(song);
+                bound.favoriteIcon.setIconColor(nowFavorite ? Ui.PINK : Ui.DIM);
+                bound.favoriteIcon.setFavoriteState(nowFavorite, true);
+                if (nowFavorite) animateHeartBurst(bound.favorite, Ui.PINK);
+            });
+            holder.next.setOnClickListener(v -> {
+                ensurePlaybackServiceStarted();
+                if (playback != null) playback.enqueueNext(song); else pendingNextSongs.add(song);
+                toast("已添加到下一首");
+            });
+            holder.more.setOnClickListener(v -> showSongActions(song, owner == null ? null : owner.id, bound.row));
+            holder.row.setOnClickListener(v -> { dismissModalNow(); playPickedSong(song); });
+            return wrapper;
+        }
+    }
+
+    private View firstPlaylistCoachTarget(LinearLayout lazyHost) {
+        if (lazyHost == null || lazyHost.getChildCount() == 0) return null;
+        for (int i = 0; i < lazyHost.getChildCount(); i++) {
+            View child = lazyHost.getChildAt(i);
+            if (child instanceof CurtainRevealFrame && ((CurtainRevealFrame) child).getChildCount() > 1)
+                return ((CurtainRevealFrame) child).getChildAt(((CurtainRevealFrame) child).getChildCount() - 1);
+        }
+        return lazyHost.getChildAt(0);
+    }
+
+    private void appendPlaylistPlaceholderBatch(LinearLayout host, int count, int accent) {
+        if (host == null || count <= 0) return;
+        for (int i = 0; i < count; i++) {
+            CurtainRevealFrame frame = new CurtainRevealFrame(this);
+            FluidPlaceholderView placeholder = new FluidPlaceholderView(this, FluidPlaceholderView.SONG_ROW, accent);
+            placeholder.setShimmerStartDelay((host.getChildCount() + i) * 62L);
+            frame.setPlaceholder(placeholder);
+            LinearLayout.LayoutParams fp = Ui.lp(-1, Ui.dp(this, 72));
+            if (host.getChildCount() > 0) fp.topMargin = Ui.dp(this, 7);
+            host.addView(frame, fp);
+            if (activePlaylistHeroMorph != null && activePlaylistTransitionIncoming != null) {
+                int index = host.getChildCount() - 1;
+                float start = .58f + Math.min(.18f, index * .035f);
+                float rowP = playlistStage(activePlaylistSharedProgress, start, Math.min(.98f, start + .22f));
+                frame.setAlpha(rowP);
+                frame.setTranslationY(Ui.dp(this, 26 + Math.min(12, index * 2)) * (1f - rowP));
+            }
+        }
+    }
+
+    private void ensurePlaylistPlaceholderCount(LinearLayout host, int required, int accent) {
+        if (host == null) return;
+        int missing = required - host.getChildCount();
+        if (missing > 0) appendPlaylistPlaceholderBatch(host, missing, accent);
+    }
+
+    private View buildPlaylistRow(ImportedPlaylist playlist, int position) {
+        if (playlist == null || playlist.songs == null || position < 0 || position >= playlist.songs.size()) return new View(this);
+        Song song = playlist.songs.get(position);
+        View row = songRow(song, playlist.songs, position, playlist.id);
+        row.setOnClickListener(v -> {
+            int liveIndex = indexByIdentity(playlist.songs, song);
+            if (liveIndex >= 0) playQueue(playlist.songs, liveIndex);
+        });
+        registerActivePlaylistRow(playlist.id, song, row);
+        return row;
+    }
+
+    /**
+     * Materialize at most one song row per display frame.  Navigation owns the first frame; rows
+     * arrive afterwards behind already-laid-out skeleton geometry, then wipe in left -> right.
+     */
+    private void materializePlaylistBatch(LinearLayout host, ImportedPlaylist playlist, int[] loadedRef,
+                                          boolean[] scheduledRef, int targetCount, int generation) {
+        if (host == null || playlist == null || playlist.songs == null || loadedRef == null || loadedRef.length == 0
+                || scheduledRef == null || scheduledRef.length == 0 || scheduledRef[0]) return;
+        int from = Math.max(0, loadedRef[0]);
+        int to = Math.min(playlist.songs.size(), Math.max(from, targetCount));
+        if (to <= from) {
+            setPlaylistLoaderActive(false);
+            return;
+        }
+        ensurePlaylistPlaceholderCount(host, to, Ui.CYAN);
+        scheduledRef[0] = true;
+        setPlaylistLoaderActive(true);
+        final int[] index = new int[]{from};
+        Runnable[] step = new Runnable[1];
+        step[0] = () -> {
+            if (generation != playlistLoadGeneration || activePlaylistPageModel == null
+                    || !playlist.id.equals(activePlaylistPageModel.id) || host != activePlaylistSongHost) {
+                scheduledRef[0] = false;
+                return;
+            }
+            int pos = index[0];
+            if (pos >= to || pos >= playlist.songs.size()) {
+                loadedRef[0] = Math.max(loadedRef[0], Math.min(to, playlist.songs.size()));
+                playlistVisibleCount = Math.max(playlistVisibleCount, loadedRef[0]);
+                scheduledRef[0] = false;
+                setPlaylistLoaderActive(false);
+                return;
+            }
+            View slot = pos < host.getChildCount() ? host.getChildAt(pos) : null;
+            if (!(slot instanceof CurtainRevealFrame)) {
+                ensurePlaylistPlaceholderCount(host, pos + 1, Ui.CYAN);
+                slot = host.getChildAt(pos);
+            }
+            View row = buildPlaylistRow(playlist, pos);
+            ((CurtainRevealFrame) slot).reveal(row, 0L);
+            loadedRef[0] = pos + 1;
+            playlistVisibleCount = Math.max(playlistVisibleCount, loadedRef[0]);
+            index[0] = pos + 1;
+            // A short overlapping stagger keeps construction off the tap frame while making the
+            // rows visibly arrive one after another instead of resolving as one instantaneous block.
+            host.postDelayed(step[0], 62L);
+        };
+        host.postOnAnimation(step[0]);
+    }
+
+    private void setPlaylistLoaderActive(boolean active) {
+        if (activePlaylistLoader == null) return;
+        View parent = activePlaylistLoader.getParent() instanceof View ? (View) activePlaylistLoader.getParent() : null;
+        if (parent != null) parent.setVisibility(active ? View.VISIBLE : View.INVISIBLE);
+        activePlaylistLoader.setVisibility(active ? View.VISIBLE : View.INVISIBLE);
+        if (active) activePlaylistLoader.start(); else activePlaylistLoader.stop();
+    }
+
+    /** Immediate helper retained for edit/remove refresh paths; normal scrolling uses frame batches. */
     private void appendPlaylistRows(LinearLayout host, ImportedPlaylist playlist, int from, int to) {
         if (host == null || playlist == null || playlist.songs == null || from < 0 || to <= from) return;
         int safeTo = Math.min(to, playlist.songs.size());
-        if (safeTo <= from) return;
-        LinearLayout.LayoutParams lp = marginTop(from == 0 ? 0 : 7);
-        host.addView(playlistSongListRange(playlist.songs, from, safeTo, playlist.id), lp);
+        ensurePlaylistPlaceholderCount(host, safeTo, Ui.CYAN);
+        for (int pos = from; pos < safeTo; pos++) {
+            View slot = host.getChildAt(pos);
+            View row = buildPlaylistRow(playlist, pos);
+            if (slot instanceof CurtainRevealFrame) ((CurtainRevealFrame) slot).reveal(row, 0L);
+        }
     }
 
     private void maybeAppendPlaylistRows(ScrollView scroll, LinearLayout host, ImportedPlaylist playlist,
                                          int[] loadedRef, boolean[] scheduledRef) {
-        if (scroll == null || host == null || playlist == null || loadedRef == null || loadedRef.length == 0
-                || scheduledRef == null || scheduledRef.length == 0 || scheduledRef[0]) return;
+        if (scroll == null || host == null || playlist == null || playlist.songs == null
+                || loadedRef == null || loadedRef.length == 0 || scheduledRef == null || scheduledRef.length == 0
+                || scheduledRef[0]) return;
         int loaded = loadedRef[0];
-        if (loaded >= playlist.songs.size()) return;
+        if (loaded >= playlist.songs.size()) { setPlaylistLoaderActive(false); return; }
         View content = scroll.getChildCount() > 0 ? scroll.getChildAt(0) : null;
         if (content == null) return;
         int remainingPx = content.getHeight() - (scroll.getScrollY() + scroll.getHeight());
         if (remainingPx > Ui.dp(this, PLAYLIST_PREFETCH_DISTANCE_DP)) return;
 
-        // Do the smaller append on the next UI turn instead of inside the active scroll callback.
-        // The large prefetch distance leaves plenty of rows on screen while this local-only work runs.
-        scheduledRef[0] = true;
-        scroll.post(() -> {
-            int currentLoaded = loadedRef[0];
-            if (currentLoaded < playlist.songs.size()) {
-                int next = Math.min(playlist.songs.size(), currentLoaded + PLAYLIST_APPEND_BATCH);
-                appendPlaylistRows(host, playlist, currentLoaded, next);
-                loadedRef[0] = next;
-                playlistVisibleCount = next;
-            }
-            host.postOnAnimation(() -> scheduledRef[0] = false);
-        });
+        int next = Math.min(playlist.songs.size(), loaded + PLAYLIST_APPEND_BATCH);
+        // Skeleton geometry appears immediately at the tail; actual rows then resolve one frame at a time.
+        ensurePlaylistPlaceholderCount(host, next, Ui.CYAN);
+        scroll.postOnAnimation(() -> materializePlaylistBatch(host, playlist, loadedRef, scheduledRef, next, playlistLoadGeneration));
     }
 
-    /** V15: local, instant search inside one playlist by title or artist. */
+    /** V92.9.7: local playlist search is background-filtered and ListView-backed for 1000+ songs. */
     private void showPlaylistSearch(ImportedPlaylist playlist) {
         if (playlist == null) return;
         LinearLayout card = modalCard("搜索当前歌单", "按歌名或歌手筛选《" + playlist.name + "》 · 仅检索本机歌单，不发起网络搜索");
@@ -7689,12 +9955,11 @@ public final class MainActivity extends Activity implements PlaybackService.List
         input.setTypeface(Typeface.DEFAULT);
         input.setSingleLine(true);
         input.setHint("搜索歌名、歌手");
-        input.setHintTextColor(Color.rgb(105, 105, 123));
+        input.setHintTextColor(AppearanceSystem.isLight() ? Color.rgb(115, 115, 126) : Color.rgb(105, 105, 123));
         input.setTextColor(Ui.TEXT);
         input.setTextSize(13.5f);
         input.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
-        input.setBackground(Ui.stroke(Color.argb(220, 4, 4, 9), 18,
-                Color.argb(48, 255, 255, 255), this));
+        input.setBackground(Ui.contentSurface(18, this));
         input.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0);
         LinearLayout.LayoutParams ip = Ui.lp(-1, Ui.dp(this, 52));
         ip.topMargin = Ui.dp(this, 13);
@@ -7706,61 +9971,61 @@ public final class MainActivity extends Activity implements PlaybackService.List
         cp.topMargin = Ui.dp(this, 5);
         card.addView(count, cp);
 
-        ScrollView resultsScroll = new ScrollView(this);
-        resultsScroll.setVerticalScrollBarEnabled(false);
-        resultsScroll.setFillViewport(true);
-        LinearLayout results = Ui.column(this);
+        ListView results = new ListView(this);
+        results.setDivider(null);
+        results.setDividerHeight(0);
+        results.setSelector(android.R.color.transparent);
+        results.setCacheColorHint(Color.TRANSPARENT);
+        results.setVerticalScrollBarEnabled(false);
+        results.setScrollingCacheEnabled(false);
+        results.setClipToPadding(false);
         results.setPadding(0, Ui.dp(this, 2), 0, Ui.dp(this, 8));
-        resultsScroll.addView(results);
-        LinearLayout.LayoutParams rsp = new LinearLayout.LayoutParams(-1, 0, 1f);
-        card.addView(resultsScroll, rsp);
+        results.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        PlaylistFilterAdapter adapter = new PlaylistFilterAdapter(playlist);
+        results.setAdapter(adapter);
+        card.addView(results, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        final Runnable render = () -> {
-            results.removeAllViews();
+        final java.util.concurrent.atomic.AtomicInteger generation = new java.util.concurrent.atomic.AtomicInteger();
+        final Runnable[] pending = new Runnable[1];
+        final List<Song> sourceSnapshot = new ArrayList<>(playlist.songs);
+        final Runnable[] schedule = new Runnable[1];
+        schedule[0] = () -> {
+            if (pending[0] != null) input.removeCallbacks(pending[0]);
+            final int ticket = generation.incrementAndGet();
             String raw = input.getText() == null ? "" : input.getText().toString().trim();
-            String needle = normalizeSuggestion(raw);
+            final String needle = normalizeSuggestion(raw);
             if (needle.isEmpty()) {
-                count.setText(playlist.songs.isEmpty() ? "歌单为空" : "输入关键词开始筛选");
-                TextView hint = Ui.text(this, "可搜索歌曲名称，也可以直接输入歌手名。", 12f, Ui.DIM, false);
-                hint.setGravity(Gravity.CENTER);
-                results.addView(hint, Ui.lp(-1, Ui.dp(this, 96)));
+                adapter.replace(new ArrayList<>());
+                count.setText(sourceSnapshot.isEmpty() ? "歌单为空" : "输入关键词开始筛选");
                 return;
             }
-
-            int total = 0;
-            int shown = 0;
-            for (int i = 0; i < playlist.songs.size(); i++) {
-                Song song = playlist.songs.get(i);
-                String haystack = normalizeSuggestion((song.title == null ? "" : song.title)
-                        + " " + (song.artist == null ? "" : song.artist));
-                if (!haystack.contains(needle)) continue;
-                total++;
-                if (shown >= 80) continue;
-                final int queueIndex = i;
-                View row = songRow(song, playlist.songs, queueIndex, playlist.id);
-                row.setOnClickListener(v -> {
-                    // Playlist-search is a temporary pick: keep the current queue, insert this song
-                    // and play it immediately. Direct taps in the playlist detail remain whole-list
-                    // queue replacement via playlistSongList(...).
-                    dismissModalNow();
-                    playPickedSong(song);
+            // Keep the old rows readable until the new filter is ready; no blank intermediary frame.
+            count.setText("筛选中… · 当前结果保持可用");
+            pending[0] = () -> playlistFilterExecutor.submit(() -> {
+                ArrayList<Song> matched = new ArrayList<>();
+                for (Song song : sourceSnapshot) {
+                    // The executor is single-threaded, so stale searches must cooperatively stop or
+                    // fast typing would queue several full 1000-song scans in front of the newest one.
+                    if (ticket != generation.get() || Thread.currentThread().isInterrupted()) return;
+                    if (song == null) continue;
+                    String haystack = normalizeSuggestion((song.title == null ? "" : song.title)
+                            + " " + (song.artist == null ? "" : song.artist));
+                    if (haystack.contains(needle)) matched.add(song);
+                }
+                main.post(() -> {
+                    if (ticket != generation.get() || isFinishing() || !input.isAttachedToWindow()) return;
+                    adapter.replace(matched);
+                    count.setText(matched.isEmpty() ? "没有找到匹配歌曲" : "找到 " + matched.size() + " 首 · 结果已完整加载");
+                    if (!matched.isEmpty()) results.setSelection(0);
                 });
-                results.addView(row, marginTop(shown == 0 ? 0 : 7));
-                shown++;
-            }
-            if (total == 0) {
-                count.setText("没有找到匹配歌曲");
-                TextView empty = Ui.text(this, "换一个歌名或歌手关键词试试", 12f, Ui.DIM, false);
-                empty.setGravity(Gravity.CENTER);
-                results.addView(empty, Ui.lp(-1, Ui.dp(this, 96)));
-            } else {
-                count.setText("找到 " + total + " 首" + (total > shown ? " · 显示前 " + shown + " 首" : ""));
-            }
+            });
+            // Short debounce absorbs IME composition without creating the long drawer-like dead gap.
+            input.postDelayed(pending[0], 110L);
         };
 
         input.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
-            @Override public void onTextChanged(CharSequence s, int start, int before, int count) { render.run(); }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) { schedule[0].run(); }
             @Override public void afterTextChanged(Editable s) { }
         });
         input.setOnEditorActionListener((v, actionId, event) -> {
@@ -7774,7 +10039,6 @@ public final class MainActivity extends Activity implements PlaybackService.List
             return false;
         });
 
-        render.run();
         previousSoftInputMode = getWindow().getAttributes().softInputMode;
         inputModalOpen = true;
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
@@ -8212,12 +10476,24 @@ public final class MainActivity extends Activity implements PlaybackService.List
     }
 
     private void clearActivePlaylistUiRefs() {
+        playlistLoadGeneration++;
         if (playlistLocateAnimator != null) { playlistLocateAnimator.cancel(); playlistLocateAnimator = null; }
+        if (activePlaylistLoader != null) { activePlaylistLoader.stop(); activePlaylistLoader = null; }
         activePlaylistScroll = null;
+        activePlaylistList = null;
+        activePlaylistAdapter = null;
         activePlaylistSongHost = null;
         activePlaylistLoadedRef = null;
         activePlaylistPageModel = null;
+        activePlaylistHeroCard = null;
+        activePlaylistHeroThumb = null;
+        activePlaylistHeroTitle = null;
         activePlaylistHeroMeta = null;
+        activePlaylistDetailTitleRow = null;
+        activePlaylistDetailSubtitle = null;
+        activePlaylistDetailBack = null;
+        activePlaylistDetailSongHeader = null;
+        activePlaylistDetailSongHost = null;
         activePlaylistSongCount = null;
         activePlaylistHighlightedKey = "";
         activePlaylistHighlightedAccent = 0;
@@ -8296,12 +10572,19 @@ public final class MainActivity extends Activity implements PlaybackService.List
     }
 
     private void refreshActivePlaylistHighlights() {
-        if (activePlaylistRows.isEmpty()) return;
         Song current = playback == null ? null : playback.currentSong();
         String key = current == null ? "" : current.key();
+        // Playback snapshots also carry position updates. Rebinding a recycled 1000-song ListView
+        // on every progress tick defeats virtualization and can visibly hitch while scrolling.
+        // Only rebind when the highlighted song or its artwork-derived accent actually changes.
         if (key.equals(activePlaylistHighlightedKey) && activePlaylistHighlightedAccent == playlistPlaybackAccent) return;
         activePlaylistHighlightedKey = key;
         activePlaylistHighlightedAccent = playlistPlaybackAccent;
+        if (activePlaylistAdapter != null && activePlaylistList != null) {
+            activePlaylistAdapter.notifyDataSetChanged();
+            return;
+        }
+        if (activePlaylistRows.isEmpty()) return;
         for (Map.Entry<String, ArrayList<View>> entry : activePlaylistRows.entrySet()) {
             boolean playing = !key.isEmpty() && key.equals(entry.getKey());
             for (View row : entry.getValue()) {
@@ -8330,10 +10613,30 @@ public final class MainActivity extends Activity implements PlaybackService.List
     }
 
     private void locateCurrentSongInOpenPlaylist() {
-        if (openPlaylist == null || playback == null || playback.currentSong() == null || activePlaylistScroll == null) return;
+        if (openPlaylist == null || playback == null || playback.currentSong() == null) return;
         Song current = playback.currentSong();
         int index = indexByKey(openPlaylist.songs, current.key());
         if (index < 0) { toast("当前播放不在这个歌单"); return; }
+        if (activePlaylistList != null) {
+            int headerCount = activePlaylistList.getHeaderViewsCount();
+            int targetPosition = index + headerCount;
+            int first = activePlaylistList.getFirstVisiblePosition();
+            int distance = Math.abs(targetPosition - first);
+            int duration = Math.max(320, Math.min(760, 320 + distance * 8));
+            activePlaylistList.smoothScrollToPositionFromTop(targetPosition, Ui.dp(this, 86), duration);
+            activePlaylistList.postDelayed(() -> {
+                if (activePlaylistList == null) return;
+                int child = targetPosition - activePlaylistList.getFirstVisiblePosition();
+                if (child < 0 || child >= activePlaylistList.getChildCount()) return;
+                View target = activePlaylistList.getChildAt(child);
+                if (target == null) return;
+                target.animate().cancel();
+                target.setScaleX(.992f); target.setScaleY(.992f);
+                target.animate().scaleX(1f).scaleY(1f).setDuration(220).start();
+            }, Math.min(820, duration + 60));
+            return;
+        }
+        if (activePlaylistScroll == null) return;
         ensurePlaylistIndexRendered(index, () -> {
             ArrayList<View> rows = activePlaylistRows.get(current.key());
             View target = rows == null || rows.isEmpty() ? null : rows.get(0);
@@ -8364,19 +10667,37 @@ public final class MainActivity extends Activity implements PlaybackService.List
             return;
         }
         if (index < activePlaylistLoadedRef[0]) { if (done != null) done.run(); return; }
-        final int targetCount = Math.min(activePlaylistPageModel.songs.size(), index + 12);
+        final ImportedPlaylist playlist = activePlaylistPageModel;
+        final LinearLayout host = activePlaylistSongHost;
+        final int generation = playlistLoadGeneration;
+        final int targetCount = Math.min(playlist.songs.size(), index + 12);
+        ensurePlaylistPlaceholderCount(host, targetCount, Ui.CYAN);
+        setPlaylistLoaderActive(true);
         Runnable[] step = new Runnable[1];
         step[0] = () -> {
-            if (activePlaylistPageModel == null || activePlaylistSongHost == null || activePlaylistLoadedRef == null) return;
-            int loaded = activePlaylistLoadedRef[0];
-            if (loaded >= targetCount) { if (done != null) done.run(); return; }
-            int next = Math.min(targetCount, loaded + PLAYLIST_APPEND_BATCH);
-            appendPlaylistRows(activePlaylistSongHost, activePlaylistPageModel, loaded, next);
-            activePlaylistLoadedRef[0] = next;
-            playlistVisibleCount = Math.max(playlistVisibleCount, next);
-            activePlaylistSongHost.postOnAnimation(step[0]);
+            if (generation != playlistLoadGeneration || activePlaylistPageModel != playlist
+                    || activePlaylistSongHost != host || activePlaylistLoadedRef == null) {
+                setPlaylistLoaderActive(false);
+                return;
+            }
+            int pos = activePlaylistLoadedRef[0];
+            if (pos >= targetCount || pos >= playlist.songs.size()) {
+                setPlaylistLoaderActive(false);
+                if (done != null) done.run();
+                return;
+            }
+            View slot = pos < host.getChildCount() ? host.getChildAt(pos) : null;
+            if (!(slot instanceof CurtainRevealFrame)) {
+                ensurePlaylistPlaceholderCount(host, pos + 1, Ui.CYAN);
+                slot = host.getChildAt(pos);
+            }
+            View row = buildPlaylistRow(playlist, pos);
+            ((CurtainRevealFrame) slot).reveal(row, 0L);
+            activePlaylistLoadedRef[0] = pos + 1;
+            playlistVisibleCount = Math.max(playlistVisibleCount, pos + 1);
+            host.postOnAnimation(step[0]);
         };
-        activePlaylistSongHost.postOnAnimation(step[0]);
+        host.postOnAnimation(step[0]);
     }
 
     private void smoothPlaylistScrollTo(int targetY) {
@@ -8397,6 +10718,14 @@ public final class MainActivity extends Activity implements PlaybackService.List
     }
 
     private void rememberPlaylistPositionForRefresh() {
+        if (activePlaylistList != null) {
+            playlistListRestorePosition = Math.max(0, activePlaylistList.getFirstVisiblePosition());
+            View first = activePlaylistList.getChildCount() > 0 ? activePlaylistList.getChildAt(0) : null;
+            playlistListRestoreTop = first == null ? 0 : first.getTop();
+            playlistListRestoreId = activePlaylistPageModel == null ? "" : activePlaylistPageModel.id;
+            restorePlaylistPosition = true;
+            return;
+        }
         if (activePlaylistScroll == null) return;
         playlistScrollRestoreY = Math.max(0, activePlaylistScroll.getScrollY());
         restorePlaylistPosition = true;
@@ -8405,6 +10734,54 @@ public final class MainActivity extends Activity implements PlaybackService.List
     private void removeSongFromPlaylistSmooth(String playlistId, Song song, View sourceRow) {
         if (playlistId == null || playlistId.isEmpty() || song == null) return;
         ArrayList<String> keys = new ArrayList<>(); keys.add(song.key());
+        if (activePlaylistList != null && activePlaylistAdapter != null && activePlaylistPageModel != null
+                && playlistId.equals(activePlaylistPageModel.id)) {
+            final int first = Math.max(0, activePlaylistList.getFirstVisiblePosition());
+            final View firstChild = activePlaylistList.getChildCount() > 0 ? activePlaylistList.getChildAt(0) : null;
+            final int firstTop = firstChild == null ? 0 : firstChild.getTop();
+            if (sourceRow != null) {
+                sourceRow.animate().cancel();
+                sourceRow.animate().alpha(.36f).translationX(-Ui.dp(this, 14)).setDuration(110L).start();
+            }
+            io.submit(() -> {
+                List<ImportedPlaylist> updated = store.removeSongsFromPlaylist(playlistId, keys);
+                ImportedPlaylist latest = null;
+                for (ImportedPlaylist candidate : updated)
+                    if (candidate != null && playlistId.equals(candidate.id)) { latest = candidate; break; }
+                final ImportedPlaylist resolved = latest;
+                main.post(() -> {
+                    if (isFinishing()) return;
+                    playlists = updated;
+                    if (resolved == null || activePlaylistPageModel == null || !playlistId.equals(activePlaylistPageModel.id)) {
+                        openPlaylist = resolved;
+                        suppressNextPageAnimation = true;
+                        renderTab();
+                        toast("已从歌单删除");
+                        return;
+                    }
+                    activePlaylistPageModel.songs.clear();
+                    activePlaylistPageModel.songs.addAll(resolved.songs);
+                    openPlaylist = activePlaylistPageModel;
+                    if (activePlaylistHeroMeta != null) {
+                        String kind = activePlaylistPageModel.source.equals("local") ? "本地歌单"
+                                : (activePlaylistPageModel.source.equals("tx") ? "QQ 音乐"
+                                : (activePlaylistPageModel.source.equals("kw") ? "酷我音乐"
+                                : (activePlaylistPageModel.source.equals("kg") ? "酷狗音乐" : "网易云")));
+                        activePlaylistHeroMeta.setText(activePlaylistPageModel.songs.size() + " 首 · " + kind);
+                    }
+                    if (activePlaylistSongCount != null) activePlaylistSongCount.setText(activePlaylistPageModel.songs.size() + " 首");
+                    activePlaylistAdapter.notifyDataSetChanged();
+                    activePlaylistList.post(() -> {
+                        if (activePlaylistList != null) activePlaylistList.setSelectionFromTop(
+                                Math.min(first, Math.max(0, activePlaylistList.getCount() - 1)), firstTop);
+                    });
+                    updatePlaylistLocateButtonVisibility();
+                    refreshActivePlaylistHighlights();
+                    toast("已从歌单删除");
+                });
+            });
+            return;
+        }
         int removedFromRendered = 0;
         int loadedBefore = activePlaylistLoadedRef == null ? 0 : activePlaylistLoadedRef[0];
         if (activePlaylistPageModel != null && playlistId.equals(activePlaylistPageModel.id)) {
@@ -8453,22 +10830,32 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
     private void animatePlaylistRowRemoval(View row) {
         if (row == null) return;
-        View parent = row.getParent() instanceof View ? (View) row.getParent() : null;
-        if (parent == null) return;
+        final View collapseTarget = row.getParent() instanceof CurtainRevealFrame
+                ? (View) row.getParent() : row;
+        final ViewGroup collapseParent = collapseTarget.getParent() instanceof ViewGroup
+                ? (ViewGroup) collapseTarget.getParent() : null;
+        if (collapseParent == null) return;
         row.animate().cancel();
+        collapseTarget.animate().cancel();
         row.animate().alpha(0f).translationX(-Ui.dp(this, 18)).setDuration(120).withEndAction(() -> {
-            ViewGroup.LayoutParams lp = row.getLayoutParams();
-            if (lp == null) { if (row.getParent() instanceof ViewGroup) ((ViewGroup) row.getParent()).removeView(row); return; }
-            final int startH = Math.max(1, row.getHeight());
+            final int startH = Math.max(1, collapseTarget.getHeight());
+            final ViewGroup.LayoutParams original = collapseTarget.getLayoutParams();
+            if (original == null) {
+                if (collapseTarget.getParent() == collapseParent) collapseParent.removeView(collapseTarget);
+                return;
+            }
             ValueAnimator collapse = ValueAnimator.ofInt(startH, 0);
             collapse.setDuration(150L);
             collapse.addUpdateListener(a -> {
-                ViewGroup.LayoutParams p = row.getLayoutParams();
-                if (p != null) { p.height = (Integer) a.getAnimatedValue(); row.setLayoutParams(p); }
+                ViewGroup.LayoutParams lp = collapseTarget.getLayoutParams();
+                if (lp != null) {
+                    lp.height = (Integer) a.getAnimatedValue();
+                    collapseTarget.setLayoutParams(lp);
+                }
             });
             collapse.addListener(new android.animation.AnimatorListenerAdapter() {
                 @Override public void onAnimationEnd(android.animation.Animator animation) {
-                    if (row.getParent() instanceof ViewGroup) ((ViewGroup) row.getParent()).removeView(row);
+                    if (collapseTarget.getParent() == collapseParent) collapseParent.removeView(collapseTarget);
                 }
             });
             collapse.start();
@@ -8995,11 +11382,12 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
         LinearLayout card = Ui.column(this);
         card.setPadding(Ui.dp(this, 18), Ui.dp(this, 12), Ui.dp(this, 18), Ui.dp(this, 14));
-        card.setBackground(Ui.glass(250, 25, 30, this));
+        card.setBackground(Ui.transientGlass(25, this));
         card.setElevation(Ui.dp(this, 10));
 
         View handle = new View(this);
-        handle.setBackground(Ui.round(Color.argb(80, 255, 255, 255), 2, this));
+        handle.setBackground(Ui.round(AppearanceSystem.isLight()
+                ? Color.argb(62, 88, 100, 122) : Color.argb(80, 255, 255, 255), 2, this));
         LinearLayout.LayoutParams hp = Ui.lp(Ui.dp(this, 42), Ui.dp(this, 4));
         hp.gravity = Gravity.CENTER_HORIZONTAL; hp.bottomMargin = Ui.dp(this, 10);
         card.addView(handle, hp);
@@ -9011,7 +11399,9 @@ public final class MainActivity extends Activity implements PlaybackService.List
         header.addView(titles, new LinearLayout.LayoutParams(0, Ui.dp(this, 50), 1f));
 
         int mode = playback.getPlayMode();
-        FrameLayout modeButton = Ui.iconButton(this, playModeIcon(mode), 44, playModeAccent(mode), Color.argb(26, 255, 255, 255));
+        int queueModeAccent = playModeAccent(mode);
+        FrameLayout modeButton = Ui.iconButton(this, playModeIcon(mode), 44, Ui.playerControlIconColor(queueModeAccent), Color.TRANSPARENT);
+        modeButton.setBackground(Ui.playerControlSurface(queueModeAccent, 22, this));
         IconView modeIcon = (IconView) modeButton.getChildAt(0);
         modeButton.setContentDescription(playModeLabel(mode));
         modeButton.setOnClickListener(v -> {
@@ -9019,9 +11409,11 @@ public final class MainActivity extends Activity implements PlaybackService.List
             int nextMode = playback.cyclePlayMode();
             modeIcon.setType(playModeIcon(nextMode));
             int accent = playModeAccent(nextMode);
-            modeIcon.setIconColor(accent);
+            modeIcon.setIconColor(Ui.playerControlIconColor(accent));
+            modeButton.setBackground(Ui.playerControlSurface(accent, 22, this));
             modeButton.setContentDescription(playModeLabel(nextMode));
-            if (nowModeIcon != null) { nowModeIcon.setType(playModeIcon(nextMode)); nowModeIcon.setIconColor(accent); }
+            if (nowModeIcon != null) { nowModeIcon.setType(playModeIcon(nextMode)); nowModeIcon.setIconColor(Ui.playerControlIconColor(accent)); }
+            if (nowModeButton != null) nowModeButton.setBackground(Ui.playerIconRipple(accent, 23, this));
             showModeToast(playModeLabel(nextMode), accent);
         });
         header.addView(modeButton, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 44)));
@@ -9089,6 +11481,119 @@ public final class MainActivity extends Activity implements PlaybackService.List
         FrameLayout slot = new FrameLayout(this);
         slot.addView(child, Ui.frame(Ui.dp(this, childSizeDp), Ui.dp(this, childSizeDp), Gravity.CENTER));
         return slot;
+    }
+
+    /**
+     * Player micro-interactions are semantic, not decorative queues: the playback action runs
+     * immediately while the glyph gives a short directional/state acknowledgement.  Each helper
+     * cancels its prior presentation animation so rapid input retargets from the current state.
+     */
+    private void animatePlayerDirectionalTap(FrameLayout control, int direction) {
+        if (control == null || control.getChildCount() == 0) return;
+        View glyph = control.getChildAt(0);
+        glyph.animate().cancel();
+        if (SpringMotion.isReducedMotion()) {
+            glyph.setAlpha(.72f);
+            glyph.animate().alpha(1f).setDuration(SpringMotion.fadeDuration()).start();
+            return;
+        }
+        float dx = Ui.dp(this, 4) * (direction < 0 ? -1f : 1f);
+        glyph.animate().translationX(dx).scaleX(.92f).scaleY(.92f)
+                .setDuration(70L).setInterpolator(SpringMotion.SNAPPY)
+                .withEndAction(() -> glyph.animate().translationX(0f).scaleX(1f).scaleY(1f)
+                        .setDuration(145L).setInterpolator(SpringMotion.PRESS).start()).start();
+    }
+
+    private void animatePlayerModeTap(FrameLayout control) {
+        if (control == null || control.getChildCount() == 0) return;
+        View glyph = control.getChildAt(0);
+        glyph.animate().cancel();
+        if (SpringMotion.isReducedMotion()) {
+            glyph.setAlpha(.72f);
+            glyph.animate().alpha(1f).setDuration(SpringMotion.fadeDuration()).start();
+            return;
+        }
+        glyph.animate().rotation(14f).scaleX(.91f).scaleY(.91f)
+                .setDuration(78L).setInterpolator(SpringMotion.SNAPPY)
+                .withEndAction(() -> glyph.animate().rotation(0f).scaleX(1f).scaleY(1f)
+                        .setDuration(155L).setInterpolator(SpringMotion.PRESS).start()).start();
+    }
+
+    private void animatePlayerQueueTap(FrameLayout control) {
+        if (control == null || control.getChildCount() == 0) return;
+        View glyph = control.getChildAt(0);
+        glyph.animate().cancel();
+        if (SpringMotion.isReducedMotion()) {
+            glyph.setAlpha(.74f);
+            glyph.animate().alpha(1f).setDuration(SpringMotion.fadeDuration()).start();
+            return;
+        }
+        glyph.animate().translationY(-Ui.dp(this, 2.5f)).scaleX(1.065f).scaleY(.94f)
+                .setDuration(82L).setInterpolator(SpringMotion.SNAPPY)
+                .withEndAction(() -> glyph.animate().translationY(0f).scaleX(1f).scaleY(1f)
+                        .setDuration(150L).setInterpolator(SpringMotion.PRESS).start()).start();
+    }
+
+    private void animatePlayerAddTap(FrameLayout control) {
+        if (control == null || control.getChildCount() == 0) return;
+        View glyph = control.getChildAt(0);
+        glyph.animate().cancel();
+        if (SpringMotion.isReducedMotion()) {
+            glyph.setAlpha(.72f);
+            glyph.animate().alpha(1f).setDuration(SpringMotion.fadeDuration()).start();
+            return;
+        }
+        glyph.animate().translationY(-Ui.dp(this, 3)).scaleX(1.10f).scaleY(1.10f)
+                .setDuration(82L).setInterpolator(SpringMotion.SNAPPY)
+                .withEndAction(() -> glyph.animate().translationY(0f).scaleX(1f).scaleY(1f)
+                        .setDuration(160L).setInterpolator(SpringMotion.PRESS).start()).start();
+    }
+
+    private void animateDesktopLyricTap(FrameLayout control) {
+        if (control == null || control.getChildCount() == 0) return;
+        View glyph = control.getChildAt(0);
+        glyph.animate().cancel();
+        if (SpringMotion.isReducedMotion()) {
+            glyph.setAlpha(.72f);
+            glyph.animate().alpha(1f).setDuration(SpringMotion.fadeDuration()).start();
+            return;
+        }
+        glyph.animate().translationY(-Ui.dp(this, 2)).scaleX(.94f).scaleY(.94f).alpha(.82f)
+                .setDuration(74L).setInterpolator(SpringMotion.SNAPPY)
+                .withEndAction(() -> glyph.animate().translationY(0f).scaleX(1f).scaleY(1f).alpha(1f)
+                        .setDuration(155L).setInterpolator(SpringMotion.PRESS).start()).start();
+    }
+
+    private void animatePrimaryTransportTap(FrameLayout control) {
+        if (control == null) return;
+        control.animate().cancel();
+        if (SpringMotion.isReducedMotion()) {
+            control.setAlpha(.88f);
+            control.animate().alpha(1f).setDuration(SpringMotion.fadeDuration()).start();
+            return;
+        }
+        // The ACTION_DOWN press already compresses the button. This short post-click bloom makes
+        // Play/Pause feel like the dominant transport without adding a second bouncy gesture.
+        control.animate().scaleX(1.035f).scaleY(1.035f)
+                .setDuration(72L).setInterpolator(SpringMotion.SNAPPY)
+                .withEndAction(() -> SpringMotion.pressUp(control)).start();
+    }
+
+    private void animateSeekInteraction(SeekBar seek, boolean active) {
+        if (seek == null) return;
+        seek.animate().cancel();
+        long duration = active ? SpringMotion.pressDownDuration() : SpringMotion.pressUpDuration();
+        if (active) {
+            seek.animate().scaleY(SpringMotion.isReducedMotion() ? 1.03f : 1.12f).alpha(1f)
+                    .setDuration(duration).setInterpolator(SpringMotion.SNAPPY).start();
+            if (nowTime != null) nowTime.setTextColor(nowAccent);
+            if (nowDuration != null) nowDuration.setTextColor(Ui.TEXT_2);
+        } else {
+            seek.animate().scaleY(1f).alpha(1f)
+                    .setDuration(duration).setInterpolator(SpringMotion.PRESS).start();
+            if (nowTime != null) nowTime.setTextColor(Ui.DIM);
+            if (nowDuration != null) nowDuration.setTextColor(Ui.DIM);
+        }
     }
 
     private String playModeLabel(int mode) {
@@ -9206,8 +11711,12 @@ public final class MainActivity extends Activity implements PlaybackService.List
                 bindPlaybackHalo(h.halo, h.row);
             } else {
                 h.halo.stopRendering();
-                h.row.setBackground(Ui.stroke(Color.argb(135, 8, 8, 14), 15,
-                        Color.argb(22, 255, 255, 255), MainActivity.this));
+                // Moonlight rows are real paper-like content surfaces, not dark queue cells dimmed
+                // through a white sheet.  This removes the broad grey blocks seen in device QA.
+                h.row.setBackground(AppearanceSystem.isLight()
+                        ? Ui.contentSurface(15, MainActivity.this)
+                        : Ui.stroke(Color.argb(135, 8, 8, 14), 15,
+                                Color.argb(22, 255, 255, 255), MainActivity.this));
             }
 
             if (reorderController != null) reorderController.attach(h.drag, h.wrapper, position);
@@ -9990,7 +12499,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
         row.setClickable(true);
         Ui.applyRipple(row, Color.argb(32, 255, 255, 255));
 
-        row.addView(playlistThumb(p, 52), Ui.lp(Ui.dp(this, 52), Ui.dp(this, 52)));
+        View thumb = playlistThumb(p, 52);
+        row.addView(thumb, Ui.lp(Ui.dp(this, 52), Ui.dp(this, 52)));
 
         LinearLayout texts = Ui.column(this);
         texts.setPadding(Ui.dp(this, 12), 0, 0, 0);
@@ -9999,7 +12509,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
         title.setEllipsize(TextUtils.TruncateAt.END);
         texts.addView(title, new LinearLayout.LayoutParams(-1, 0, 1f));
         String kind = p.source.equals("local") ? "本地歌单" : (p.source.equals("tx") ? "QQ 音乐" : (p.source.equals("kw") ? "酷我音乐" : (p.source.equals("kg") ? "酷狗音乐" : "网易云")));
-        texts.addView(Ui.text(this, p.songs.size() + " 首 · " + kind, 11.3f, Ui.DIM, false), new LinearLayout.LayoutParams(-1, 0, 1f));
+        TextView meta = Ui.text(this, p.songs.size() + " 首 · " + kind, 11.3f, Ui.DIM, false);
+        texts.addView(meta, new LinearLayout.LayoutParams(-1, 0, 1f));
         row.addView(texts, new LinearLayout.LayoutParams(0, Ui.dp(this, 52), 1f));
 
         FrameLayout more = Ui.iconButton(this, IconView.Type.MORE, 34, Ui.DIM, Color.TRANSPARENT);
@@ -10012,8 +12523,87 @@ public final class MainActivity extends Activity implements PlaybackService.List
         IconView arrow = new IconView(this, IconView.Type.BACK, Ui.DIM);
         arrow.setRotation(180f);
         row.addView(arrow, Ui.lp(Ui.dp(this, 30), Ui.dp(this, 30)));
-        row.setOnClickListener(v -> { tab = 2; openPlaylist = p; playlistVisibleCount = PLAYLIST_INITIAL_RENDER_COUNT; refreshNav(); renderTab(); });
+
+        // When the library root is rebuilt for a reverse transition, remember the actual target
+        // geometry if this is the playlist that owns the active shared-object identity.
+        if (playlistHeroSnapshot != null && playlistHeroSnapshot.playlistId.equals(p.id)) {
+            playlistHeroReturnRow = row;
+            playlistHeroReturnThumb = thumb;
+            playlistHeroReturnTitle = title;
+            playlistHeroReturnMeta = meta;
+        }
+
+        row.setOnClickListener(v -> openPlaylistWithSharedHero(p, row, thumb, title, meta));
         return row;
+    }
+
+    private int playlistAccent(ImportedPlaylist p) {
+        if (p == null) return Ui.CYAN;
+        if ("tx".equals(p.source)) return Ui.CYAN;
+        if ("kw".equals(p.source)) return Ui.GREEN;
+        if ("kg".equals(p.source)) return Ui.GOLD;
+        if ("local".equals(p.source)) return Ui.PURPLE;
+        return Ui.PINK;
+    }
+
+    private String playlistKind(ImportedPlaylist p) {
+        if (p == null) return "歌单";
+        if ("local".equals(p.source)) return "本地歌单";
+        if ("tx".equals(p.source)) return "QQ 音乐";
+        if ("kw".equals(p.source)) return "酷我音乐";
+        if ("kg".equals(p.source)) return "酷狗音乐";
+        return "网易云";
+    }
+
+    private String playlistArtworkUrl(ImportedPlaylist p) {
+        if (p == null || p.songs == null || p.songs.isEmpty()) return "";
+        String url = p.songs.get(0).coverUrl;
+        return url == null ? "" : url;
+    }
+
+    private RectF rectInAppRoot(View view) {
+        if (view == null || appRoot == null || view.getWidth() <= 0 || view.getHeight() <= 0) return new RectF();
+        int[] root = new int[2];
+        int[] child = new int[2];
+        appRoot.getLocationOnScreen(root);
+        view.getLocationOnScreen(child);
+        return new RectF(child[0] - root[0], child[1] - root[1],
+                child[0] - root[0] + view.getWidth(), child[1] - root[1] + view.getHeight());
+    }
+
+    private PlaylistHeroSnapshot capturePlaylistHeroSnapshot(ImportedPlaylist p, View row, View thumb,
+                                                              TextView title, TextView meta) {
+        if (p == null || row == null || thumb == null || title == null || meta == null || appRoot == null) return null;
+        RectF container = rectInAppRoot(row);
+        RectF artwork = rectInAppRoot(thumb);
+        RectF titleRect = rectInAppRoot(title);
+        RectF metaRect = rectInAppRoot(meta);
+        if (container.width() < 2f || artwork.width() < 2f || titleRect.width() < 2f) return null;
+        return new PlaylistHeroSnapshot(p.id, p.name, p.songs.size() + " 首 · " + playlistKind(p),
+                playlistArtworkUrl(p), container, artwork, titleRect, metaRect,
+                title.getTextSize(), meta.getTextSize(), playlistAccent(p));
+    }
+
+    private void openPlaylistWithSharedHero(ImportedPlaylist p, View row, View thumb, TextView title, TextView meta) {
+        if (p == null) return;
+        final int sourceTab = tab;
+        // Save the exact library scroll position before changing route ownership. It gives the
+        // reverse transition a stable destination even after an 800-song detail page has been used.
+        rememberRootTabContext();
+        // The shared-object contract is used when a playlist card and its detail belong to the same
+        // library space. Home shortcuts still use the already-established root-tab physics because
+        // mixing a tab-space jump and a container morph would give two competing spatial stories.
+        playlistHeroSnapshot = (!SpringMotion.isReducedMotion() && sourceTab == 2)
+                ? capturePlaylistHeroSnapshot(p, row, thumb, title, meta) : null;
+        playlistHeroSourceRow = playlistHeroSnapshot == null ? null : row;
+        playlistHeroSourceThumb = playlistHeroSnapshot == null ? null : thumb;
+        pendingPlaylistHeroPush = playlistHeroSnapshot != null;
+        pendingPlaylistHeroPop = false;
+        tab = 2;
+        openPlaylist = p;
+        playlistVisibleCount = PLAYLIST_INITIAL_RENDER_COUNT;
+        refreshNav();
+        renderTab();
     }
 
 
@@ -10406,7 +12996,16 @@ public final class MainActivity extends Activity implements PlaybackService.List
         playerOverlay.setVisibility(View.VISIBLE);
         updateNowPlaying(playback.snapshot());
 
-        final Bitmap artwork = captureViewBitmap(sourceArtwork != null ? sourceArtwork : miniCover);
+        // V92.9.6: never scale the 50–60dp rendered Mini Player snapshot into a 300dp record
+        // when the original artwork bitmap is already in ImageLoader's memory cache. The old
+        // proxy became visibly soft during the flight, then snapped sharp at the final handoff.
+        // Reusing the cached source bitmap keeps the same crop but preserves full-resolution pixels.
+        Bitmap cachedArtwork = null;
+        Song heroSong = playback == null ? null : playback.currentSong();
+        if (heroSong != null) cachedArtwork = ImageLoader.peek(heroSong.coverUrl);
+        final Bitmap artwork = cachedArtwork != null
+                ? cachedArtwork
+                : captureViewBitmap(sourceArtwork != null ? sourceArtwork : miniCover);
         playerOverlay.setVisibility(View.VISIBLE);
         playerOverlay.bringToFront();
         playerOverlay.setAlpha(0f);
@@ -10430,20 +13029,28 @@ public final class MainActivity extends Activity implements PlaybackService.List
             float artDiameter = Math.max(1f, nowVinyl.artworkDiameterPx());
             float targetX = dst[0] - root[0] + (nowVinyl.getWidth() - artDiameter) * .5f;
             float targetY = dst[1] - root[1] + (nowVinyl.getHeight() - artDiameter) * .5f;
-            float targetScaleX = artDiameter / sw;
-            float targetScaleY = artDiameter / sh;
+            // Size the Hero layer at its FINAL record resolution and scale it down to the Mini
+            // geometry at p=0. A hardware layer whose layout itself is only ~56dp would be
+            // rasterized small and then magnified by View.scale, which is exactly the blur seen
+            // on-device. Final-size rasterization keeps every intermediate frame sharp.
+            float startScaleX = sw / artDiameter;
+            float startScaleY = sh / artDiameter;
             float startX = src[0] - root[0];
             float startY = src[1] - root[1];
+            int morphSize = Math.max(1, Math.round(artDiameter));
 
             ArtworkMorphView morph = new ArtworkMorphView(this);
             activeArtworkMorph = morph;
             morph.setBitmap(artwork);
-            morph.setStartRadiusDp(12f);
+            float minStartScale = Math.max(.01f, Math.min(startScaleX, startScaleY));
+            morph.setStartRadiusDp(12f / minStartScale);
             morph.setPivotX(0f); morph.setPivotY(0f);
-            FrameLayout.LayoutParams mp = Ui.frame(sw, sh, Gravity.TOP | Gravity.START);
+            FrameLayout.LayoutParams mp = Ui.frame(morphSize, morphSize, Gravity.TOP | Gravity.START);
             appRoot.addView(morph, mp);
             morph.setX(startX);
             morph.setY(startY);
+            morph.setScaleX(startScaleX);
+            morph.setScaleY(startScaleY);
             morph.setElevation(Ui.dp(this, 28));
             morph.bringToFront();
 
@@ -10469,7 +13076,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
             playerOverlay.animate().cancel();
             if (pageHost != null) pageHost.animate().cancel();
-            if (navBar != null) navBar.animate().cancel();
+            if (navHost != null) navHost.animate().cancel();
             miniBar.animate().cancel();
 
             // A single monotonic clock owns surface expansion, artwork geometry and all cross-fades.
@@ -10485,8 +13092,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
                 float artP = smoothstep01(Math.min(1f, p / .94f));
                 morph.setX(startX + (targetX - startX) * artP);
                 morph.setY(startY + (targetY - startY) * artP);
-                morph.setScaleX(1f + (targetScaleX - 1f) * artP);
-                morph.setScaleY(1f + (targetScaleY - 1f) * artP);
+                morph.setScaleX(startScaleX + (1f - startScaleX) * artP);
+                morph.setScaleY(startScaleY + (1f - startScaleY) * artP);
                 morph.setMorphProgress(artP);
 
                 // Let the expanding surface establish itself first; then the starfield and controls
@@ -10504,7 +13111,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
                 float baseFade = smoothstep01((p - .08f) / .74f);
                 if (pageHost != null) pageHost.setAlpha(1f - .28f * baseFade);
-                if (navBar != null) navBar.setAlpha(1f - .54f * baseFade);
+                if (navHost != null) navHost.setAlpha(1f - .54f * baseFade);
                 if (stars != null) stars.setAlpha(1f - .46f * baseFade);
                 float miniFade = smoothstep01((p - .10f) / .58f);
                 miniBar.setAlpha(1f - .94f * miniFade);
@@ -10530,15 +13137,21 @@ public final class MainActivity extends Activity implements PlaybackService.List
                         nowVinylStack.setSidesReveal(1f);
                     } else if (nowVinyl != null) nowVinyl.setAlpha(1f);
                     if (sourceArtwork != null) sourceArtwork.setAlpha(1f);
-                    if (activeArtworkMorph == morph && morph.getParent() instanceof ViewGroup)
-                        ((ViewGroup) morph.getParent()).removeView(morph);
-                    morph.setBitmap(null);
-                    activeArtworkMorph = null;
-                    if (activePlayerSurfaceMorph == surface && surface.getParent() instanceof ViewGroup)
-                        ((ViewGroup) surface.getParent()).removeView(surface);
-                    activePlayerSurfaceMorph = null;
-                    retireMotionBitmap(artwork);
+                    // Keep the already-sharp Hero proxy for one final display frame after the real
+                    // vinyl becomes visible. The two images are now sourced from the same cached
+                    // bitmap, so this is a seamless ownership handoff rather than a cross-fade.
+                    // It avoids a one-frame texture/upload gap on slower GPUs.
                     finalizePlayerOpen();
+                    appRoot.postOnAnimation(() -> {
+                        if (activeArtworkMorph == morph && morph.getParent() instanceof ViewGroup)
+                            ((ViewGroup) morph.getParent()).removeView(morph);
+                        morph.setBitmap(null);
+                        if (activeArtworkMorph == morph) activeArtworkMorph = null;
+                        if (activePlayerSurfaceMorph == surface && surface.getParent() instanceof ViewGroup)
+                            ((ViewGroup) surface.getParent()).removeView(surface);
+                        if (activePlayerSurfaceMorph == surface) activePlayerSurfaceMorph = null;
+                        retireMotionBitmap(artwork);
+                    });
                 }
             });
             hero.start();
@@ -10576,7 +13189,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
     private void finalizePlayerOpen() {
         if (pageHost != null) { pageHost.setAlpha(1f); pageHost.setVisibility(View.GONE); }
-        if (navBar != null) { navBar.setAlpha(1f); navBar.setVisibility(View.GONE); }
+        if (navHost != null) { navHost.setAlpha(1f); navHost.setVisibility(View.GONE); }
         if (miniBar != null) {
             miniBar.setAlpha(1f); miniBar.setScaleX(1f); miniBar.setScaleY(1f);
             miniBar.setTranslationY(0f); miniBar.setVisibility(View.GONE);
@@ -10588,6 +13201,37 @@ public final class MainActivity extends Activity implements PlaybackService.List
         miniPlayerMorphDragging = false;
         main.removeCallbacks(lyricKaraokeTicker);
         main.post(lyricKaraokeTicker);
+    }
+
+    /**
+     * Full Player is intentionally persistent between opens.  When a global appearance or
+     * transparency mode changes while it is hidden, rebuild only that hidden visual tree so
+     * locally-created icon/text/glass drawables inherit the new palette. PlaybackService, the
+     * queue and lyric data stay untouched.  The rebuild happens on the UI thread before another
+     * frame is drawn, so users never see the transient visible state created by buildNowPlaying().
+     */
+    private void rebuildHiddenPlayerForAppearance() {
+        if (playerOverlay == null || playerOverlay.getVisibility() == View.VISIBLE || appRoot == null) return;
+        main.removeCallbacks(lyricKaraokeTicker);
+        if (nowVinylStack != null) {
+            nowVinylStack.cancelAnimations();
+            nowVinylStack.setSpinning(false);
+        } else if (nowVinyl != null) {
+            nowVinyl.setSpinning(false);
+        }
+        playerOpenGeneration++;
+        cancelPlayerOpenMotion();
+        if (playerOverlay.getParent() instanceof ViewGroup)
+            ((ViewGroup) playerOverlay.getParent()).removeView(playerOverlay);
+        playerOverlay = null;
+        playerStars = null;
+        playerStars2D = null;
+        playerStarBackdrop = null;
+        buildNowPlaying();
+        if (playerOverlay != null) {
+            playerOverlay.setAlpha(1f);
+            playerOverlay.setVisibility(View.GONE);
+        }
     }
 
     private void toggleArtworkLyrics() {
@@ -10638,7 +13282,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
         resetMiniFullMorphTransforms();
         stars.setVisibility(View.VISIBLE); stars.setAlpha(1f);
         pageHost.setVisibility(View.VISIBLE); pageHost.setAlpha(1f);
-        navBar.setVisibility(View.VISIBLE); navBar.setAlpha(1f);
+        if (navHost != null) { navHost.setVisibility(View.VISIBLE); navHost.setAlpha(1f); }
         if (playback != null && playback.currentSong() != null) miniBar.setVisibility(View.VISIBLE);
         miniBar.setAlpha(1f); miniBar.setTranslationY(0f); miniBar.setScaleX(1f); miniBar.setScaleY(1f);
         miniPlayerMorphProgress = 0f;
@@ -10677,7 +13321,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
         }
         if (miniBar != null) miniBar.animate().cancel();
         if (pageHost != null) pageHost.animate().cancel();
-        if (navBar != null) navBar.animate().cancel();
+        if (navHost != null) navHost.animate().cancel();
     }
 
     /** Mini Player -> Full Player continuous upward gesture. */
@@ -10751,7 +13395,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
         miniBar.setScaleX(1f + .018f * p); miniBar.setScaleY(1f + .018f * p);
         miniBar.setAlpha(1f - .82f * p);
         if (pageHost != null) pageHost.setAlpha(1f - .18f * p);
-        if (navBar != null) navBar.setAlpha(1f - .28f * p);
+        if (navHost != null) navHost.setAlpha(1f - .28f * p);
         if (stars != null) stars.setAlpha(1f - .28f * p);
 
         if (nowVinyl != null && miniMorphGeometryReady) {
@@ -10796,7 +13440,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
                     resetMiniFullMorphTransforms();
                     miniBar.setAlpha(1f); miniBar.setTranslationY(0f); miniBar.setScaleX(1f); miniBar.setScaleY(1f);
                     if (pageHost != null) pageHost.setAlpha(1f);
-                    if (navBar != null) navBar.setAlpha(1f);
+                    if (navHost != null) navHost.setAlpha(1f);
                     if (stars != null) stars.setAlpha(1f);
                     miniPlayerMorphProgress = 0f;
                 }
@@ -11085,7 +13729,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
     private void buildNowPlaying() {
         playerOverlay = new FrameLayout(this);
-        playerOverlay.setBackgroundColor(Color.BLACK);
+        playerOverlay.setBackgroundColor(Ui.BG);
         appRoot.addView(playerOverlay, Ui.frame(-1, -1, Gravity.FILL));
 
         // Full-bleed star field extends behind the status/navigation bars.  V55 keeps the exact
@@ -11177,19 +13821,23 @@ public final class MainActivity extends Activity implements PlaybackService.List
         label.setGravity(Gravity.CENTER);
         top.addView(label, Ui.frame(-1, Ui.dp(this, 42), Gravity.CENTER));
 
-        FrameLayout back = Ui.iconButton(this, IconView.Type.BACK, 42, Ui.TEXT, Color.argb(18, 255, 255, 255));
+        FrameLayout back = Ui.iconButton(this, IconView.Type.BACK, 42, Ui.playerControlIconColor(Ui.PURPLE), Color.TRANSPARENT);
+        back.setBackground(Ui.playerIconRipple(Ui.PURPLE, 21, this));
         back.setOnClickListener(v -> closeNowPlaying());
         top.addView(back, Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.START | Gravity.CENTER_VERTICAL));
 
         LinearLayout rightActions = Ui.row(this);
-        FrameLayout starStudio = Ui.iconButton(this, IconView.Type.PALETTE, 42, Ui.CYAN, Color.TRANSPARENT);
+        FrameLayout starStudio = Ui.iconButton(this, IconView.Type.PALETTE, 42, Ui.playerControlIconColor(Ui.CYAN), Color.TRANSPARENT);
+        starStudio.setBackground(Ui.playerIconRipple(Ui.CYAN, 21, this));
         starStudio.setContentDescription("自定义星空背景");
-        starStudio.setOnClickListener(v -> showStarfieldStudio());
+        starStudio.setOnClickListener(v -> { animatePlayerModeTap(starStudio); showStarfieldStudio(); });
         rightActions.addView(starStudio, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 42)));
         starStudio.postDelayed(() -> maybeShowContextCoach(COACH_STARFIELD_STUDIO, starStudio,
                 "星空实验室", "这里可以切换 2D / 3D 星空，并调整运动、星光、背景与侧唱片景深。"), 260L);
-        FrameLayout more = Ui.iconButton(this, IconView.Type.MORE, 42, Ui.TEXT_2, Color.TRANSPARENT);
+        FrameLayout more = Ui.iconButton(this, IconView.Type.MORE, 42, Ui.playerControlIconColor(Ui.PURPLE), Color.TRANSPARENT);
+        more.setBackground(Ui.playerIconRipple(Ui.PURPLE, 21, this));
         more.setOnClickListener(v -> {
+            animatePlayerQueueTap(more);
             Song song = playback == null ? null : playback.currentSong();
             if (song != null) showSongActions(song);
         });
@@ -11272,21 +13920,25 @@ public final class MainActivity extends Activity implements PlaybackService.List
         FrameLayout metaRow = new FrameLayout(this);
 
         FrameLayout desktopLyricQuick = new FrameLayout(this);
-        desktopLyricQuick.setBackground(Ui.round(Color.argb(12, 255, 255, 255), 21, this));
+        desktopLyricQuick.setBackground(Ui.playerIconRipple(Ui.CYAN, 21, this));
         ImageView desktopLyricGlyph = new ImageView(this);
         desktopLyricGlyph.setImageResource(R.drawable.ic_lyric_toggle);
-        desktopLyricGlyph.setColorFilter(Ui.CYAN);
+        desktopLyricGlyph.setColorFilter(Ui.playerControlIconColor(Ui.CYAN));
         desktopLyricGlyph.setPadding(Ui.dp(this, 10), Ui.dp(this, 10), Ui.dp(this, 10), Ui.dp(this, 10));
         desktopLyricQuick.addView(desktopLyricGlyph, Ui.frame(-1, -1, Gravity.FILL));
         desktopLyricQuick.setContentDescription("开启桌面歌词");
         desktopLyricQuick.setClickable(true);
         Ui.applyRipple(desktopLyricQuick, Color.TRANSPARENT);
-        desktopLyricQuick.setOnClickListener(v -> enableDesktopLyricsDirectly());
+        desktopLyricQuick.setOnClickListener(v -> {
+            animateDesktopLyricTap(desktopLyricQuick);
+            enableDesktopLyricsDirectly();
+        });
         metaRow.addView(desktopLyricQuick, Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.START | Gravity.CENTER_VERTICAL));
         desktopLyricQuick.postDelayed(() -> maybeShowContextCoach(COACH_DESKTOP_LYRIC, desktopLyricQuick,
                 "桌面歌词", "点这里可以直接把当前歌词显示到桌面。"), 260L);
 
-        nowFavoriteButton = Ui.iconButton(this, IconView.Type.HEART, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
+        nowFavoriteButton = Ui.iconButton(this, IconView.Type.HEART, 42, Ui.playerControlIconColor(Ui.PINK), Color.TRANSPARENT);
+        nowFavoriteButton.setBackground(Ui.playerIconRipple(Ui.PINK, 21, this));
         nowFavoriteIcon = (IconView) nowFavoriteButton.getChildAt(0);
         nowFavoriteIcon.setFavoriteState(false, false);
         nowFavoriteButton.setContentDescription("收藏");
@@ -11295,19 +13947,22 @@ public final class MainActivity extends Activity implements PlaybackService.List
             if (song != null) {
                 favorites = store.toggleFavorite(song);
                 boolean favorite = isFavorite(song);
-                nowFavoriteIcon.setIconColor(favorite ? Ui.PINK : Ui.TEXT_2);
+                nowFavoriteIcon.setIconColor(favorite ? Ui.PINK : Ui.playerControlIconColor(Ui.PINK));
                 nowFavoriteIcon.setFavoriteState(favorite, true);
                 SpringMotion.pressUp(nowFavoriteButton);
                 if (favorite) animateHeartBurst(nowFavoriteButton, Ui.PINK);
+                nowFavoriteButton.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
                 if (tab == 3 && (modalOverlay == null || modalOverlay.getVisibility() != View.VISIBLE)) renderTab();
                 toast(favorite ? "已收藏" : "已取消收藏");
             }
         });
         metaRow.addView(nowFavoriteButton, Ui.frame(Ui.dp(this, 42), Ui.dp(this, 42), Gravity.CENTER));
 
-        FrameLayout addToPlaylist = Ui.iconButton(this, IconView.Type.PLUS, 42, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
+        FrameLayout addToPlaylist = Ui.iconButton(this, IconView.Type.PLUS, 42, Ui.playerControlIconColor(Ui.PURPLE), Color.TRANSPARENT);
+        addToPlaylist.setBackground(Ui.playerIconRipple(Ui.PURPLE, 21, this));
         addToPlaylist.setContentDescription("添加到歌单");
         addToPlaylist.setOnClickListener(v -> {
+            animatePlayerAddTap(addToPlaylist);
             Song song = playback == null ? null : playback.currentSong();
             if (song != null) showAddToPlaylist(song);
         });
@@ -11340,34 +13995,50 @@ public final class MainActivity extends Activity implements PlaybackService.List
         controls.setGravity(Gravity.CENTER_VERTICAL);
 
         int initialMode = playback == null ? PlaybackService.MODE_SEQUENTIAL : playback.getPlayMode();
-        FrameLayout modeButton = Ui.iconButton(this, playModeIcon(initialMode), 46, playModeAccent(initialMode), Color.argb(12, 255, 255, 255));
+        int initialModeAccent = playModeAccent(initialMode);
+        FrameLayout modeButton = Ui.iconButton(this, playModeIcon(initialMode), 46, Ui.playerControlIconColor(initialModeAccent), Color.TRANSPARENT);
+        modeButton.setBackground(Ui.playerIconRipple(initialModeAccent, 23, this));
         nowModeIcon = (IconView) modeButton.getChildAt(0);
+        nowModeButton = modeButton;
         modeButton.setContentDescription(playModeLabel(initialMode));
         modeButton.setOnClickListener(v -> {
+            animatePlayerModeTap(modeButton);
             if (playback == null) return;
             int mode = playback.cyclePlayMode();
             int accent = playModeAccent(mode);
             nowModeIcon.setType(playModeIcon(mode));
-            nowModeIcon.setIconColor(accent);
+            nowModeIcon.setIconColor(Ui.playerControlIconColor(accent));
+            modeButton.setBackground(Ui.playerIconRipple(accent, 23, this));
             modeButton.setContentDescription(playModeLabel(mode));
+            modeButton.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
             showModeToast(playModeLabel(mode), accent);
         });
 
-        FrameLayout prev = Ui.iconButton(this, IconView.Type.PREV, 50, Ui.TEXT, Color.argb(10, 255, 255, 255));
-        prev.setOnClickListener(v -> { if (playback != null) playback.previous(); });
+        FrameLayout prev = Ui.iconButton(this, IconView.Type.PREV, 50, Ui.playerControlIconColor(Ui.BLUE), Color.TRANSPARENT);
+        prev.setBackground(Ui.playerIconRipple(Ui.BLUE, 25, this));
+        prev.setOnClickListener(v -> {
+            animatePlayerDirectionalTap(prev, -1);
+            if (playback != null) playback.previous();
+        });
         FrameLayout play = Ui.iconButton(this, IconView.Type.PLAY, 66, Color.rgb(13, 18, 22), Ui.CYAN);
         play.setBackground(Ui.primaryFill(Ui.CYAN, 33, this));
         nowPlayButton = play;
         nowPlayIcon = (IconView) play.getChildAt(0);
-        play.setOnClickListener(v -> { if (playback != null) playback.toggle(); });
-        FrameLayout next = Ui.iconButton(this, IconView.Type.NEXT, 50, Ui.TEXT, Color.argb(10, 255, 255, 255));
+        play.setOnClickListener(v -> {
+            animatePrimaryTransportTap(play);
+            if (playback != null) playback.toggle();
+        });
+        FrameLayout next = Ui.iconButton(this, IconView.Type.NEXT, 50, Ui.playerControlIconColor(Ui.BLUE), Color.TRANSPARENT);
+        next.setBackground(Ui.playerIconRipple(Ui.BLUE, 25, this));
         next.setOnClickListener(v -> {
+            animatePlayerDirectionalTap(next, +1);
             if (playbackBehaviorTracker != null) playbackBehaviorTracker.markManualSkip();
             if (playback != null) playback.next();
         });
-        FrameLayout queueButton = Ui.iconButton(this, IconView.Type.PLAYLIST, 46, Ui.TEXT_2, Color.argb(12, 255, 255, 255));
+        FrameLayout queueButton = Ui.iconButton(this, IconView.Type.PLAYLIST, 46, Ui.playerControlIconColor(Ui.CYAN), Color.TRANSPARENT);
+        queueButton.setBackground(Ui.playerIconRipple(Ui.CYAN, 23, this));
         queueButton.setContentDescription("播放列表");
-        queueButton.setOnClickListener(v -> showPlaybackQueue());
+        queueButton.setOnClickListener(v -> { animatePlayerQueueTap(queueButton); showPlaybackQueue(); });
         queueButton.setOnLongClickListener(v -> { toggleVinylBrowse(); return true; });
 
         controls.addView(controlSlot(modeButton, 46), new LinearLayout.LayoutParams(0, Ui.dp(this, 72), 1f));
@@ -11517,8 +14188,9 @@ public final class MainActivity extends Activity implements PlaybackService.List
         scroll.setGestureExclusionView(lyricPanel);
 
         nowSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onStartTrackingTouch(SeekBar b) { }
+            @Override public void onStartTrackingTouch(SeekBar b) { animateSeekInteraction(b, true); }
             @Override public void onStopTrackingTouch(SeekBar b) {
+                animateSeekInteraction(b, false);
                 if (playback != null) {
                     PlaybackSnapshot snap = playback.snapshot();
                     if (snap.durationMs > 0) playback.seekTo((long) (snap.durationMs * (b.getProgress() / 1000d)));
@@ -11581,12 +14253,14 @@ public final class MainActivity extends Activity implements PlaybackService.List
         setNowPlayingArtistText(s.song);
         int sourceTint = s.song.variants().size() > 1 ? Ui.CYAN : ("tx".equals(s.song.source) ? Ui.GREEN : Ui.GOLD);
         nowPlayIcon.setPlaybackState(s.playing, true);
-        nowFavoriteIcon.setIconColor(isFavorite(s.song) ? Ui.PINK : Ui.TEXT_2);
+        nowFavoriteIcon.setIconColor(isFavorite(s.song) ? Ui.PINK : Ui.playerControlIconColor(Ui.PINK));
         nowFavoriteIcon.setFavoriteState(isFavorite(s.song), false);
         if (nowModeIcon != null && playback != null) {
             int mode = playback.getPlayMode();
+            int accent = playModeAccent(mode);
             nowModeIcon.setType(playModeIcon(mode));
-            nowModeIcon.setIconColor(playModeAccent(mode));
+            nowModeIcon.setIconColor(Ui.playerControlIconColor(accent));
+            if (nowModeButton != null) nowModeButton.setBackground(Ui.playerIconRipple(accent, 23, this));
         }
         nowTime.setText(Ui.time(s.positionMs));
         nowDuration.setText(Ui.time(s.durationMs));
@@ -12025,7 +14699,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
     private void showStarfieldStudio() {
         LinearLayout card = Ui.column(this);
         card.setPadding(Ui.dp(this, 18), Ui.dp(this, 16), Ui.dp(this, 18), Ui.dp(this, 14));
-        card.setBackground(Ui.glass(250, 27, 32, this));
+        card.setBackground(Ui.transientGlass(27, this));
         card.setElevation(Ui.dp(this, 12));
 
         LinearLayout header = Ui.row(this);
@@ -12626,15 +15300,14 @@ public final class MainActivity extends Activity implements PlaybackService.List
         if (snackbar == null) return;
         snackbar.animate().cancel();
         snackbar.bringToFront();
-        snackbar.setBackground(Ui.stroke(Color.argb(248, 11, 11, 18), 18,
-                Color.argb(48, 255, 255, 255), this));
+        snackbar.setBackground(Ui.functionalGlass(18, this));
         snackbar.setText(s == null ? "" : s);
         snackbar.setTextColor(Ui.TEXT);
         snackbar.setVisibility(View.VISIBLE);
         snackbar.setAlpha(0f);
         snackbar.setTranslationY(-Ui.dp(this, 8));
-        snackbar.animate().alpha(1f).translationY(0f).setDuration(160).start();
-        snackbar.postDelayed(() -> snackbar.animate().alpha(0f).translationY(-Ui.dp(this, 8)).setDuration(180)
+        snackbar.animate().alpha(1f).translationY(0f).setDuration(SpringMotion.fadeDuration()).start();
+        snackbar.postDelayed(() -> snackbar.animate().alpha(0f).translationY(-Ui.dp(this, 8)).setDuration(SpringMotion.fadeDuration())
                 .withEndAction(() -> snackbar.setVisibility(View.GONE)).start(), 2400);
     }
 
@@ -12679,6 +15352,10 @@ public final class MainActivity extends Activity implements PlaybackService.List
             hideSearchSuggestions();
             return;
         }
+        if (voicePanel != null && voicePanel.getVisibility() == View.VISIBLE) {
+            hideVoicePanel();
+            return;
+        }
         // Queue, playlist search, rename/delete sheets and other temporary panels all live in this layer.
         if (modalOverlay != null && modalOverlay.getVisibility() == View.VISIBLE) {
             hideModal();
@@ -12692,6 +15369,10 @@ public final class MainActivity extends Activity implements PlaybackService.List
         }
         if (searchAllResultsOpen) {
             searchAllResultsOpen = false;
+            activeSearchAllList = null;
+            searchAllSavedPosition = 0;
+            searchAllSavedTop = 0;
+            rootTabSearchAllResultsOpen[1] = false;
             suppressNextPageAnimation = true;
             renderTab();
             return;
@@ -12710,9 +15391,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
         }
         // Root tabs are one navigation level below Home.
         if (tab != 0) {
-            tab = 0;
-            refreshNav();
-            renderTab();
+            switchRootTab(0, navItems[0]);
             return;
         }
         // Home is the root: background instead of finishing so accidental Back never kills playback/UI state.
@@ -12724,6 +15403,10 @@ public final class MainActivity extends Activity implements PlaybackService.List
     }
 
     @Override protected void onDestroy() {
+        libraryBootstrapGeneration++;
+        if (startupStarSpeedAnimator != null) { startupStarSpeedAnimator.cancel(); startupStarSpeedAnimator = null; }
+        if (activePlaylistSharedAnimator != null) { activePlaylistSharedAnimator.cancel(); activePlaylistSharedAnimator = null; }
+        clearPlaylistSharedOverlay(false);
         playerOpenGeneration++;
         cancelPlayerOpenMotion();
         if (nowVinylStack != null) nowVinylStack.cancelAnimations();
@@ -12757,9 +15440,12 @@ public final class MainActivity extends Activity implements PlaybackService.List
         suggestionRequestToken++;
         if (bound && playback != null) playback.clearListener(this);
         try { unregisterReceiver(downloadReceiver); } catch (Exception ignored) { }
+        try { unregisterReceiver(voiceReceiver); } catch (Exception ignored) { }
+        if (voicePanelHideRunnable != null) main.removeCallbacks(voicePanelHideRunnable);
         if (bound) try { unbindService(connection); } catch (Exception ignored) { }
         variantPrefetch.shutdownNow();
         searchMergeExecutor.shutdownNow();
+        playlistFilterExecutor.shutdownNow();
         lyricIndexExecutor.shutdownNow();
         lyricSearchExecutor.shutdownNow();
         if (backgroundVariantEnricher != null) backgroundVariantEnricher.destroy();

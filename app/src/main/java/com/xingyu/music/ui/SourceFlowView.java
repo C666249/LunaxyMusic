@@ -36,7 +36,7 @@ public final class SourceFlowView extends View {
     public void pulse() {
         if (animator != null) animator.cancel();
         animator = ValueAnimator.ofFloat(0f, 1f);
-        animator.setDuration(980L);
+        animator.setDuration(SpringMotion.isReducedMotion() ? 120L : 980L);
         animator.setInterpolator(new DecelerateInterpolator(1.25f));
         animator.addUpdateListener(a -> { progress = (Float) a.getAnimatedValue(); invalidate(); });
         animator.addListener(new android.animation.AnimatorListenerAdapter() {

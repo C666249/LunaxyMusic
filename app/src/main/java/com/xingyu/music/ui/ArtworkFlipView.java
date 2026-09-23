@@ -28,7 +28,8 @@ public final class ArtworkFlipView extends FrameLayout {
         lyrics=value;
         if(animator!=null) animator.cancel();
         animator=ValueAnimator.ofFloat(progress,value?1f:0f);
-        animator.setDuration(Math.max(100,Math.round(420*Math.abs((value?1f:0f)-progress))));
+        animator.setDuration(SpringMotion.isReducedMotion() ? 100L
+                : Math.max(100,Math.round(420*Math.abs((value?1f:0f)-progress))));
         animator.setInterpolator(new AccelerateDecelerateInterpolator());
         animator.addUpdateListener(a->{ progress=(float)a.getAnimatedValue(); apply(); });
         animator.start();

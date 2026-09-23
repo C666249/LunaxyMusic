@@ -21,6 +21,9 @@ import java.util.Set;
 public final class LibraryStore {
     private final SharedPreferences prefs;
     private final PersonalizationStore personalization;
+    private final Object playlistCacheLock = new Object();
+    private String playlistCacheRaw = null;
+    private List<ImportedPlaylist> playlistCache = null;
     public LibraryStore(Context c){ this(c, new PersonalizationStore(c)); }
     public LibraryStore(Context c, PersonalizationStore personalization){
         prefs=c.getSharedPreferences("xingyu_library_v3", Context.MODE_PRIVATE);
@@ -32,7 +35,18 @@ public final class LibraryStore {
         List<Song> all=decodeSongs(prefs.getString("history","[]"));
         return all.size()<=50?all:new ArrayList<>(all.subList(0,50));
     }
-    public List<ImportedPlaylist> playlists(){ return decodePlaylists(prefs.getString("playlists","[]")); }
+    public List<ImportedPlaylist> playlists(){
+        String raw = prefs.getString("playlists", "[]");
+        synchronized (playlistCacheLock) {
+            if (playlistCache != null && raw.equals(playlistCacheRaw)) return copyPlaylists(playlistCache);
+        }
+        List<ImportedPlaylist> decoded = decodePlaylists(raw);
+        synchronized (playlistCacheLock) {
+            playlistCacheRaw = raw;
+            playlistCache = decoded;
+            return copyPlaylists(decoded);
+        }
+    }
     public List<String> searchHistory(){ return decodeStrings(prefs.getString("search_history","[]")); }
 
     public boolean isFavorite(Song song){ for(Song s:favorites()) if(s.key().equals(song.key())) return true; return false; }
@@ -271,6 +285,17 @@ public final class LibraryStore {
     private List<Song> decodeSongs(String raw){ List<Song> out=new ArrayList<>(); try{JSONArray a=new JSONArray(raw==null?"[]":raw); for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i); if(o!=null)out.add(Song.fromJson(o));}}catch(Exception ignored){} return out; }
     private void saveStrings(String key,List<String> list){ JSONArray a=new JSONArray(); for(String x:list) if(x!=null&&!x.trim().isEmpty()) a.put(x.trim()); prefs.edit().putString(key,a.toString()).apply(); }
     private List<String> decodeStrings(String raw){ List<String> out=new ArrayList<>(); try{JSONArray a=new JSONArray(raw==null?"[]":raw); for(int i=0;i<a.length();i++){String x=a.optString(i,"").trim(); if(!x.isEmpty()) out.add(x);}}catch(Exception ignored){} return out; }
-    private void savePlaylists(List<ImportedPlaylist> list){JSONArray a=new JSONArray(); for(ImportedPlaylist p:list)a.put(p.toJson()); prefs.edit().putString("playlists",a.toString()).apply();}
+    private void savePlaylists(List<ImportedPlaylist> list){
+        JSONArray a=new JSONArray(); for(ImportedPlaylist p:list)a.put(p.toJson());
+        String raw=a.toString();
+        synchronized (playlistCacheLock) { playlistCacheRaw=raw; playlistCache=copyPlaylists(list); }
+        prefs.edit().putString("playlists",raw).apply();
+    }
+    private static List<ImportedPlaylist> copyPlaylists(List<ImportedPlaylist> source){
+        List<ImportedPlaylist> out=new ArrayList<>();
+        if(source!=null) for(ImportedPlaylist p:source) if(p!=null)
+            out.add(new ImportedPlaylist(p.id,p.name,p.source,p.songs,p.importedAt));
+        return out;
+    }
     private List<ImportedPlaylist> decodePlaylists(String raw){List<ImportedPlaylist> out=new ArrayList<>(); try{JSONArray a=new JSONArray(raw==null?"[]":raw); for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null)out.add(ImportedPlaylist.fromJson(o));}}catch(Exception ignored){}return out;}
 }

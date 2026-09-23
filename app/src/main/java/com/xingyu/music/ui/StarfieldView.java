@@ -64,10 +64,11 @@ public final class StarfieldView extends View implements SensorEventListener {
     private AudioLevelProvider audioLevels;
     private float visualEnergy;
     private float visualBeat;
+    private float motionSpeedMultiplier = 1f;
 
     public StarfieldView(Context context) {
         super(context);
-        setBackgroundColor(Color.BLACK);
+        setBackgroundColor(Ui.BG);
         setLayerType(View.LAYER_TYPE_HARDWARE, null);
         for (int i = 0; i < STAR_COUNT; i++) stars.add(newStar(true));
 
@@ -83,9 +84,16 @@ public final class StarfieldView extends View implements SensorEventListener {
         invalidate();
     }
 
+    public void setMotionSpeedMultiplier(float multiplier) {
+        motionSpeedMultiplier = Math.max(.25f, Math.min(8f, multiplier));
+        if (running && !SpringMotion.isReducedMotion()) postInvalidateOnAnimation();
+    }
+
+    public float motionSpeedMultiplier() { return motionSpeedMultiplier; }
+
     public void setAudioLevelProvider(AudioLevelProvider provider) {
         audioLevels = provider;
-        if (running) postInvalidateOnAnimation();
+        if (running && !SpringMotion.isReducedMotion()) postInvalidateOnAnimation();
     }
 
     private Star newStar(boolean randomDepth) {
@@ -138,7 +146,7 @@ public final class StarfieldView extends View implements SensorEventListener {
             running = true;
             hasBaseline = false;
             lastFrameMs = SystemClock.uptimeMillis();
-            postInvalidateOnAnimation();
+            if (!SpringMotion.isReducedMotion()) postInvalidateOnAnimation();
         }
         if (!sensorRegistered && sensorManager != null && rotationSensor != null) {
             sensorRegistered = sensorManager.registerListener(this, rotationSensor, SensorManager.SENSOR_DELAY_GAME);
@@ -158,7 +166,7 @@ public final class StarfieldView extends View implements SensorEventListener {
         if (w <= 0 || h <= 0) return;
 
         // True black, deliberately no grey gradient or colored aurora.
-        canvas.drawColor(Color.BLACK);
+        canvas.drawColor(Ui.BG);
 
         long now = SystemClock.uptimeMillis();
         float dt = Math.min(.05f, Math.max(.001f, (now - lastFrameMs) / 1000f));
@@ -188,7 +196,7 @@ public final class StarfieldView extends View implements SensorEventListener {
         float centerY = h * .47f + driftY;
 
         // Slow forward camera speed. Close stars appear faster naturally due to perspective.
-        final float forwardSpeed = .052f * (1f + visualEnergy * .10f + visualBeat * .07f);
+        final float forwardSpeed = .052f * motionSpeedMultiplier * (1f + visualEnergy * .10f + visualBeat * .07f);
 
         for (Star s : stars) {
             if (running) s.z -= forwardSpeed * s.speed * dt;
@@ -212,19 +220,21 @@ public final class StarfieldView extends View implements SensorEventListener {
             float twinkle = .82f + .18f * (float) Math.sin(time * s.twinkle + s.phase);
             int alpha = (int) ((82f + 196f * depth) * twinkle);
             alpha = Math.max(58, Math.min(255, alpha));
+            float appearanceAlpha = Ui.isLightAppearance() ? .18f : 1f;
+            alpha = Math.max(Ui.isLightAppearance() ? 8 : 58, Math.round(alpha * appearanceAlpha));
 
             // Distant points stay tiny; foreground points become crisp and luminous.
             float radius = (s.size * (.50f + depth * 1.85f)) * density * (1f + visualEnergy * .08f + visualBeat * .15f);
-            int baseR = s.coolWhite ? 224 : 250;
-            int baseG = s.coolWhite ? 236 : 250;
-            int baseB = 255;
+            int baseR = Ui.isLightAppearance() ? (s.coolWhite ? 70 : 48) : (s.coolWhite ? 224 : 250);
+            int baseG = Ui.isLightAppearance() ? (s.coolWhite ? 82 : 58) : (s.coolWhite ? 236 : 250);
+            int baseB = Ui.isLightAppearance() ? (s.coolWhite ? 112 : 86) : 255;
             // Keep most points neutral; nearer points borrow more of the album palette on beats.
             float tint = clamp((s.coolWhite ? .07f : .16f) + depth * .10f + visualEnergy * .10f + visualBeat * .15f, .04f, .48f);
             int r = mix(baseR, Color.red(accent), tint);
             int g = mix(baseG, Color.green(accent), tint);
             int b = mix(baseB, Color.blue(accent), tint);
 
-            if (depth > .69f) {
+            if (!Ui.isLightAppearance() && depth > .69f) {
                 float glowRadius = radius * (2.8f + depth * 2.2f);
                 paint.setColor(Color.argb((int) (alpha * .13f), r, g, b));
                 canvas.drawCircle(sx, sy, glowRadius, paint);
@@ -234,7 +244,7 @@ public final class StarfieldView extends View implements SensorEventListener {
             canvas.drawCircle(sx, sy, Math.max(.45f * density, radius), paint);
 
             // Very few close stars receive a small lens-flare cross, like the approved mockup.
-            if (depth > .91f && s.size > .98f) {
+            if (!Ui.isLightAppearance() && depth > .91f && s.size > .98f) {
                 paint.setStrokeWidth(Math.max(.55f * density, radius * .25f));
                 paint.setColor(Color.argb((int) (alpha * .48f), r, g, b));
                 float arm = radius * 4.1f;
@@ -243,7 +253,7 @@ public final class StarfieldView extends View implements SensorEventListener {
             }
         }
 
-        if (running) postInvalidateOnAnimation();
+        if (running && !SpringMotion.isReducedMotion()) postInvalidateOnAnimation();
     }
 
     @Override public void onSensorChanged(SensorEvent event) {

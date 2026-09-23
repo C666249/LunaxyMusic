@@ -232,8 +232,8 @@ public final class RingtoneLyricSelectorView extends FrameLayout {
         boundary.line.animate().cancel();
         boundary.label.animate().cancel();
         if (animate) {
-            boundary.line.animate().translationY(lineY).setDuration(135L).start();
-            boundary.label.animate().translationY(labelY).setDuration(135L).start();
+            boundary.line.animate().translationY(lineY).setDuration(SpringMotion.isReducedMotion() ? 70L : 135L).start();
+            boundary.label.animate().translationY(labelY).setDuration(SpringMotion.isReducedMotion() ? 70L : 135L).start();
         } else {
             boundary.line.setTranslationY(lineY);
             boundary.label.setTranslationY(labelY);

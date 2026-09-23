@@ -10,8 +10,8 @@ android {
         applicationId = "com.xingyu.music"
         minSdk = 26
         targetSdk = 36
-        versionCode = 962
-        versionName = "92.8.10"
+        versionCode = 991
+        versionName = "92.9.13"
     }
 
     buildTypes {
@@ -40,7 +40,7 @@ tasks.matching { it.name == "assembleDebug" }.configureEach {
         val apkDir = project.layout.buildDirectory.dir("outputs/apk/debug").get().asFile
         val source = apkDir.resolve("app-debug.apk")
         if (source.isFile) source.copyTo(
-            apkDir.resolve("LunaxyMusic-Stable-92.8.10-debug.apk"),
+            apkDir.resolve("LunaxyMusic-Stable-92.9.13-debug.apk"),
             overwrite = true
         )
     }
@@ -52,7 +52,7 @@ tasks.matching { it.name == "assembleRelease" }.configureEach {
         val source = listOf(apkDir.resolve("app-release.apk"), apkDir.resolve("app-release-unsigned.apk"))
             .firstOrNull { it.isFile }
         if (source != null) source.copyTo(
-            apkDir.resolve("LunaxyMusic-Stable-92.8.10-release.apk"),
+            apkDir.resolve("LunaxyMusic-Stable-92.9.13-release.apk"),
             overwrite = true
         )
     }

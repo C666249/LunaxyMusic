@@ -65,14 +65,15 @@ public final class VinylRecordView extends View {
 
     public void setAudioLevelProvider(AudioLevelProvider provider) {
         audioLevels = provider;
-        if (spinning) postInvalidateOnAnimation();
+        if (spinning && !SpringMotion.isReducedMotion()) postInvalidateOnAnimation();
     }
 
     public void setSpinning(boolean value) {
         if (spinning == value) return;
         spinning = value;
         lastFrame = SystemClock.uptimeMillis();
-        postInvalidateOnAnimation();
+        if (!SpringMotion.isReducedMotion()) postInvalidateOnAnimation();
+        else invalidate();
     }
 
     /** Align the large record with the card artwork while the shared Hero overlay is landing. */
@@ -88,7 +89,8 @@ public final class VinylRecordView extends View {
     public void endHeroTransition() {
         heroTransitionHold = false;
         lastFrame = SystemClock.uptimeMillis();
-        postInvalidateOnAnimation();
+        if (!SpringMotion.isReducedMotion()) postInvalidateOnAnimation();
+        else invalidate();
     }
 
     /** Actual circular album-art diameter inside this view (outer space is reserved for waves). */
@@ -113,7 +115,8 @@ public final class VinylRecordView extends View {
 
         if (!heroTransitionHold) {
             sampleAudio(dt);
-            float targetVelocity = spinning ? (4.5f + visualEnergy * .42f + visualBeat * .22f) : 0f;
+            float targetVelocity = spinning && !SpringMotion.isReducedMotion()
+                    ? (4.5f + visualEnergy * .42f + visualBeat * .22f) : 0f;
             angularVelocity = approach(angularVelocity, targetVelocity, dt, spinning ? 1.35f : .72f);
             if (Math.abs(angularVelocity) < .012f && !spinning) angularVelocity = 0f;
             angle = (angle + dt * angularVelocity) % 360f;
@@ -167,7 +170,8 @@ public final class VinylRecordView extends View {
         paint.setStyle(Paint.Style.FILL);
         canvas.restore();
 
-        if (!heroTransitionHold && (spinning || Math.abs(angularVelocity) > .01f || visualEnergy > .008f
+        if (!SpringMotion.isReducedMotion() && !heroTransitionHold
+                && (spinning || Math.abs(angularVelocity) > .01f || visualEnergy > .008f
                 || visualBeat > .008f || visualBass > .008f)) {
             postInvalidateOnAnimation();
         }

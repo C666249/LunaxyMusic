@@ -43,7 +43,7 @@ public final class VinylStackView extends FrameLayout {
         expanded=value;
         if(expandAnimator!=null) expandAnimator.cancel();
         expandAnimator=ValueAnimator.ofFloat(expandedReveal,value?1f:0f);
-        expandAnimator.setDuration(240);
+        expandAnimator.setDuration(SpringMotion.isReducedMotion() ? 110L : 240L);
         expandAnimator.addUpdateListener(a->{ expandedReveal=(float)a.getAnimatedValue(); applyGeometry(); });
         expandAnimator.start();
     }
@@ -226,7 +226,7 @@ public final class VinylStackView extends FrameLayout {
         cancelSettle();
         ValueAnimator animator = ValueAnimator.ofFloat(swipeProgress, to);
         settleAnimator = animator;
-        animator.setDuration(duration);
+        animator.setDuration(SpringMotion.isReducedMotion() ? Math.min(110L, duration) : duration);
         animator.setInterpolator(SpringMotion.SOFT);
         animator.addUpdateListener(v -> {
             swipeProgress = clamp((Float) v.getAnimatedValue());
@@ -330,7 +330,11 @@ public final class VinylStackView extends FrameLayout {
             }
         }
 
-        void setActive(boolean value) { active = value; if (value) postInvalidateOnAnimation(); }
+        void setActive(boolean value) {
+            active = value;
+            if (value && !SpringMotion.isReducedMotion()) postInvalidateOnAnimation();
+            else invalidate();
+        }
         void setSwipeIntensity(float value) { intensity = clamp(value); invalidate(); }
         void setAccent(int color) { particleAccent = color; invalidate(); }
 
@@ -343,7 +347,7 @@ public final class VinylStackView extends FrameLayout {
             float w = getWidth(), h = getHeight();
             if (w <= 0 || h <= 0) return;
             for (int i = 0; i < COUNT; i++) {
-                if (active || intensity > .02f) {
+                if (!SpringMotion.isReducedMotion() && (active || intensity > .02f)) {
                     px[i] += speed[i] * dt * (1f + intensity * 1.8f);
                     if (px[i] > 1.08f) px[i] = -.08f;
                 }
@@ -353,7 +357,7 @@ public final class VinylStackView extends FrameLayout {
                 paint.setColor(Color.argb(Math.min(92, alpha), Color.red(particleAccent), Color.green(particleAccent), Color.blue(particleAccent)));
                 canvas.drawCircle(x, y, size[i] * density, paint);
             }
-            if (active || intensity > .02f) postInvalidateOnAnimation();
+            if (!SpringMotion.isReducedMotion() && (active || intensity > .02f)) postInvalidateOnAnimation();
         }
     }
 }

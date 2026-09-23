@@ -48,6 +48,13 @@ public final class ImageLoader {
 
     private ImageLoader() {}
 
+    /** Returns the original cached artwork bitmap without redrawing it through a small ImageView. */
+    public static Bitmap peek(String url) {
+        if (url == null || url.trim().isEmpty()) return null;
+        Bitmap bitmap = CACHE.get(url.trim());
+        return bitmap != null && !bitmap.isRecycled() ? bitmap : null;
+    }
+
     public static void load(String url, ImageView target, Callback cb) {
         if (url == null || url.trim().isEmpty()) { target.setImageDrawable(null); return; }
         final String key = url.trim();

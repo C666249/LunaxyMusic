@@ -17,7 +17,8 @@ import android.os.SystemClock;
 /**
  * Album-reactive current-track halo, rendering V92.4 song-owned visual state.
  *
- * The row itself stays dark. Only a restrained, multi-tone edge and a soft internal tint move,
+ * The row stays theme-native: dark in Deep/OLED and paper-light in Moonlight. A restrained,
+ * multi-tone edge and a soft internal tint move,
  * using the artwork accent as the anchor color. Animation is intentionally slow and pauses in
  * place when playback pauses. A rebound row renders the same palette transition and phase as the
  * previous renderer; detaching or recycling a view never changes the playback clock.
@@ -36,6 +37,7 @@ public final class FluidTrackHaloDrawable extends Drawable implements Runnable {
     private LinearGradient softFill;
     private PlaybackHighlightState state = new PlaybackHighlightState("", Color.rgb(123, 211, 255), SystemClock.uptimeMillis());
     private int builtAccent;
+    private boolean builtLight;
     private float builtCx = Float.NaN;
     private float builtCy = Float.NaN;
     private float phase;
@@ -102,7 +104,7 @@ public final class FluidTrackHaloDrawable extends Drawable implements Runnable {
         if (b.isEmpty()) return;
         long now = SystemClock.uptimeMillis();
         active = state.isPlaying();
-        phase = state.phase(now);
+        phase = SpringMotion.isReducedMotion() ? 0.12f : state.phase(now);
 
         float inset = 1.20f * density;
         rect.set(b.left + inset, b.top + inset, b.right - inset, b.bottom - inset);
@@ -133,7 +135,9 @@ public final class FluidTrackHaloDrawable extends Drawable implements Runnable {
         edge.setShader(null);
 
         inner.setStrokeWidth(.55f * density);
-        inner.setColor(Color.argb(scaleAlpha(active ? 48 : 30), 255, 255, 255));
+        inner.setColor(Ui.isLightAppearance()
+                ? withAlpha(accent, scaleAlpha(active ? 38 : 26))
+                : Color.argb(scaleAlpha(active ? 48 : 30), 255, 255, 255));
         innerRect.set(rect);
         innerRect.inset(1.7f * density, 1.7f * density);
         float innerRadius = Math.max(0f, radius - 1.7f * density);
@@ -141,21 +145,36 @@ public final class FluidTrackHaloDrawable extends Drawable implements Runnable {
     }
 
     private void ensureShaders(float cx, float cy, RectF bounds, int accent) {
-        if (sweep != null && softFill != null && builtAccent == accent && builtCx == cx && builtCy == cy) return;
-        int light = mix(accent, Color.WHITE, .34f);
+        boolean lightAppearance = Ui.isLightAppearance();
+        if (sweep != null && softFill != null && builtAccent == accent && builtLight == lightAppearance
+                && builtCx == cx && builtCy == cy) return;
+        int light = mix(accent, Color.WHITE, lightAppearance ? .18f : .34f);
         int warm = analogous(accent, -24f, .96f, 1.03f);
         int cool = analogous(accent, 22f, .92f, .98f);
-        int deep = mix(accent, Color.BLACK, .43f);
+        int deep = mix(accent, Color.BLACK, lightAppearance ? .18f : .43f);
         // Keep the halo album-led: secondary tones are close neighbours of the cover hue instead
         // of fixed cyan/purple brand colours. The result follows each cover without turning into RGB.
         sweep = new SweepGradient(cx, cy,
                 new int[]{light, accent, warm, deep, cool, accent, light},
                 new float[]{0f, .15f, .32f, .51f, .69f, .86f, 1f});
-        softFill = new LinearGradient(bounds.left, bounds.top, bounds.right, bounds.bottom,
-                new int[]{Color.argb(176, 9, 9, 15), withAlpha(deep, 54), withAlpha(warm, 22),
-                        withAlpha(accent, 34), Color.argb(182, 8, 8, 14)},
-                new float[]{0f, .30f, .50f, .73f, 1f}, Shader.TileMode.CLAMP);
+        if (lightAppearance) {
+            // V92.9.2 Moonlight: preserve the colourful edge but keep the search/current-track
+            // surface paper-white. The previous dark fill was the large grey bar seen in QA.
+            int lightFill = Ui.SURFACE;
+            int accentWash = mix(lightFill, accent, .070f);
+            int warmWash = mix(lightFill, warm, .045f);
+            softFill = new LinearGradient(bounds.left, bounds.top, bounds.right, bounds.bottom,
+                    new int[]{withAlpha(lightFill, 252), withAlpha(accentWash, 250), withAlpha(warmWash, 251),
+                            withAlpha(accentWash, 249), withAlpha(lightFill, 252)},
+                    new float[]{0f, .28f, .50f, .72f, 1f}, Shader.TileMode.CLAMP);
+        } else {
+            softFill = new LinearGradient(bounds.left, bounds.top, bounds.right, bounds.bottom,
+                    new int[]{Color.argb(176, 9, 9, 15), withAlpha(deep, 54), withAlpha(warm, 22),
+                            withAlpha(accent, 34), Color.argb(182, 8, 8, 14)},
+                    new float[]{0f, .30f, .50f, .73f, 1f}, Shader.TileMode.CLAMP);
+        }
         builtAccent = accent;
+        builtLight = lightAppearance;
         builtCx = cx;
         builtCy = cy;
     }
@@ -163,8 +182,10 @@ public final class FluidTrackHaloDrawable extends Drawable implements Runnable {
     private void ensureScheduled() {
         unscheduleSelf(this);
         long now = SystemClock.uptimeMillis();
-        if (rendering && isVisible() && (state.isPlaying() || state.isTransitioning(now)))
-            scheduleSelf(this, now + 32L);
+        boolean needsAccentSettle = state.isTransitioning(now);
+        boolean needsAmbientMotion = state.isPlaying() && !SpringMotion.isReducedMotion();
+        if (rendering && isVisible() && (needsAmbientMotion || needsAccentSettle))
+            scheduleSelf(this, now + (SpringMotion.isReducedMotion() ? 80L : 32L));
     }
 
     @Override public void run() {

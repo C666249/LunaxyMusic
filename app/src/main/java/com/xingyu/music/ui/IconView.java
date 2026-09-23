@@ -10,7 +10,7 @@ import android.view.View;
 
 /** Small dependency-free line icon renderer so the UI does not rely on emoji glyphs. */
 public final class IconView extends View {
-    public enum Type { HOME, SEARCH, PLAYLIST, HEART, PLAY, PAUSE, NEXT, PREV, PLUS, BACK, MUSIC, MORE, CLOSE, DELETE, DRAG, SHUFFLE, REPEAT, REPEAT_ONE, PALETTE, WEATHER, DOWNLOAD, LOCK, UNLOCK, LOCATE, BELL, SCAN }
+    public enum Type { HOME, SEARCH, PLAYLIST, HEART, PLAY, PAUSE, NEXT, PREV, PLUS, BACK, MUSIC, MORE, CLOSE, DELETE, DRAG, SHUFFLE, REPEAT, REPEAT_ONE, LAYERS, PALETTE, WEATHER, DOWNLOAD, LOCK, UNLOCK, LOCATE, BELL, SCAN, MIC, TUNE, GRID }
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
@@ -48,7 +48,7 @@ public final class IconView extends View {
         }
         final float start = playbackMorph;
         morphAnimator = ValueAnimator.ofFloat(0f, 1f);
-        morphAnimator.setDuration(210L);
+        morphAnimator.setDuration(SpringMotion.isReducedMotion() ? SpringMotion.selectionDuration() : 210L);
         morphAnimator.setInterpolator(SpringMotion.PRESS);
         morphAnimator.addUpdateListener(a -> {
             float t = (Float) a.getAnimatedValue();
@@ -67,7 +67,7 @@ public final class IconView extends View {
         }
         final float start = favoriteFill;
         favoriteAnimator = ValueAnimator.ofFloat(0f, 1f);
-        favoriteAnimator.setDuration(favorite ? 250L : 190L);
+        favoriteAnimator.setDuration(SpringMotion.isReducedMotion() ? SpringMotion.selectionDuration() : (favorite ? 250L : 190L));
         favoriteAnimator.setInterpolator(favorite ? SpringMotion.SOFT : SpringMotion.SNAPPY);
         favoriteAnimator.addUpdateListener(a -> {
             float t = (Float) a.getAnimatedValue();
@@ -234,8 +234,17 @@ public final class IconView extends View {
                 c.drawArc(new RectF(cx - s * .14f, cy - s * .09f, cx + s * .10f, cy + s * .15f), 190f, 160f, false, paint);
                 break;
             }
+            case LAYERS: {
+                // Open/native-style stacked cards glyph.  It belongs to Lunaxy's own line-icon
+                // family instead of importing Apple-owned SF Symbols onto Android.
+                RectF back = new RectF(cx - s * .22f, cy - s * .12f, cx + s * .22f, cy + s * .18f);
+                c.drawRoundRect(back, s * .055f, s * .055f, paint);
+                RectF front = new RectF(cx - s * .18f, cy - s * .22f, cx + s * .18f, cy + s * .08f);
+                c.drawRoundRect(front, s * .055f, s * .055f, paint);
+                break;
+            }
             case PALETTE: {
-                // Compact SF-Symbol-like palette outline.
+                // Compact painter-palette outline in Lunaxy's own icon geometry.
                 RectF oval = new RectF(cx - s * .27f, cy - s * .23f, cx + s * .27f, cy + s * .23f);
                 c.drawOval(oval, paint);
                 paint.setStyle(Paint.Style.FILL);
@@ -246,6 +255,37 @@ public final class IconView extends View {
                 // Small thumb indentation gives the glyph a recognisable painter-palette silhouette.
                 paint.setStyle(Paint.Style.STROKE);
                 c.drawArc(new RectF(cx + s * .03f, cy + s * .02f, cx + s * .25f, cy + s * .22f), 128f, 120f, false, paint);
+                break;
+            }
+            case TUNE: {
+                // Material/Lucide-inspired adjustments glyph, redrawn in Lunaxy's line language.
+                float left = cx - s * .25f, right = cx + s * .25f;
+                float y1 = cy - s * .18f, y2 = cy, y3 = cy + s * .18f;
+                c.drawLine(left, y1, right, y1, paint);
+                c.drawLine(left, y2, right, y2, paint);
+                c.drawLine(left, y3, right, y3, paint);
+                paint.setStyle(Paint.Style.FILL);
+                c.drawCircle(cx - s * .09f, y1, s * .055f, paint);
+                c.drawCircle(cx + s * .11f, y2, s * .055f, paint);
+                c.drawCircle(cx - s * .02f, y3, s * .055f, paint);
+                break;
+            }
+            case GRID: {
+                // Compact four-node launcher. Secondary tools grow from this stable source.
+                paint.setStyle(Paint.Style.FILL);
+                float o = s * .13f, r = s * .055f;
+                c.drawCircle(cx - o, cy - o, r, paint);
+                c.drawCircle(cx + o, cy - o, r, paint);
+                c.drawCircle(cx - o, cy + o, r, paint);
+                c.drawCircle(cx + o, cy + o, r, paint);
+                break;
+            }
+            case MIC: {
+                RectF capsule = new RectF(cx - s * .115f, cy - s * .28f, cx + s * .115f, cy + s * .08f);
+                c.drawRoundRect(capsule, s * .12f, s * .12f, paint);
+                c.drawArc(new RectF(cx - s * .22f, cy - s * .08f, cx + s * .22f, cy + s * .25f), 0f, 180f, false, paint);
+                c.drawLine(cx, cy + s * .25f, cx, cy + s * .34f, paint);
+                c.drawLine(cx - s * .12f, cy + s * .34f, cx + s * .12f, cy + s * .34f, paint);
                 break;
             }
             case DOWNLOAD: {

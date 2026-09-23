@@ -114,12 +114,13 @@ public final class LyricLineView extends TextView {
         } else {
             animate().cancel();
             animate().alpha(targetAlpha).scaleX(targetScale).scaleY(targetScale)
-                    .setDuration(active ? 250L : 210L).setInterpolator(active ? SpringMotion.SOFT : SpringMotion.SNAPPY).start();
+                    .setDuration(SpringMotion.isReducedMotion() ? SpringMotion.selectionDuration() : (active ? 250L : 210L))
+                    .setInterpolator(active ? SpringMotion.SOFT : SpringMotion.SNAPPY).start();
             if (focusAnimator != null) focusAnimator.cancel();
             final float startSize = getTextSize() / getResources().getDisplayMetrics().scaledDensity;
             final float startLetter = Build.VERSION.SDK_INT >= 21 ? getLetterSpacing() : 0f;
             focusAnimator = ValueAnimator.ofFloat(0f, 1f);
-            focusAnimator.setDuration(active ? 250L : 210L);
+            focusAnimator.setDuration(SpringMotion.isReducedMotion() ? SpringMotion.selectionDuration() : (active ? 250L : 210L));
             focusAnimator.setInterpolator(active ? SpringMotion.SOFT : SpringMotion.SNAPPY);
             focusAnimator.addUpdateListener(a -> {
                 float t = (Float) a.getAnimatedValue();

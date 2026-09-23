@@ -49,6 +49,7 @@ public final class RecommendationGlassDrawable extends Drawable implements Runna
     private int shaderAccent;
     private int shaderW = -1;
     private int shaderH = -1;
+    private boolean shaderLight;
     private LinearGradient baseGradient;
     private LinearGradient movingBand;
     private SweepGradient prismSweep;
@@ -120,7 +121,7 @@ public final class RecommendationGlassDrawable extends Drawable implements Runna
                 break;
         }
 
-        if (animated && isAnimatedStyle(style) && isVisible()) {
+        if (animated && !SpringMotion.isReducedMotion() && isAnimatedStyle(style) && isVisible()) {
             unscheduleSelf(this);
             scheduleSelf(this, SystemClock.uptimeMillis() + 84L); // ~12 fps, intentionally calm.
         }
@@ -128,11 +129,18 @@ public final class RecommendationGlassDrawable extends Drawable implements Runna
 
     private void drawOriginal(Canvas canvas, float radius) {
         fill.setShader(null);
-        fill.setColor(Color.argb(scaleAlpha(164), 11, 11, 16));
+        if (Ui.isLightAppearance()) {
+            int lightFill = mix(Ui.SURFACE, accent, .065f);
+            fill.setColor(withAlpha(lightFill, scaleAlpha(252)));
+        } else {
+            fill.setColor(Color.argb(scaleAlpha(164), 11, 11, 16));
+        }
         canvas.drawRoundRect(rect, radius, radius, fill);
         hairline.setShader(null);
         hairline.setStrokeWidth(1f * density);
-        hairline.setColor(Color.argb(scaleAlpha(22), 255, 255, 255));
+        hairline.setColor(Ui.isLightAppearance()
+                ? withAlpha(accent, scaleAlpha(42))
+                : Color.argb(scaleAlpha(22), 255, 255, 255));
         canvas.drawRoundRect(rect, radius, radius, hairline);
     }
 
@@ -151,13 +159,13 @@ public final class RecommendationGlassDrawable extends Drawable implements Runna
         canvas.drawRoundRect(rect, radius, radius, glow);
         glow.setShader(null);
 
-        int light = mix(accent, Color.WHITE, .42f);
+        int light = mix(accent, Color.WHITE, Ui.isLightAppearance() ? .18f : .42f);
         edge.setShader(null);
         edge.setStrokeWidth(2.7f * density);
-        edge.setColor(withAlpha(light, scaleAlpha(28)));
+        edge.setColor(withAlpha(light, scaleAlpha(Ui.isLightAppearance() ? 38 : 28)));
         canvas.drawRoundRect(rect, radius, radius, edge);
         hairline.setStrokeWidth(.85f * density);
-        hairline.setColor(withAlpha(light, scaleAlpha(112)));
+        hairline.setColor(withAlpha(light, scaleAlpha(Ui.isLightAppearance() ? 132 : 112)));
         canvas.drawRoundRect(innerRect, Math.max(0f, radius - 1.25f * density), Math.max(0f, radius - 1.25f * density), hairline);
     }
 
@@ -181,7 +189,9 @@ public final class RecommendationGlassDrawable extends Drawable implements Runna
         edge.setShader(null);
 
         hairline.setStrokeWidth(.45f * density);
-        hairline.setColor(Color.argb(scaleAlpha(58), 255, 255, 255));
+        hairline.setColor(Ui.isLightAppearance()
+                ? withAlpha(accent, scaleAlpha(78))
+                : Color.argb(scaleAlpha(58), 255, 255, 255));
         canvas.drawRoundRect(innerRect, Math.max(0f, radius - 1.25f * density), Math.max(0f, radius - 1.25f * density), hairline);
     }
 
@@ -199,7 +209,9 @@ public final class RecommendationGlassDrawable extends Drawable implements Runna
         // Deterministic micro-grain. It looks like misted glass without raster blur/noise textures.
         int seed = accent ^ 0x51a93d;
         detail.setStyle(Paint.Style.FILL);
-        detail.setColor(Color.argb(scaleAlpha(18), 255, 255, 255));
+        detail.setColor(Ui.isLightAppearance()
+                ? withAlpha(mix(accent, Ui.TEXT, .28f), scaleAlpha(18))
+                : Color.argb(scaleAlpha(18), 255, 255, 255));
         float w = Math.max(1f, rect.width()), h = Math.max(1f, rect.height());
         for (int i = 0; i < 15; i++) {
             seed = seed * 1103515245 + 12345;
@@ -210,12 +222,14 @@ public final class RecommendationGlassDrawable extends Drawable implements Runna
         }
         detail.setStyle(Paint.Style.STROKE);
 
-        int frost = mix(accent, Color.WHITE, .72f);
+        int frost = mix(accent, Color.WHITE, Ui.isLightAppearance() ? .24f : .72f);
         edge.setStrokeWidth(2.8f * density);
-        edge.setColor(withAlpha(frost, scaleAlpha(34)));
+        edge.setColor(withAlpha(frost, scaleAlpha(Ui.isLightAppearance() ? 42 : 34)));
         canvas.drawRoundRect(rect, radius, radius, edge);
         hairline.setStrokeWidth(.85f * density);
-        hairline.setColor(Color.argb(scaleAlpha(130), 238, 244, 255));
+        hairline.setColor(Ui.isLightAppearance()
+                ? withAlpha(accent, scaleAlpha(98))
+                : Color.argb(scaleAlpha(130), 238, 244, 255));
         canvas.drawRoundRect(innerRect, Math.max(0f, radius - 1.25f * density), Math.max(0f, radius - 1.25f * density), hairline);
     }
 
@@ -232,7 +246,8 @@ public final class RecommendationGlassDrawable extends Drawable implements Runna
         float w = rect.width(), h = rect.height();
         detail.setStyle(Paint.Style.STROKE);
         detail.setStrokeWidth(.72f * density);
-        detail.setColor(withAlpha(mix(accent, Color.WHITE, .50f), scaleAlpha(34)));
+        detail.setColor(withAlpha(mix(accent, Color.WHITE, Ui.isLightAppearance() ? .12f : .50f),
+                scaleAlpha(Ui.isLightAppearance() ? 38 : 34)));
         Path facets = new Path();
         facets.moveTo(rect.left + w * .05f, rect.top + h * .28f);
         facets.lineTo(rect.left + w * .33f, rect.top + h * .08f);
@@ -256,51 +271,88 @@ public final class RecommendationGlassDrawable extends Drawable implements Runna
         canvas.restoreToCount(save);
 
         edge.setStrokeWidth(2.75f * density);
-        edge.setColor(withAlpha(mix(accent, Color.WHITE, .45f), scaleAlpha(32)));
+        edge.setColor(withAlpha(mix(accent, Color.WHITE, Ui.isLightAppearance() ? .16f : .45f),
+                scaleAlpha(Ui.isLightAppearance() ? 40 : 32)));
         canvas.drawRoundRect(rect, radius, radius, edge);
         hairline.setStrokeWidth(.82f * density);
-        hairline.setColor(withAlpha(mix(accent, Color.WHITE, .62f), scaleAlpha(126)));
+        hairline.setColor(withAlpha(mix(accent, Color.WHITE, Ui.isLightAppearance() ? .20f : .62f),
+                scaleAlpha(Ui.isLightAppearance() ? 120 : 126)));
         canvas.drawRoundRect(innerRect, Math.max(0f, radius - 1.25f * density), Math.max(0f, radius - 1.25f * density), hairline);
     }
 
     private void ensureShaders(int width, int height) {
+        boolean lightAppearance = Ui.isLightAppearance();
         if (shaderStyle == style && shaderAccent == accent && shaderW == width && shaderH == height
+                && shaderLight == lightAppearance
                 && baseGradient != null && movingBand != null && prismSweep != null && frostBloom != null) return;
         float l = rect.left, t = rect.top, r = rect.right, b = rect.bottom;
         int deep = mix(accent, Color.BLACK, .78f);
         int deeper = mix(accent, Color.BLACK, .90f);
-        int soft = mix(accent, Color.WHITE, .18f);
+        int soft = mix(accent, Color.WHITE, lightAppearance ? .38f : .18f);
         int cool = analogous(accent, 24f, .82f, .98f);
         int warm = analogous(accent, -28f, .80f, 1.00f);
 
-        if (style == STYLE_MOON_FROST) {
-            baseGradient = new LinearGradient(l, t, r, b,
-                    new int[]{Color.argb(188, 15, 17, 25), Color.argb(178, 31, 34, 45), withAlpha(deep, 122)},
-                    new float[]{0f, .48f, 1f}, Shader.TileMode.CLAMP);
-        } else if (style == STYLE_DEEP_CRYSTAL) {
-            baseGradient = new LinearGradient(l, t, r, b,
-                    new int[]{Color.argb(205, 7, 9, 16), withAlpha(deeper, 182), Color.argb(212, 6, 8, 14)},
-                    new float[]{0f, .48f, 1f}, Shader.TileMode.CLAMP);
+        if (lightAppearance) {
+            // Moonlight has its own material: nearly-white paper with restrained accent tint.
+            // Reusing the dark shaders produced the grey blocks visible on-device in V92.9.1.
+            int paper = Ui.SURFACE;
+            int coolPaper = mix(paper, cool, .075f);
+            int accentPaper = mix(paper, accent, style == STYLE_DEEP_CRYSTAL ? .145f : .105f);
+            int warmPaper = mix(paper, warm, .070f);
+            if (style == STYLE_MOON_FROST) {
+                baseGradient = new LinearGradient(l, t, r, b,
+                        new int[]{withAlpha(paper, 254), withAlpha(coolPaper, 252), withAlpha(accentPaper, 250)},
+                        new float[]{0f, .52f, 1f}, Shader.TileMode.CLAMP);
+            } else if (style == STYLE_DEEP_CRYSTAL) {
+                baseGradient = new LinearGradient(l, t, r, b,
+                        new int[]{withAlpha(paper, 254), withAlpha(accentPaper, 248), withAlpha(coolPaper, 252)},
+                        new float[]{0f, .50f, 1f}, Shader.TileMode.CLAMP);
+            } else {
+                baseGradient = new LinearGradient(l, t, r, b,
+                        new int[]{withAlpha(paper, 254), withAlpha(accentPaper, 249), withAlpha(warmPaper, 252)},
+                        new float[]{0f, .56f, 1f}, Shader.TileMode.CLAMP);
+            }
+            movingBand = new LinearGradient(l - rect.width() * .55f, t, r + rect.width() * .55f, b,
+                    new int[]{Color.TRANSPARENT, withAlpha(cool, 10), withAlpha(soft, 24), withAlpha(warm, 12), Color.TRANSPARENT},
+                    new float[]{0f, .30f, .48f, .66f, 1f}, Shader.TileMode.CLAMP);
+            prismSweep = new SweepGradient(rect.centerX(), rect.centerY(),
+                    new int[]{accent, cool, Ui.PURPLE, warm, Ui.GOLD, accent},
+                    new float[]{0f, .18f, .38f, .61f, .81f, 1f});
+            frostBloom = new RadialGradient(l + rect.width() * .24f, t + rect.height() * .05f,
+                    Math.max(rect.width(), rect.height()) * .92f,
+                    new int[]{Color.argb(118, 255, 255, 255), withAlpha(soft, 14), Color.TRANSPARENT},
+                    new float[]{0f, .46f, 1f}, Shader.TileMode.CLAMP);
         } else {
-            baseGradient = new LinearGradient(l, t, r, b,
-                    new int[]{Color.argb(194, 8, 10, 17), withAlpha(deep, 120), Color.argb(196, 9, 10, 17)},
-                    new float[]{0f, .55f, 1f}, Shader.TileMode.CLAMP);
-        }
+            if (style == STYLE_MOON_FROST) {
+                baseGradient = new LinearGradient(l, t, r, b,
+                        new int[]{Color.argb(188, 15, 17, 25), Color.argb(178, 31, 34, 45), withAlpha(deep, 122)},
+                        new float[]{0f, .48f, 1f}, Shader.TileMode.CLAMP);
+            } else if (style == STYLE_DEEP_CRYSTAL) {
+                baseGradient = new LinearGradient(l, t, r, b,
+                        new int[]{Color.argb(205, 7, 9, 16), withAlpha(deeper, 182), Color.argb(212, 6, 8, 14)},
+                        new float[]{0f, .48f, 1f}, Shader.TileMode.CLAMP);
+            } else {
+                baseGradient = new LinearGradient(l, t, r, b,
+                        new int[]{Color.argb(194, 8, 10, 17), withAlpha(deep, 120), Color.argb(196, 9, 10, 17)},
+                        new float[]{0f, .55f, 1f}, Shader.TileMode.CLAMP);
+            }
 
-        movingBand = new LinearGradient(l - rect.width() * .55f, t, r + rect.width() * .55f, b,
-                new int[]{Color.TRANSPARENT, withAlpha(cool, 16), withAlpha(soft, 52), withAlpha(warm, 22), Color.TRANSPARENT},
-                new float[]{0f, .30f, .48f, .66f, 1f}, Shader.TileMode.CLAMP);
-        prismSweep = new SweepGradient(rect.centerX(), rect.centerY(),
-                new int[]{soft, cool, Color.rgb(214, 177, 255), warm, Color.rgb(255, 218, 148), soft},
-                new float[]{0f, .18f, .38f, .61f, .81f, 1f});
-        frostBloom = new RadialGradient(l + rect.width() * .24f, t + rect.height() * .05f,
-                Math.max(rect.width(), rect.height()) * .92f,
-                new int[]{Color.argb(46, 250, 252, 255), withAlpha(soft, 22), Color.TRANSPARENT},
-                new float[]{0f, .46f, 1f}, Shader.TileMode.CLAMP);
+            movingBand = new LinearGradient(l - rect.width() * .55f, t, r + rect.width() * .55f, b,
+                    new int[]{Color.TRANSPARENT, withAlpha(cool, 16), withAlpha(soft, 52), withAlpha(warm, 22), Color.TRANSPARENT},
+                    new float[]{0f, .30f, .48f, .66f, 1f}, Shader.TileMode.CLAMP);
+            prismSweep = new SweepGradient(rect.centerX(), rect.centerY(),
+                    new int[]{soft, cool, Color.rgb(214, 177, 255), warm, Color.rgb(255, 218, 148), soft},
+                    new float[]{0f, .18f, .38f, .61f, .81f, 1f});
+            frostBloom = new RadialGradient(l + rect.width() * .24f, t + rect.height() * .05f,
+                    Math.max(rect.width(), rect.height()) * .92f,
+                    new int[]{Color.argb(46, 250, 252, 255), withAlpha(soft, 22), Color.TRANSPARENT},
+                    new float[]{0f, .46f, 1f}, Shader.TileMode.CLAMP);
+        }
         shaderStyle = style;
         shaderAccent = accent;
         shaderW = width;
         shaderH = height;
+        shaderLight = lightAppearance;
     }
 
     private void invalidateShaders() {
@@ -312,7 +364,7 @@ public final class RecommendationGlassDrawable extends Drawable implements Runna
     }
 
     @Override public void run() {
-        if (!animated || !isVisible() || !isAnimatedStyle(style)) return;
+        if (!animated || SpringMotion.isReducedMotion() || !isVisible() || !isAnimatedStyle(style)) return;
         invalidateSelf();
     }
 
@@ -352,6 +404,7 @@ public final class RecommendationGlassDrawable extends Drawable implements Runna
     }
 
     private static float phase(long periodMs) {
+        if (SpringMotion.isReducedMotion()) return .42f;
         return (SystemClock.uptimeMillis() % Math.max(1000L, periodMs)) / (float) Math.max(1000L, periodMs);
     }
 
