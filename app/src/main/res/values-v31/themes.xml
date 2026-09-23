@@ -1,0 +1,20 @@
+<resources>
+    <style name="Theme.XingyuMusic" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">@color/lunaxy_launch_bg</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:colorAccent">#B9A6FF</item>
+        <item name="android:windowSplashScreenBackground">@color/lunaxy_launch_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/icon_stardust</item>
+        <item name="android:windowSplashScreenAnimationDuration">90</item>
+    </style>
+</resources>

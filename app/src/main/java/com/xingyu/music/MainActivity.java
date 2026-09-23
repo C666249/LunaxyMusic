@@ -251,6 +251,10 @@ public final class MainActivity extends Activity implements PlaybackService.List
     private ImageView startupLogo;
     private ValueAnimator startupStarSpeedAnimator;
     private boolean startupComplete;
+    private boolean startupFinishScheduled;
+    private boolean runtimeInitStarted;
+    private long startupSceneStartedAtMs;
+    private final ArrayList<View> startupEntranceTargets = new ArrayList<>();
     private int libraryBootstrapGeneration;
     private FrameLayout navHost;
     private LinearLayout navBar;
@@ -819,7 +823,30 @@ public final class MainActivity extends Activity implements PlaybackService.List
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         configureSystemSplashExit();
-        // Restore V10 routing from a clean gate state before PlaybackService is bound.
+
+        // V92.9.15: submit the real Lunaxy visual frame before data/service setup.
+        AppearanceSystem.load(this);
+        loadUiPreferences();
+        loadStarfieldPreferences();
+        configureWindow();
+        buildShell();
+        beginStartupScene();
+        installSystemBackHandler();
+        scheduleRuntimeInitializationAfterFirstFrame();
+    }
+
+    private void scheduleRuntimeInitializationAfterFirstFrame() {
+        if (runtimeInitStarted) return;
+        if (appRoot == null) {
+            initializeRuntimeAfterFirstFrame();
+            return;
+        }
+        appRoot.postOnAnimation(() -> appRoot.postOnAnimation(this::initializeRuntimeAfterFirstFrame));
+    }
+
+    private void initializeRuntimeAfterFirstFrame() {
+        if (runtimeInitStarted || isFinishing() || isDestroyed()) return;
+        runtimeInitStarted = true;
         V14PlaybackStateMigration.runOnce(this);
         personalizationStore = new PersonalizationStore(this);
         playbackBehaviorTracker = new PlaybackBehaviorTracker(personalizationStore);
@@ -834,17 +861,6 @@ public final class MainActivity extends Activity implements PlaybackService.List
         searchPerformance = new SearchPerformanceStore(this);
         weatherMood = new WeatherMoodProvider(this);
 
-        // Theme + the launch shell are deliberately cheap and happen before any potentially large
-        // library JSON decode.  The first Activity frame therefore belongs to Lunaxy's starfield,
-        // not to Android's default grey starting window or a blocked main thread.
-        AppearanceSystem.load(this);
-        loadUiPreferences();
-        loadStarfieldPreferences();
-        configureWindow();
-        buildShell();
-        beginStartupScene();
-        installSystemBackHandler();
-
         IntentFilter downloadFilter = new IntentFilter(OfflineDownloadService.ACTION_CHANGED);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(downloadReceiver, downloadFilter, Context.RECEIVER_NOT_EXPORTED);
         else registerReceiver(downloadReceiver, downloadFilter);
@@ -852,10 +868,6 @@ public final class MainActivity extends Activity implements PlaybackService.List
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(voiceReceiver, voiceFilter, Context.RECEIVER_NOT_EXPORTED);
         else registerReceiver(voiceReceiver, voiceFilter);
         bindService(new Intent(this, PlaybackService.class), connection, BIND_AUTO_CREATE);
-
-        // Large formal libraries (hundreds of playlist rows / >1 GB app data) hydrate off the UI
-        // thread.  Navigation and the launch starfield stay responsive while the authoritative data
-        // objects are decoded, then the real first page takes ownership in one handoff.
         bootstrapLibraryAndFirstPage();
     }
 
@@ -919,14 +931,11 @@ public final class MainActivity extends Activity implements PlaybackService.List
         if (Build.VERSION.SDK_INT < 31) return;
         try {
             getSplashScreen().setOnExitAnimationListener(splashView -> {
-                // Android 12+ passes SplashScreenView itself to the exit callback. It is already
-                // a View; there is no getView() accessor on the framework SplashScreenView API.
-                // Animate the supplied view directly, then remove it when the hand-off completes.
                 splashView.animate().cancel();
                 splashView.setPivotX(splashView.getWidth() * .5f);
                 splashView.setPivotY(splashView.getHeight() * .5f);
-                splashView.animate().alpha(0f).scaleX(1.035f).scaleY(1.035f)
-                        .setDuration(SpringMotion.isReducedMotion() ? 90L : 220L)
+                splashView.animate().alpha(0f).scaleX(1.01f).scaleY(1.01f)
+                        .setDuration(SpringMotion.isReducedMotion() ? 45L : 110L)
                         .setInterpolator(SpringMotion.PLAYER_OPEN)
                         .withEndAction(splashView::remove).start();
             });
@@ -936,26 +945,29 @@ public final class MainActivity extends Activity implements PlaybackService.List
     private void beginStartupScene() {
         if (appRoot == null || safeLayer == null || stars == null) return;
         startupComplete = false;
+        startupFinishScheduled = false;
+        startupSceneStartedAtMs = SystemClock.uptimeMillis();
+        startupEntranceTargets.clear();
         safeLayer.animate().cancel();
         safeLayer.setVisibility(View.INVISIBLE);
-        safeLayer.setAlpha(0f);
-        safeLayer.setTranslationY(SpringMotion.isReducedMotion() ? 0f : Ui.dp(this, 9));
-        stars.setAccentColor(Ui.PURPLE);
-        stars.setMotionSpeedMultiplier(SpringMotion.isReducedMotion() ? 1f : 5.2f);
+        safeLayer.setAlpha(1f);
+        safeLayer.setTranslationY(0f);
+        stars.setAccentColor(playlistPlaybackAccent);
+        stars.setMotionSpeedMultiplier(SpringMotion.isReducedMotion() ? 1f : 4.8f);
 
         startupLogo = new ImageView(this);
         startupLogo.setImageResource(getApplicationInfo().icon);
         startupLogo.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        startupLogo.setAlpha(.96f);
-        startupLogo.setScaleX(.92f);
-        startupLogo.setScaleY(.92f);
+        startupLogo.setAlpha(1f);
+        startupLogo.setScaleX(.90f);
+        startupLogo.setScaleY(.90f);
         startupLogo.setContentDescription(null);
         startupLogo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         FrameLayout.LayoutParams lp = Ui.frame(Ui.dp(this, 92), Ui.dp(this, 92), Gravity.CENTER);
         appRoot.addView(startupLogo, lp);
         startupLogo.bringToFront();
         if (!SpringMotion.isReducedMotion()) {
-            startupLogo.animate().scaleX(1f).scaleY(1f).setDuration(520L)
+            startupLogo.animate().scaleX(1f).scaleY(1f).setDuration(620L)
                     .setInterpolator(SpringMotion.SOFT).start();
         }
     }
@@ -988,11 +1000,6 @@ public final class MainActivity extends Activity implements PlaybackService.List
                 playlists = pl;
                 renderTab();
                 finishStartupScene();
-                handleVoiceLaunchIntent(getIntent());
-                if (VoiceAssistantContract.enabled(this)
-                        && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
-                    main.postDelayed(() -> startVoiceAssistant(false), 540L);
-                main.postDelayed(this::maybeStartOnboarding, 460L);
             });
         });
     }
@@ -1007,18 +1014,32 @@ public final class MainActivity extends Activity implements PlaybackService.List
     }
 
     private void finishStartupScene() {
-        startupComplete = true;
-        if (safeLayer != null) {
-            safeLayer.animate().cancel();
-            safeLayer.setVisibility(View.VISIBLE);
-            if (SpringMotion.isReducedMotion()) {
-                safeLayer.setAlpha(1f);
-                safeLayer.setTranslationY(0f);
-            } else {
-                safeLayer.animate().alpha(1f).translationY(0f).setDuration(430L)
-                        .setInterpolator(SpringMotion.PLAYER_OPEN).start();
+        if (startupComplete || isFinishing() || isDestroyed()) return;
+        if (!SpringMotion.isReducedMotion()) {
+            long remaining = 760L - Math.max(0L, SystemClock.uptimeMillis() - startupSceneStartedAtMs);
+            if (remaining > 0L) {
+                if (!startupFinishScheduled) {
+                    startupFinishScheduled = true;
+                    main.postDelayed(() -> {
+                        startupFinishScheduled = false;
+                        finishStartupScene();
+                    }, remaining);
+                }
+                return;
             }
         }
+        startupFinishScheduled = false;
+        startupComplete = true;
+
+        prepareStartupHomeEntrance();
+        if (safeLayer != null) {
+            safeLayer.animate().cancel();
+            safeLayer.setAlpha(1f);
+            safeLayer.setTranslationY(0f);
+            safeLayer.setVisibility(View.VISIBLE);
+        }
+        runStartupHomeEntrance();
+
         if (stars != null) {
             if (startupStarSpeedAnimator != null) startupStarSpeedAnimator.cancel();
             if (SpringMotion.isReducedMotion()) {
@@ -1026,7 +1047,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
             } else {
                 final float from = Math.max(1f, stars.motionSpeedMultiplier());
                 startupStarSpeedAnimator = ValueAnimator.ofFloat(from, 1f);
-                startupStarSpeedAnimator.setDuration(720L);
+                startupStarSpeedAnimator.setDuration(1080L);
                 startupStarSpeedAnimator.setInterpolator(SpringMotion.PLAYER_OPEN);
                 startupStarSpeedAnimator.addUpdateListener(a -> {
                     if (stars != null) stars.setMotionSpeedMultiplier((Float) a.getAnimatedValue());
@@ -1041,14 +1062,93 @@ public final class MainActivity extends Activity implements PlaybackService.List
                 if (logo.getParent() instanceof ViewGroup) ((ViewGroup) logo.getParent()).removeView(logo);
                 startupLogo = null;
             } else {
-                logo.animate().alpha(0f).scaleX(1.07f).scaleY(1.07f).translationY(-Ui.dp(this, 8))
-                        .setDuration(300L).setInterpolator(SpringMotion.SNAPPY)
+                logo.animate().alpha(0f).scaleX(1.055f).scaleY(1.055f).translationY(-Ui.dp(this, 6))
+                        .setStartDelay(70L).setDuration(590L).setInterpolator(SpringMotion.SOFT)
                         .withEndAction(() -> {
                             if (logo.getParent() instanceof ViewGroup) ((ViewGroup) logo.getParent()).removeView(logo);
                             if (startupLogo == logo) startupLogo = null;
                         }).start();
             }
         }
+
+        continueAfterStartupScene();
+    }
+
+    private void continueAfterStartupScene() {
+        handleVoiceLaunchIntent(getIntent());
+        if (VoiceAssistantContract.enabled(this)
+                && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+            main.postDelayed(() -> startVoiceAssistant(false), 920L);
+        main.postDelayed(this::maybeStartOnboarding, 1280L);
+    }
+
+    private void prepareStartupHomeEntrance() {
+        startupEntranceTargets.clear();
+        if (SpringMotion.isReducedMotion() || tab != 0 || openPlaylist != null
+                || openSmartCollection != null || offlinePlaylistOpen || pageHost == null
+                || pageHost.getChildCount() == 0) return;
+
+        View page = pageHost.getChildAt(pageHost.getChildCount() - 1);
+        if (page instanceof ScrollView) {
+            ScrollView scroll = (ScrollView) page;
+            if (scroll.getChildCount() > 0 && scroll.getChildAt(0) instanceof ViewGroup) {
+                ViewGroup scaffold = (ViewGroup) scroll.getChildAt(0);
+                int count = scaffold.getChildCount();
+                for (int i = 0; i < count; i++) {
+                    View child = scaffold.getChildAt(i);
+                    if (i == count - 1 && child instanceof ViewGroup) {
+                        ViewGroup sections = (ViewGroup) child;
+                        for (int j = 0; j < sections.getChildCount(); j++)
+                            addStartupEntranceTarget(sections.getChildAt(j));
+                    } else {
+                        addStartupEntranceTarget(child);
+                    }
+                }
+            }
+        }
+        addStartupEntranceTarget(miniBar);
+        addStartupEntranceTarget(navHost);
+
+        float lift = Ui.dp(this, 12);
+        for (View target : startupEntranceTargets) {
+            target.animate().cancel();
+            target.setAlpha(0f);
+            target.setScaleX(.92f);
+            target.setScaleY(.92f);
+            target.setTranslationY(lift);
+        }
+    }
+
+    private void addStartupEntranceTarget(View target) {
+        if (target == null || target.getVisibility() != View.VISIBLE || startupEntranceTargets.contains(target)) return;
+        startupEntranceTargets.add(target);
+    }
+
+    private void runStartupHomeEntrance() {
+        if (SpringMotion.isReducedMotion()) {
+            for (View target : startupEntranceTargets) {
+                target.setAlpha(1f);
+                target.setScaleX(1f);
+                target.setScaleY(1f);
+                target.setTranslationY(0f);
+            }
+            startupEntranceTargets.clear();
+            return;
+        }
+        if (startupEntranceTargets.isEmpty() || appRoot == null) return;
+        final ArrayList<View> targets = new ArrayList<>(startupEntranceTargets);
+        startupEntranceTargets.clear();
+        appRoot.postOnAnimation(() -> {
+            for (int i = 0; i < targets.size(); i++) {
+                View target = targets.get(i);
+                if (target == null || !target.isAttachedToWindow()) continue;
+                long delay = 110L + Math.min(i, 8) * 58L;
+                target.animate().cancel();
+                target.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f)
+                        .setStartDelay(delay).setDuration(560L)
+                        .setInterpolator(SpringMotion.SOFT).start();
+            }
+        });
     }
 
     private void loadUiPreferences() {

@@ -38,18 +38,18 @@ check('curtain reveal remains row handoff', 'CurtainRevealFrame.reveal' in MAIN 
 check('heavy playlist detail does not use v9297 size ListView branch', 'if (p.songs.size() >=' not in MAIN[MAIN.find('private View playlistDetailPage'):MAIN.find('private View playlistDetailVirtualPage')])
 
 # Startup continuity and cold-start IO
-oncreate = MAIN[MAIN.find('@Override protected void onCreate'):MAIN.find('@Override protected void onNewIntent')]
-check('onCreate builds shell before library hydration', oncreate.find('buildShell();') < oncreate.find('bootstrapLibraryAndFirstPage();'))
-check('onCreate no synchronous reloadLibrary', 'reloadLibrary();' not in oncreate)
+oncreate = MAIN[MAIN.find('@Override protected void onCreate'):MAIN.find('private void scheduleRuntimeInitializationAfterFirstFrame')]
+check('onCreate builds shell before deferred runtime init', oncreate.find('buildShell();') < oncreate.find('scheduleRuntimeInitializationAfterFirstFrame();'))
+check('onCreate no synchronous reloadLibrary', 'reloadLibrary();' not in oncreate)\ncheck('onCreate defers stores and service binding beyond first frame', 'new LibraryStore' not in oncreate and 'bindService(' not in oncreate and 'scheduleRuntimeInitializationAfterFirstFrame();' in oncreate)
 check('library bootstrap runs on io executor', 'io.submit(() -> {' in MAIN[MAIN.find('private void bootstrapLibraryAndFirstPage'):MAIN.find('private void finishStartupScene')])
 check('playlist decode is off main thread', 'nextPlaylists = store.playlists();' in MAIN[MAIN.find('private void bootstrapLibraryAndFirstPage'):MAIN.find('private void finishStartupScene')])
-check('startup begins as starfield scene', 'beginStartupScene();' in oncreate and 'stars.setMotionSpeedMultiplier' in MAIN)
+check('startup begins as starfield scene', 'beginStartupScene();' in oncreate and 'stars.setMotionSpeedMultiplier' in MAIN)\ncheck('runtime init waits across animation frames', 'appRoot.postOnAnimation(() -> appRoot.postOnAnimation(this::initializeRuntimeAfterFirstFrame))' in MAIN)
 check('startup star speed settles into home starfield', 'ValueAnimator.ofFloat(from, 1f)' in MAIN and 'stars.setMotionSpeedMultiplier((Float) a.getAnimatedValue())' in MAIN)
 check('starfield supports launch speed multiplier', 'setMotionSpeedMultiplier' in STAR and 'forwardSpeed = .052f * motionSpeedMultiplier' in STAR)
 check('base window background is deep-space not grey', '@color/lunaxy_launch_bg' in THEME and '#02040A' in COLORS)
 check('android 12 splash is branded', 'windowSplashScreenBackground' in THEME31 and 'windowSplashScreenAnimatedIcon' in THEME31)
 check('system splash exit has explicit handoff', 'setOnExitAnimationListener' in MAIN and '::remove' in MAIN)
-check('reduced motion removes launch travel', 'SpringMotion.isReducedMotion() ? 1f : 5.2f' in MAIN)
+check('reduced motion removes launch travel', 'SpringMotion.isReducedMotion() ? 1f : 4.8f' in MAIN)
 
 failed = [name for name, ok in checks if not ok]
 if failed:
