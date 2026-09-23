@@ -1,0 +1,86 @@
+name: Build LunaxyMusic APK
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build-apk.yml"
+      - ".ci/v92913-source.tar.xz.b64"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore V92.9.13 source overlay
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [ -f .ci/v92913-source.tar.xz.b64 ]; then
+            base64 -d .ci/v92913-source.tar.xz.b64 > /tmp/v92913-source.tar.xz
+            echo "dbea369984fa1b5b319d11cb8a8feb2ee4bcc7974bb06cd70b097eb0dd1348d1  /tmp/v92913-source.tar.xz" | sha256sum -c -
+            tar -xJf /tmp/v92913-source.tar.xz -C .
+          fi
+          grep -n "versionName" app/build.gradle.kts || true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Make Gradle executable
+        run: chmod +x gradlew
+
+      - name: Run V92.9.13 regression policy
+        run: |
+          python3 tests/V92913MotionUnificationRegressionTest.py
+          python3 tests/V92912PlaylistHostTypeRegressionTest.py
+          python3 tests/V92911PlaylistChoreographyRegressionTest.py
+
+      - name: Build debug APK
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Collect APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out
+          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          cp "$APK" out/LunaxyMusic-V92.9.13-Stable.apk
+          sha256sum out/LunaxyMusic-V92.9.13-Stable.apk | tee out/LunaxyMusic-V92.9.13-Stable.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LunaxyMusic-V92.9.13-Stable-APK
+          path: |
+            out/LunaxyMusic-V92.9.13-Stable.apk
+            out/LunaxyMusic-V92.9.13-Stable.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Sync expanded V92.9.13 source back to main
+        if: success()
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -f .ci/v92913-source.tar.xz.b64
+          rmdir .ci 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Sync V92.9.13 Stable source [skip ci]"
+            git push origin HEAD:main
+          fi
