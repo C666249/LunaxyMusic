@@ -1,7 +1,9 @@
-Lunaxy Music V92.9.13 Stable build status
-versionName=92.9.13
-versionCode=991
+Lunaxy Music V92.9.14 Stable build status
+versionName=92.9.14
+versionCode=993
 
-A real Android assemble is not claimed because this environment cannot resolve/download Gradle 9.5.0 from services.gradle.org and has no cached compatible Android build environment.
-Completed instead: all Python UI/Voice/progressive-loading regressions including V92.9.13, pure JVM Motion/Vinyl/Player/Voice tests, XML parsing, Stable/Beta runtime parity, channel identity audit and final ZIP integrity verification.
-See dev-logs/V92.9.13-validation.md.
+A real Android assemble is NOT claimed for this delivery.
+The local Gradle wrapper bootstrap repeatedly failed because services.gradle.org could not be resolved in the current environment.
+Completed locally: full Python UI/Voice/progressive-loading regressions including V92.9.14, pure JVM Motion/Vinyl/Player/Voice checks, XML parsing, Java source-structure review, Stable/Beta runtime parity and channel identity audit.
+No APK is fabricated or included.
+See dev-logs/V92.9.14-validation.md.

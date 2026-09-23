@@ -1,11 +1,11 @@
-# Lunaxy Music V92.9.13 Stable
+# Lunaxy Music V92.9.14 Stable
 
-这是 **V92.9.13 Stable** 完整 Android Studio 源码工程，ZIP 根目录即工程根（包含 `settings.gradle.kts`）。
+这是 **V92.9.14 Stable** 完整 Android Studio 源码工程，ZIP 根目录即工程根（包含 `settings.gradle.kts`）。
 
-本版统一了密集歌曲列表的入场语言：每日推荐等 Smart Collection 与搜索“全部结果”不再使用整页从左到右的机械 Curtain 光缝，而是与歌单详情一致，按歌曲行逐条错峰、楼梯式展开；Skeleton shimmer 也按行错相。
+本版把 V92.9.13 的逐行楼梯式加载继续统一到“唱片封面驱动”的色彩语言：搜索全部结果、每日推荐/私人电台/天气电台/最近播放、歌单详情的逐行 Skeleton shimmer 与 Curtain Reveal 移动光缝，不再固定为统一蓝色；当存在当前播放歌曲时，优先使用当前歌曲封面的实际 accent。封面色稍后解析完成时，仍在屏幕上的加载行会原地换色，不重启 shimmer 相位。
 
-歌单 Tab 卡片 → 歌单详情大卡片的 Shared Object 同时增强：源卡片会保留到目标 Hero 几何稳定，代理元素再接管并缓慢滑动、扩大、圆角/封面/标题同步形变，目标未在首帧测量完成时会等待数个 animation frame，而不是直接退化。
+歌单详情顶部大卡片改为按该歌单首张封面取色。缓存中已有封面时首帧直接使用封面色；封面异步返回时用短色彩过渡更新材质，并同步 Shared Hero 代理，避免卡片飞行过程中出现两套颜色。
 
-身份：`com.xingyu.music` / `92.9.13` / `versionCode 991`。
+身份：`com.xingyu.music` / `92.9.14` / `versionCode 993`。
 
-**无数据迁移。** Stable 沿用既有包名与本地数据格式。
+**无数据迁移。** Stable 沿用既有包名、数据库/偏好/Library JSON、下载缓存与 Voice 数据格式。

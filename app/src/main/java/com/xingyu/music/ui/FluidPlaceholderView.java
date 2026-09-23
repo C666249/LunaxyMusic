@@ -19,7 +19,7 @@ public final class FluidPlaceholderView extends View {
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final int kind;
-    private final int accent;
+    private int accent;
     private ValueAnimator shimmer;
     private float phase = -.45f;
     private long shimmerStartDelayMs;
@@ -35,6 +35,15 @@ public final class FluidPlaceholderView extends View {
         shimmerStartDelayMs = Math.max(0L, delayMs);
         if (isAttachedToWindow() && !SpringMotion.isReducedMotion()) startShimmer();
     }
+
+    /** Retint an in-flight skeleton without restarting its shimmer phase. */
+    public void setAccent(int color) {
+        if (accent == color) return;
+        accent = color;
+        invalidate();
+    }
+
+    public boolean isSongRow() { return kind == SONG_ROW; }
 
     @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow();

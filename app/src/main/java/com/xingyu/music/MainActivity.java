@@ -294,6 +294,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
     private int[] activePlaylistLoadedRef;
     private ImportedPlaylist activePlaylistPageModel;
     private View activePlaylistHeroCard;
+    private int activePlaylistHeroAccent = Ui.CYAN;
+    private ValueAnimator activePlaylistHeroAccentAnimator;
     private View activePlaylistHeroThumb;
     private TextView activePlaylistHeroTitle;
     private TextView activePlaylistHeroMeta;
@@ -329,6 +331,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
     private int activePlaylistHighlightedAccent;
     private final LinkedHashMap<String, ArrayList<View>> activePlaylistRows = new LinkedHashMap<>();
     private String miniArtworkKey = "";
+    private String playlistPlaybackAccentKey = "";
     private int systemTopInset;
     private int systemBottomInset;
     private int previousSoftInputMode;
@@ -480,7 +483,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
         final RectF sourceMeta;
         final float sourceTitleSizePx;
         final float sourceMetaSizePx;
-        final int accent;
+        int accent;
         final RectF detailContainer = new RectF();
         final RectF detailArtwork = new RectF();
         final RectF detailTitle = new RectF();
@@ -7128,7 +7131,9 @@ public final class MainActivity extends Activity implements PlaybackService.List
                 frame.showImmediately(holder.wrapper);
             } else {
                 revealedKeys.add(revealKey);
-                FluidPlaceholderView placeholder = new FluidPlaceholderView(MainActivity.this, FluidPlaceholderView.SONG_ROW, Ui.CYAN);
+                int revealAccent = progressiveLoadingAccent(Ui.CYAN);
+                frame.setAccent(revealAccent);
+                FluidPlaceholderView placeholder = new FluidPlaceholderView(MainActivity.this, FluidPlaceholderView.SONG_ROW, revealAccent);
                 long step = position < 10 ? position * 58L : 0L;
                 placeholder.setShimmerStartDelay(step);
                 frame.setPlaceholder(placeholder);
@@ -9188,8 +9193,9 @@ public final class MainActivity extends Activity implements PlaybackService.List
     private View skeletonSongRows(int count, int accent) {
         LinearLayout box = Ui.column(this);
         int rows = Math.max(2, Math.min(7, count));
+        int shimmerAccent = progressiveLoadingAccent(accent);
         for (int i = 0; i < rows; i++) {
-            FluidPlaceholderView row = new FluidPlaceholderView(this, FluidPlaceholderView.SONG_ROW, accent);
+            FluidPlaceholderView row = new FluidPlaceholderView(this, FluidPlaceholderView.SONG_ROW, shimmerAccent);
             row.setShimmerStartDelay(i * 62L);
             LinearLayout.LayoutParams rp = Ui.lp(-1, Ui.dp(this, 72));
             if (i > 0) rp.topMargin = Ui.dp(this, 7);
@@ -9355,7 +9361,9 @@ public final class MainActivity extends Activity implements PlaybackService.List
             }
 
             CurtainRevealFrame frame = new CurtainRevealFrame(this);
-            FluidPlaceholderView placeholder = new FluidPlaceholderView(this, FluidPlaceholderView.SONG_ROW, collection.accent);
+            int revealAccent = progressiveLoadingAccent(collection.accent);
+            frame.setAccent(revealAccent);
+            FluidPlaceholderView placeholder = new FluidPlaceholderView(this, FluidPlaceholderView.SONG_ROW, revealAccent);
             placeholder.setShimmerStartDelay(stagedIndex * 62L);
             frame.setPlaceholder(placeholder);
             LinearLayout.LayoutParams fp = Ui.lp(-1, Ui.dp(this, 72));
@@ -9387,10 +9395,11 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
         LinearLayout hero = Ui.column(this);
         hero.setPadding(Ui.dp(this, 18), Ui.dp(this, 18), Ui.dp(this, 18), Ui.dp(this, 18));
-        hero.setBackground(Ui.tintedGlass(playlistAccent(p), 23, this));
+        activePlaylistHeroAccent = playlistArtworkAccent(p);
+        hero.setBackground(Ui.tintedGlass(activePlaylistHeroAccent, 23, this));
         activePlaylistHeroCard = hero;
         LinearLayout heroTop = Ui.row(this);
-        View heroThumb = playlistThumb(p, 88);
+        View heroThumb = playlistThumb(p, 88, (bitmap, color) -> applyPlaylistHeroArtworkAccent(p.id, hero, color));
         activePlaylistHeroThumb = heroThumb;
         heroTop.addView(heroThumb, Ui.lp(Ui.dp(this, 88), Ui.dp(this, 88)));
         LinearLayout heroText = Ui.column(this);
@@ -9577,9 +9586,13 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
         LinearLayout hero = Ui.column(this);
         hero.setPadding(Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16));
-        hero.setBackground(Ui.tintedGlass(Ui.CYAN, 23, this));
+        activePlaylistHeroAccent = playlistArtworkAccent(p);
+        hero.setBackground(Ui.tintedGlass(activePlaylistHeroAccent, 23, this));
+        activePlaylistHeroCard = hero;
         LinearLayout heroTop = Ui.row(this);
-        heroTop.addView(playlistThumb(p, 78), Ui.lp(Ui.dp(this, 78), Ui.dp(this, 78)));
+        View virtualHeroThumb = playlistThumb(p, 78, (bitmap, color) -> applyPlaylistHeroArtworkAccent(p.id, hero, color));
+        activePlaylistHeroThumb = virtualHeroThumb;
+        heroTop.addView(virtualHeroThumb, Ui.lp(Ui.dp(this, 78), Ui.dp(this, 78)));
         LinearLayout heroText = Ui.column(this);
         heroText.setPadding(Ui.dp(this, 14), Ui.dp(this, 4), 0, Ui.dp(this, 2));
         TextView name = Ui.text(this, p.name, 20, Ui.TEXT, true);
@@ -9822,9 +9835,11 @@ public final class MainActivity extends Activity implements PlaybackService.List
 
     private void appendPlaylistPlaceholderBatch(LinearLayout host, int count, int accent) {
         if (host == null || count <= 0) return;
+        int shimmerAccent = progressiveLoadingAccent(accent);
         for (int i = 0; i < count; i++) {
             CurtainRevealFrame frame = new CurtainRevealFrame(this);
-            FluidPlaceholderView placeholder = new FluidPlaceholderView(this, FluidPlaceholderView.SONG_ROW, accent);
+            frame.setAccent(shimmerAccent);
+            FluidPlaceholderView placeholder = new FluidPlaceholderView(this, FluidPlaceholderView.SONG_ROW, shimmerAccent);
             placeholder.setShimmerStartDelay((host.getChildCount() + i) * 62L);
             frame.setPlaceholder(placeholder);
             LinearLayout.LayoutParams fp = Ui.lp(-1, Ui.dp(this, 72));
@@ -10478,6 +10493,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
     private void clearActivePlaylistUiRefs() {
         playlistLoadGeneration++;
         if (playlistLocateAnimator != null) { playlistLocateAnimator.cancel(); playlistLocateAnimator = null; }
+        if (activePlaylistHeroAccentAnimator != null) { activePlaylistHeroAccentAnimator.cancel(); activePlaylistHeroAccentAnimator = null; }
         if (activePlaylistLoader != null) { activePlaylistLoader.stop(); activePlaylistLoader = null; }
         activePlaylistScroll = null;
         activePlaylistList = null;
@@ -12537,6 +12553,71 @@ public final class MainActivity extends Activity implements PlaybackService.List
         return row;
     }
 
+    /**
+     * Staircase loading follows the artwork that is actually playing. If the current cover has not
+     * resolved yet, keep the page-specific fallback instead of leaking the previous track's color.
+     */
+    private int progressiveLoadingAccent(int fallback) {
+        Song current = playback == null ? null : playback.currentSong();
+        if (current == null) return fallback;
+        String key = current.key() + "|" + current.coverUrl;
+        if (key.equals(playlistPlaybackAccentKey)) return playlistPlaybackAccent;
+        Bitmap cached = ImageLoader.peek(current.coverUrl);
+        return cached == null || cached.isRecycled() ? fallback : ImageLoader.accent(cached);
+    }
+
+    private void retintProgressiveLoadingRows(View root, int accent) {
+        if (root == null) return;
+        if (root instanceof CurtainRevealFrame) ((CurtainRevealFrame) root).setAccent(accent);
+        if (root instanceof FluidPlaceholderView) {
+            FluidPlaceholderView placeholder = (FluidPlaceholderView) root;
+            if (placeholder.isSongRow()) placeholder.setAccent(accent);
+            return;
+        }
+        if (!(root instanceof ViewGroup)) return;
+        ViewGroup group = (ViewGroup) root;
+        for (int i = 0; i < group.getChildCount(); i++) retintProgressiveLoadingRows(group.getChildAt(i), accent);
+    }
+
+    private int playlistArtworkAccent(ImportedPlaylist p) {
+        int fallback = playlistAccent(p);
+        String artwork = playlistArtworkUrl(p);
+        Bitmap cached = ImageLoader.peek(artwork);
+        return cached == null || cached.isRecycled() ? fallback : ImageLoader.accent(cached);
+    }
+
+    private void applyPlaylistHeroArtworkAccent(String playlistId, View hero, int color) {
+        if (playlistId == null || hero == null || activePlaylistPageModel == null
+                || !playlistId.equals(activePlaylistPageModel.id) || activePlaylistHeroCard != hero) return;
+        if (playlistHeroSnapshot != null && playlistId.equals(playlistHeroSnapshot.playlistId))
+            playlistHeroSnapshot.accent = color;
+        if (activePlaylistHeroMorph != null) activePlaylistHeroMorph.setAccent(color);
+        if (activePlaylistHeroAccent == color) return;
+        if (activePlaylistHeroAccentAnimator != null) activePlaylistHeroAccentAnimator.cancel();
+        final int from = activePlaylistHeroAccent;
+        activePlaylistHeroAccentAnimator = ValueAnimator.ofFloat(0f, 1f);
+        activePlaylistHeroAccentAnimator.setDuration(SpringMotion.isReducedMotion() ? 1L : 260L);
+        activePlaylistHeroAccentAnimator.setInterpolator(SpringMotion.TAB_SELECTION);
+        activePlaylistHeroAccentAnimator.addUpdateListener(a -> {
+            if (activePlaylistHeroCard != hero || activePlaylistPageModel == null
+                    || !playlistId.equals(activePlaylistPageModel.id)) return;
+            int mixed = Ui.mix(from, color, (Float) a.getAnimatedValue());
+            activePlaylistHeroAccent = mixed;
+            hero.setBackground(Ui.tintedGlass(mixed, 23, this));
+        });
+        activePlaylistHeroAccentAnimator.addListener(new android.animation.AnimatorListenerAdapter() {
+            private boolean cancelled;
+            @Override public void onAnimationCancel(android.animation.Animator animation) { cancelled = true; }
+            @Override public void onAnimationEnd(android.animation.Animator animation) {
+                if (!cancelled && activePlaylistHeroAccentAnimator == animation) {
+                    activePlaylistHeroAccent = color;
+                    activePlaylistHeroAccentAnimator = null;
+                }
+            }
+        });
+        activePlaylistHeroAccentAnimator.start();
+    }
+
     private int playlistAccent(ImportedPlaylist p) {
         if (p == null) return Ui.CYAN;
         if ("tx".equals(p.source)) return Ui.CYAN;
@@ -12581,7 +12662,7 @@ public final class MainActivity extends Activity implements PlaybackService.List
         if (container.width() < 2f || artwork.width() < 2f || titleRect.width() < 2f) return null;
         return new PlaylistHeroSnapshot(p.id, p.name, p.songs.size() + " 首 · " + playlistKind(p),
                 playlistArtworkUrl(p), container, artwork, titleRect, metaRect,
-                title.getTextSize(), meta.getTextSize(), playlistAccent(p));
+                title.getTextSize(), meta.getTextSize(), playlistArtworkAccent(p));
     }
 
     private void openPlaylistWithSharedHero(ImportedPlaylist p, View row, View thumb, TextView title, TextView meta) {
@@ -12708,12 +12789,16 @@ public final class MainActivity extends Activity implements PlaybackService.List
     }
 
     private View playlistThumb(ImportedPlaylist p, int sizeDp) {
+        return playlistThumb(p, sizeDp, null);
+    }
+
+    private View playlistThumb(ImportedPlaylist p, int sizeDp, ImageLoader.Callback callback) {
         if (p != null && p.songs != null && !p.songs.isEmpty() && !p.songs.get(0).coverUrl.isEmpty()) {
             ImageView cover = new ImageView(this);
             cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
             cover.setClipToOutline(true);
             cover.setBackground(Ui.round(Color.rgb(22, 22, 28), Math.max(12, sizeDp * .25f), this));
-            ImageLoader.load(p.songs.get(0).coverUrl, cover, null);
+            ImageLoader.load(p.songs.get(0).coverUrl, cover, callback);
             return cover;
         }
         FrameLayout shell = new FrameLayout(this);
@@ -12928,6 +13013,8 @@ public final class MainActivity extends Activity implements PlaybackService.List
                     DesktopLyricService.setAccent(this, color);
                     if (!artworkKey.equals(miniArtworkKey)) return;
                     playlistPlaybackAccent = color;
+                    playlistPlaybackAccentKey = artworkKey;
+                    retintProgressiveLoadingRows(pageHost, color);
                     syncPlaybackHighlightState();
                     miniProgress.setBackground(Ui.round(color, 1.5f, this));
                     updatePlaylistLocateButtonAccent();

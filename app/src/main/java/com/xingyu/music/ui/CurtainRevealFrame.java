@@ -24,6 +24,7 @@ public final class CurtainRevealFrame extends FrameLayout {
     private ValueAnimator animator;
     private float progress;
     private boolean curtainActive;
+    private int accent = Ui.CYAN;
     private final Paint seamPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     public CurtainRevealFrame(Context context) {
@@ -31,6 +32,13 @@ public final class CurtainRevealFrame extends FrameLayout {
         setClipChildren(true);
         setClipToPadding(true);
         setWillNotDraw(false);
+    }
+
+    /** Accent for the travelling reveal seam; row callers keep it aligned with the active artwork. */
+    public void setAccent(int color) {
+        if (accent == color) return;
+        accent = color;
+        invalidate();
     }
 
     public void setPlaceholder(View view) {
@@ -119,8 +127,9 @@ public final class CurtainRevealFrame extends FrameLayout {
         if (!curtainActive || progress <= 0f || progress >= 1f || getWidth() <= 0) return;
         float x = getWidth() * progress;
         float spread = dp(20);
-        int center = AppearanceSystem.isLight() ? Color.argb(78, 255, 255, 255) : Color.argb(82, 172, 211, 255);
-        int transparent = Color.argb(0, 255, 255, 255);
+        int seamRgb = mix(accent, Color.WHITE, AppearanceSystem.isLight() ? .48f : .20f);
+        int center = withAlpha(seamRgb, AppearanceSystem.isLight() ? 92 : 96);
+        int transparent = withAlpha(seamRgb, 0);
         seamPaint.setShader(new LinearGradient(x - spread, 0f, x + spread, 0f,
                 new int[]{transparent, center, transparent}, new float[]{0f, .54f, 1f}, Shader.TileMode.CLAMP));
         canvas.drawRect(x - spread, 0f, x + spread, getHeight(), seamPaint);
@@ -180,6 +189,17 @@ public final class CurtainRevealFrame extends FrameLayout {
     @Override protected void onDetachedFromWindow() {
         cancelReveal();
         super.onDetachedFromWindow();
+    }
+
+    private static int withAlpha(int color, int alpha) {
+        return Color.argb(Math.max(0, Math.min(255, alpha)), Color.red(color), Color.green(color), Color.blue(color));
+    }
+
+    private static int mix(int a, int b, float amount) {
+        float t = Math.max(0f, Math.min(1f, amount));
+        return Color.rgb(Math.round(Color.red(a) + (Color.red(b) - Color.red(a)) * t),
+                Math.round(Color.green(a) + (Color.green(b) - Color.green(a)) * t),
+                Math.round(Color.blue(a) + (Color.blue(b) - Color.blue(a)) * t));
     }
 
     private int dp(int value) {

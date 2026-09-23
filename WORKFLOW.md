@@ -35,6 +35,7 @@
 - “立即响应”不是取消动画：按下后应立即开始有因果关系的空间运动；重数据在运动期间或页面落位后后台准备。
 - 重页面先出现最终尺寸的结构/Skeleton，再以 Curtain Reveal 等无布局跳动方式交接真实内容；滚动过程中继续小批次补齐，不用文字“正在加载”阻塞阅读。
 - V92.9.13 起，密集歌曲列表的 Curtain Reveal 以“行”为最小视觉单元并做短 stagger；每日推荐、搜索全部结果等不得再使用贯穿整个 viewport 的单一移动光缝。Skeleton shimmer 也应错相，避免多行同步形成机械光柱。
+- V92.9.14 起，逐行加载的 Skeleton shimmer 与 Curtain 光缝优先跟随“当前播放歌曲封面”的实际取色；新封面未解析时禁止沿用上一首歌的旧 accent。歌单详情 Hero 则跟随“该歌单封面”取色，并与 Shared Object 代理保持同一颜色来源。
 - Shared Object 若目标 Hero 首帧尚未完成测量，应先保留源对象并等待若干 pre-draw/animation frame，再决定是否降级；不得因为一次几何读取为空就直接跳过共享元素。
 - 冷启动先交付品牌化第一帧和可持续的场景（V92.9.9 为 Startup Starfield），大型 Library JSON / 索引恢复不得占住主线程再进入 Activity。
 

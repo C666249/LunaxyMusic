@@ -9,7 +9,7 @@ checks=[]
 def check(name, cond):
     checks.append((name, bool(cond)))
 
-check('playlist hero grows to visibly larger detail artwork', 'playlistThumb(p, 88)' in MAIN and '21.2f' in MAIN)
+check('playlist hero grows to visibly larger detail artwork', 'playlistThumb(p, 88' in MAIN and '21.2f' in MAIN)
 check('destination chrome is hidden before shared travel', 'preparePlaylistDetailForSharedEntrance' in MAIN and 'activePlaylistDetailTitleRow.setAlpha(0f)' in MAIN)
 check('shared transition uses staged title subtitle back header', all(x in MAIN for x in ['titleP = playlistStage', 'subP = playlistStage', 'backP = playlistStage', 'headerP = playlistStage']))
 check('song skeletons enter with staggered vertical travel', 'i * .035f' in MAIN and 'child.setTranslationY' in MAIN)

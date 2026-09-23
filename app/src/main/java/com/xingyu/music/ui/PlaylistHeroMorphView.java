@@ -98,6 +98,13 @@ public final class PlaylistHeroMorphView extends View {
 
     public float getProgress() { return progress; }
 
+    /** Keep the shared container material tied to the resolved playlist artwork color. */
+    public void setAccent(int color) {
+        if (accent == color) return;
+        accent = color;
+        invalidate();
+    }
+
     public void releaseArtwork() {
         bitmap = null;
         shader = null;

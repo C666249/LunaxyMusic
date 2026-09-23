@@ -18,7 +18,11 @@ for field in sorted(view_fields):
 check('no field declared as plain View is directly used with ViewGroup child APIs', not bad)
 check('V92.9.11 shared transition retained', 'preparePlaylistDetailForSharedEntrance' in MAIN and 'applyPlaylistDetailChoreography' in MAIN)
 check('curtain loading retained', 'CurtainRevealFrame' in MAIN and 'appendPlaylistPlaceholderBatch' in MAIN)
-check('stable version advanced', 'versionCode = 990' in GRADLE and 'versionName = "92.9.12-beta60"' in GRADLE)
+version_code_match=re.search(r'versionCode\s*=\s*(\d+)', GRADLE)
+version_name_match=re.search(r'versionName\s*=\s*"([^"]+)"', GRADLE)
+version_code=int(version_code_match.group(1)) if version_code_match else 0
+version_name=version_name_match.group(1) if version_name_match else ''
+check('version chain remains advanced past V92.9.11', version_code >= 990 and version_name.startswith('92.9.'))
 
 failed=[n for n,ok in checks if not ok]
 if failed:
