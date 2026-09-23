@@ -1,0 +1,52 @@
+name: Build LunaxyMusic Beta APK
+on:
+  push:
+    branches: [ beta-v92.9.15-beta63 ]
+    paths: [ "app/**", "tests/**", ".github/workflows/build-beta-apk.yml" ]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: lunaxy-beta-v92.9.15-beta63
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Beta63 identity
+        run: |
+          grep -F 'applicationId = "com.xingyu.music.beta1"' app/build.gradle.kts
+          grep -F 'versionName = "92.9.15-beta63"' app/build.gradle.kts
+          grep -F 'versionCode = 996' app/build.gradle.kts
+          grep -F '<string name="app_name">Lunaxy Music Beta</string>' app/src/main/res/values/strings.xml
+          grep -F '@drawable/icon_stardust_beta' app/src/main/AndroidManifest.xml
+      - name: Run launch and artwork regressions
+        run: |
+          python3 tests/V92915StartupContinuityRegressionTest.py
+          python3 tests/V92914ArtworkAccentRegressionTest.py
+          python3 tests/V92913MotionUnificationRegressionTest.py
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build Beta debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleDebug
+          test -f app/build/outputs/apk/debug/LunaxyMusic-Beta-92.9.15-beta63-debug.apk
+      - name: Collect Beta APK
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/debug/LunaxyMusic-Beta-92.9.15-beta63-debug.apk out/LunaxyMusic-V92.9.15-Beta63.apk
+          sha256sum out/LunaxyMusic-V92.9.15-Beta63.apk | tee out/LunaxyMusic-V92.9.15-Beta63.apk.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LunaxyMusic-V92.9.15-Beta63-APK
+          path: |
+            out/LunaxyMusic-V92.9.15-Beta63.apk
+            out/LunaxyMusic-V92.9.15-Beta63.apk.sha256
+          if-no-files-found: error
+          retention-days: 30

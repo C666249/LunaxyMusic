@@ -14,7 +14,7 @@
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
         <item name="android:colorAccent">#B9A6FF</item>
         <item name="android:windowSplashScreenBackground">@color/lunaxy_launch_bg</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/icon_stardust</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/icon_stardust_beta</item>
         <item name="android:windowSplashScreenAnimationDuration">90</item>
     </style>
 </resources>

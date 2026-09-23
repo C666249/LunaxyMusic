@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">Lunaxy Music</string>
+    <string name="app_name">Lunaxy Music Beta</string>
     <string name="notification_channel">音乐播放</string>
 </resources>
