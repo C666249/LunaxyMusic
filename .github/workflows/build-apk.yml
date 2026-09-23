@@ -50,3 +50,5 @@ jobs:
             out/LunaxyMusic-V92.9.15-Stable.apk.sha256
           if-no-files-found: error
           retention-days: 30
+
+# v92.9.15 retrigger after theme sync
