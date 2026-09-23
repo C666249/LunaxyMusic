@@ -1,8 +1,16 @@
-Lunaxy Music delivery rules
+Lunaxy Music delivery contract
+
 - Full source ZIPs: LunaxyMusic-V<version>-Stable.zip / LunaxyMusic-V<version>-Beta.zip
 - Stable applicationId: com.xingyu.music
 - Beta applicationId: com.xingyu.music.beta1
-- Android Studio project root must contain settings.gradle.kts
+- Stable display name: Lunaxy Music
+- Beta display name: Lunaxy Music Beta; launcher icon must visibly include β
+- Android Studio project root is the directory containing settings.gradle.kts
+- Stable identity/data upgrade chain must not be changed for convenience
+- Stable/Beta runtime business Java sources must remain byte-identical unless a channel-specific identity/test reason is documented
 - APK export names must include project + channel + version + buildType
-- Every ZIP must contain WORKFLOW.md, DELIVERY_RULE.txt, PROJECT_STATE.md, release notes, validation record and SHA256SUMS.txt
-- Never claim Android compilation succeeded when only static checks ran
+- Every ZIP root must contain App开发规范与交付标准.md, WORKFLOW.md, DELIVERY_RULE.txt, PROJECT_STATE.md, current release notes, validation record and SHA256SUMS.txt
+- Stable detailed history window: latest 10 formal releases; older valuable history goes to HISTORY_ARCHIVE.md
+- Beta detailed history window: current + recent 2–3 beta records; older process history is compressed
+- Source ZIPs must not contain .gradle/, build/, app/build/, local.properties, old APK/AAB/ZIP, caches or machine-specific temporary files
+- Never claim Android compilation/build succeeded when only static/script checks ran
