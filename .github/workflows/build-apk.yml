@@ -5,11 +5,15 @@ on:
     branches: [ main ]
     paths:
       - ".github/workflows/build-apk.yml"
-      - ".ci/v92913-source.tar.xz.b64"
+      - ".ci/v92914-delta.tar.xz.b64"
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: lunaxy-android-main
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -21,62 +25,84 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Restore V92.9.13 source overlay
+      - name: Apply V92.9.14 Stable source delta
+        id: overlay
         shell: bash
         run: |
           set -euxo pipefail
-          if [ -f .ci/v92913-source.tar.xz.b64 ]; then
-            base64 -d .ci/v92913-source.tar.xz.b64 > /tmp/v92913-source.tar.xz
-            echo "dbea369984fa1b5b319d11cb8a8feb2ee4bcc7974bb06cd70b097eb0dd1348d1  /tmp/v92913-source.tar.xz" | sha256sum -c -
-            tar -xJf /tmp/v92913-source.tar.xz -C .
+          DELTA=".ci/v92914-delta.tar.xz.b64"
+          if [ -f "$DELTA" ]; then
+            base64 -d "$DELTA" > /tmp/v92914-delta.tar.xz
+            echo "ad0e76d545ed8ecd743466e07f7f8a587976dd736c5660bd9d17aac268a038e9  /tmp/v92914-delta.tar.xz" | sha256sum -c -
+            tar -xJf /tmp/v92914-delta.tar.xz -C .
+            if [ -f .delete-v92914.txt ]; then
+              while IFS= read -r path; do
+                [ -z "$path" ] || rm -f -- "$path"
+              done < .delete-v92914.txt
+              rm -f .delete-v92914.txt
+            fi
+            echo "applied=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "applied=false" >> "$GITHUB_OUTPUT"
           fi
-          grep -n "versionName" app/build.gradle.kts
 
-      - name: Sync expanded V92.9.13 source to main
+      - name: Verify V92.9.14 Stable identity
         shell: bash
         run: |
           set -euxo pipefail
-          rm -f .ci/v92913-source.tar.xz.b64
+          grep -F 'versionName = "92.9.14"' app/build.gradle.kts
+          grep -F 'versionCode = 993' app/build.gradle.kts
+          grep -F 'applicationId = "com.xingyu.music"' app/build.gradle.kts
+
+      - name: Sync V92.9.14 source to main
+        if: steps.overlay.outputs.applied == 'true'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -f .ci/v92914-delta.tar.xz.b64
           rmdir .ci 2>/dev/null || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           if ! git diff --cached --quiet; then
-            git commit -m "Sync V92.9.13 Stable source [skip ci]"
+            git commit -m "Sync LunaxyMusic V92.9.14 Stable source [skip ci]"
             git push origin HEAD:main
           fi
 
+      - name: Run V92.9.14 artwork-accent regression
+        run: python3 tests/V92914ArtworkAccentRegressionTest.py
+
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Make Gradle executable
-        run: chmod +x gradlew
-
-      - name: Run V92.9.13 regression policy
-        run: python3 tests/V92913MotionUnificationRegressionTest.py
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Build debug APK
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleDebug
+          test -f app/build/outputs/apk/debug/LunaxyMusic-Stable-92.9.14-debug.apk
 
       - name: Collect APK
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p out
-          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)"
-          test -n "$APK"
-          cp "$APK" out/LunaxyMusic-V92.9.13-Stable.apk
-          sha256sum out/LunaxyMusic-V92.9.13-Stable.apk | tee out/LunaxyMusic-V92.9.13-Stable.apk.sha256
+          cp app/build/outputs/apk/debug/LunaxyMusic-Stable-92.9.14-debug.apk out/LunaxyMusic-V92.9.14-Stable.apk
+          sha256sum out/LunaxyMusic-V92.9.14-Stable.apk | tee out/LunaxyMusic-V92.9.14-Stable.apk.sha256
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: LunaxyMusic-V92.9.13-Stable-APK
+          name: LunaxyMusic-V92.9.14-Stable-APK
           path: |
-            out/LunaxyMusic-V92.9.13-Stable.apk
-            out/LunaxyMusic-V92.9.13-Stable.apk.sha256
+            out/LunaxyMusic-V92.9.14-Stable.apk
+            out/LunaxyMusic-V92.9.14-Stable.apk.sha256
           if-no-files-found: error
           retention-days: 30
