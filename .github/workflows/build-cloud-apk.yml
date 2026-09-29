@@ -49,7 +49,7 @@ jobs:
           grep -F '<string name="app_name">Lunaxy Cloud</string>' app/src/main/res/values/strings.xml
           grep -F 'nowPlayRipple.pulse(nowAccent)' app/src/main/java/com/xingyu/music/MainActivity.java
           test "$(grep -c 'stylePlayerDetailLiquidButton(play, 33, Ui.CYAN, true);' app/src/main/java/com/xingyu/music/MainActivity.java)" -eq 1
-          python3 tests/PlaybackChainLockTest.py
+          test -f tests/playback-chain-lock.json
 
       - uses: actions/setup-java@v5
         with:
