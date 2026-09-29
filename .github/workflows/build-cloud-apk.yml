@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: lunaxy-cloud-v92.9.23
+  group: lunaxy-cloud-v92.9.24
   cancel-in-progress: true
 
 jobs:
@@ -34,13 +34,22 @@ jobs:
           unzip -oq /tmp/lunaxy-cloud-overlay.zip -d .
           test -f app/src/main/java/com/xingyu/music/ui/LiquidGlassDrawable.java
 
-      - name: Verify independent Cloud identity
+      - name: Apply V92.9.24 restrained player pass
+        shell: bash
+        run: |
+          python3 .cloud-build/v9224_transform.py
+          test -f app/src/main/java/com/xingyu/music/ui/TransportRippleView.java
+
+      - name: Verify independent Cloud identity and visual boundary
         shell: bash
         run: |
           grep -F 'applicationId = "com.xingyu.music.cloud"' app/build.gradle.kts
-          grep -F 'versionName = "92.9.23-cloud1"' app/build.gradle.kts
-          grep -F 'versionCode = 1008' app/build.gradle.kts
+          grep -F 'versionName = "92.9.24-cloud2"' app/build.gradle.kts
+          grep -F 'versionCode = 1009' app/build.gradle.kts
           grep -F '<string name="app_name">Lunaxy Cloud</string>' app/src/main/res/values/strings.xml
+          grep -F 'nowPlayRipple.pulse(nowAccent)' app/src/main/java/com/xingyu/music/MainActivity.java
+          test "$(grep -c 'stylePlayerDetailLiquidButton(play, 33, Ui.CYAN, true);' app/src/main/java/com/xingyu/music/MainActivity.java)" -eq 1
+          python3 tests/PlaybackChainLockTest.py
 
       - uses: actions/setup-java@v5
         with:
@@ -54,20 +63,20 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace assembleDebug
-          test -f app/build/outputs/apk/debug/LunaxyMusic-Cloud-92.9.23-debug.apk
+          test -f app/build/outputs/apk/debug/LunaxyMusic-Cloud-92.9.24-debug.apk
 
       - name: Collect APK and checksum
         shell: bash
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/debug/LunaxyMusic-Cloud-92.9.23-debug.apk out/LunaxyMusic-V92.9.23-Cloud.apk
-          sha256sum out/LunaxyMusic-V92.9.23-Cloud.apk | tee out/LunaxyMusic-V92.9.23-Cloud.apk.sha256
+          cp app/build/outputs/apk/debug/LunaxyMusic-Cloud-92.9.24-debug.apk out/LunaxyMusic-V92.9.24-Cloud.apk
+          sha256sum out/LunaxyMusic-V92.9.24-Cloud.apk | tee out/LunaxyMusic-V92.9.24-Cloud.apk.sha256
 
       - uses: actions/upload-artifact@v4
         with:
-          name: LunaxyMusic-V92.9.23-Cloud-APK
+          name: LunaxyMusic-V92.9.24-Cloud-APK
           path: |
-            out/LunaxyMusic-V92.9.23-Cloud.apk
-            out/LunaxyMusic-V92.9.23-Cloud.apk.sha256
+            out/LunaxyMusic-V92.9.24-Cloud.apk
+            out/LunaxyMusic-V92.9.24-Cloud.apk.sha256
           if-no-files-found: error
           retention-days: 30
