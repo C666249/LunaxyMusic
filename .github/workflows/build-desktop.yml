@@ -1,0 +1,72 @@
+name: Build Lunaxy Music PC EXE
+
+on:
+  push:
+    branches: [ "desktop-v92.9.23-pc1" ]
+    paths:
+      - ".ci/desktop-v92.9.23/**"
+      - ".github/workflows/build-desktop.yml"
+      - "desktop/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lunaxy-pc-v92.9.23
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore desktop source package
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem ".ci/desktop-v92.9.23/part*.b64" | Sort-Object Name
+          if ($parts.Count -lt 1) { throw "Desktop source archive parts missing" }
+          $b64 = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ""
+          $bytes = [Convert]::FromBase64String($b64)
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\lunaxy-pc.zip", $bytes)
+          New-Item -ItemType Directory -Force -Path desktop-src | Out-Null
+          Expand-Archive -Path "$env:RUNNER_TEMP\lunaxy-pc.zip" -DestinationPath desktop-src -Force
+          if (-not (Test-Path "desktop-src\package.json")) { throw "package.json missing after restore" }
+          node --check desktop-src\main.js
+          node --check desktop-src\preload.js
+          node --check desktop-src\src\renderer.js
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: desktop/package.json
+
+      - name: Install desktop dependencies
+        working-directory: desktop-src
+        run: npm install --no-audit --no-fund
+
+      - name: Build portable Windows EXE
+        working-directory: desktop-src
+        run: npm run dist:win
+
+      - name: Collect EXE
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem "desktop-src\dist\*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "Portable EXE not found" }
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Copy-Item $exe.FullName "out\LunaxyMusic-PC-V92.9.23-Desktop1-Portable.exe"
+          $hash = (Get-FileHash "out\LunaxyMusic-PC-V92.9.23-Desktop1-Portable.exe" -Algorithm SHA256).Hash.ToLower()
+          "$hash  LunaxyMusic-PC-V92.9.23-Desktop1-Portable.exe" | Out-File "out\LunaxyMusic-PC-V92.9.23-Desktop1-Portable.exe.sha256" -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LunaxyMusic-PC-V92.9.23-Desktop1
+          path: |
+            out/LunaxyMusic-PC-V92.9.23-Desktop1-Portable.exe
+            out/LunaxyMusic-PC-V92.9.23-Desktop1-Portable.exe.sha256
+          if-no-files-found: error
+          retention-days: 30
