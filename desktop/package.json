@@ -1,0 +1,34 @@
+{
+  "name": "lunaxy-music-pc",
+  "version": "92.9.23",
+  "description": "Lunaxy Music Windows desktop port",
+  "main": "main.js",
+  "author": "Lunaxy Music",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "^38.2.1",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.xingyu.music.desktop",
+    "productName": "Lunaxy Music",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [{"target":"portable","arch":["x64"]}],
+      "artifactName": "LunaxyMusic-PC-V${version}-Portable.exe"
+    }
+  }
+}
