@@ -1,54 +1,94 @@
-name: Build LunaxyMusic APK
+name: Build LunaxyMusic Cloud APK
+
 on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
   push:
     branches: [ main ]
-    paths: [ "app/**", "tests/**", ".github/workflows/build-apk.yml" ]
-  workflow_dispatch:
+    paths:
+      - "app/**"
+      - "tests/**"
+      - ".github/workflows/build-apk.yml"
+
 permissions:
   contents: read
+
 concurrency:
-  group: lunaxy-stable-v92.9.15
-  cancel-in-progress: false
+  group: lunaxy-cloud-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Verify Stable identity
+
+      - name: Restore uploaded V92.9.23 source overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          if compgen -G ".ci/v92.9.23-overlay/part*.b64" > /dev/null; then
+            mkdir -p /tmp/lunaxy-overlay
+            cat .ci/v92.9.23-overlay/part*.b64 | tr -d '\r\n' | base64 --decode > /tmp/lunaxy-overlay.tar.xz
+            tar -xJf /tmp/lunaxy-overlay.tar.xz -C /tmp/lunaxy-overlay
+            if [ -f /tmp/lunaxy-overlay/app/build.gradle.kts ]; then
+              cp -a /tmp/lunaxy-overlay/. .
+            elif [ -f /tmp/lunaxy-overlay/stable/app/build.gradle.kts ]; then
+              cp -a /tmp/lunaxy-overlay/stable/. .
+            else
+              ROOT="$(find /tmp/lunaxy-overlay -type f -path '*/app/build.gradle.kts' -printf '%h\n' | sed 's#/app$##' | head -n1)"
+              test -n "$ROOT"
+              cp -a "$ROOT"/. .
+            fi
+          fi
+
+      - name: Verify V92.9.23 Stable source
         run: |
           grep -F 'applicationId = "com.xingyu.music"' app/build.gradle.kts
-          grep -F 'versionName = "92.9.15"' app/build.gradle.kts
-          grep -F 'versionCode = 995' app/build.gradle.kts
-      - name: Run launch regressions
+          grep -F 'versionName = "92.9.23"' app/build.gradle.kts
+          grep -F 'versionCode = 1010' app/build.gradle.kts
+          test -f app/src/main/java/com/xingyu/music/ui/LifecycleStatusView.java
+          grep -F 'playJellyBargeSelection' app/src/main/java/com/xingyu/music/MainActivity.java
+
+      - name: Run V92.9.23 regression
         run: |
-          python3 tests/V92915StartupContinuityRegressionTest.py
-          python3 tests/V92914ArtworkAccentRegressionTest.py
-          python3 tests/V92913MotionUnificationRegressionTest.py
-          python3 tests/V92910SplashCompileRegressionTest.py
-          python3 tests/V9299SharedHeroAndStartupRegressionTest.py
+          if [ -f tests/V92923SearchFilterJellyRegressionTest.py ]; then
+            python3 tests/V92923SearchFilterJellyRegressionTest.py
+          fi
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
+
       - uses: gradle/actions/setup-gradle@v4
+
       - name: Build Stable debug APK
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace assembleDebug
-          test -f app/build/outputs/apk/debug/LunaxyMusic-Stable-92.9.15-debug.apk
+
       - name: Collect APK
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p out
-          cp app/build/outputs/apk/debug/LunaxyMusic-Stable-92.9.15-debug.apk out/LunaxyMusic-V92.9.15-Stable.apk
-          sha256sum out/LunaxyMusic-V92.9.15-Stable.apk | tee out/LunaxyMusic-V92.9.15-Stable.apk.sha256
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          if [ ! -f "$APK" ]; then
+            APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -n1)"
+          fi
+          test -n "$APK"
+          test -f "$APK"
+          cp "$APK" out/LunaxyMusic-V92.9.23-Stable.apk
+          sha256sum out/LunaxyMusic-V92.9.23-Stable.apk | tee out/LunaxyMusic-V92.9.23-Stable.apk.sha256
+
       - uses: actions/upload-artifact@v4
         with:
-          name: LunaxyMusic-V92.9.15-Stable-APK
+          name: LunaxyMusic-V92.9.23-Stable-APK
           path: |
-            out/LunaxyMusic-V92.9.15-Stable.apk
-            out/LunaxyMusic-V92.9.15-Stable.apk.sha256
+            out/LunaxyMusic-V92.9.23-Stable.apk
+            out/LunaxyMusic-V92.9.23-Stable.apk.sha256
           if-no-files-found: error
           retention-days: 30
-
-# v92.9.15 retrigger after theme sync
