@@ -1,0 +1,122 @@
+name: Build V111 full-screen radio APKs
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.event.issue.number == 5 && github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [Beta, Stable]
+    env:
+      CHANNEL: ${{ matrix.channel }}
+      COMMENT_BODY: ${{ github.event.comment.body }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select verified V110 source uploaded by repository owner
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, re, pathlib
+          ch=os.environ['CHANNEL']
+          expected='LunaxyMusic-V110-' + ch + '-Source.zip'
+          links=re.findall(r'https://github\.com/user-attachments/files/[0-9]+/[^\s)\]>]+', os.environ.get('COMMENT_BODY',''))
+          selected=[u for u in links if u.split('?')[0].endswith('/'+expected)]
+          if len(selected)!=1: raise SystemExit('Expected one V110 '+ch+' source attachment')
+          pathlib.Path('/tmp/source_url').write_text(selected[0])
+          PY
+
+      - name: Retrieve original V110 source and verify overlay digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --proto '=https' --tlsv1.2 "$(cat /tmp/source_url)" -o source.zip
+          cat .ci/v111-overlay.part0* | base64 --decode > overlay.tar.xz
+          echo '8a08af05bca04b32736905b4be5811ed5653720510105f30d9c3af56b220b077  overlay.tar.xz' | sha256sum -c -
+          tar -tJf overlay.tar.xz | grep 'PrivateRadioDeckView.java'
+          mkdir source
+          python3 - <<'PY'
+          import os, zipfile, pathlib, stat
+          channel=os.environ['CHANNEL']
+          prefix='LunaxyMusic-V110-'+channel
+          with zipfile.ZipFile('source.zip') as z:
+            for i in z.infolist():
+              path=pathlib.PurePosixPath(i.filename)
+              if not path.parts or path.parts[0]!=prefix or '..' in path.parts or path.is_absolute():
+                raise SystemExit('Unsafe archive path: '+i.filename)
+              if stat.S_IFMT(i.external_attr >> 16) == stat.S_IFLNK:
+                raise SystemExit('Symlink prohibited')
+            z.extractall('source')
+          PY
+
+      - name: Apply V111 private-radio-only modifications
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="source/LunaxyMusic-V110-$CHANNEL"
+          tar -xJf overlay.tar.xz -C "$ROOT"
+          cd "$ROOT"
+          patch --batch --forward --fuzz=0 -p0 < MainActivity.patch
+          rm MainActivity.patch
+          sed -i "s/versionCode = 1101/versionCode = 1111/" app/build.gradle.kts
+          if [ "$CHANNEL" = "Stable" ]; then
+            sed -i 's/versionName = "110-stable"/versionName = "111-stable"/' app/build.gradle.kts
+            grep -F 'applicationId = "com.xingyu.music"' app/build.gradle.kts
+          else
+            sed -i 's/versionName = "110-beta"/versionName = "111-beta"/' app/build.gradle.kts
+            grep -F 'applicationId = "com.xingyu.music.beta1"' app/build.gradle.kts
+          fi
+          grep -F "versionName = \"111-${CHANNEL,,}\"" app/build.gradle.kts
+          grep -F 'privateRadioFullScreen()' app/src/main/java/com/xingyu/music/MainActivity.java
+          grep -F 'MusicStyleEvidence.discover' app/src/main/java/com/xingyu/music/data/PrivateRadioFeedV110.java
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
+      - name: Install SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Build V111 debug APK (playback chain lock enforced)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "source/LunaxyMusic-V110-$CHANNEL"
+          gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Prepare checksummed artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp "source/LunaxyMusic-V110-$CHANNEL/app/build/outputs/apk/debug/app-debug.apk" "out/LunaxyMusic-V111-$CHANNEL-debug.apk"
+          cd out
+          sha256sum "LunaxyMusic-V111-$CHANNEL-debug.apk" > "LunaxyMusic-V111-$CHANNEL-debug.apk.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LunaxyMusic-V111-${{ matrix.channel }}-debug-APK
+          path: out/LunaxyMusic-V111-${{ matrix.channel }}-debug.apk*
+          if-no-files-found: error
+          retention-days: 30
