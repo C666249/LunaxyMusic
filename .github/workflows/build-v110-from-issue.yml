@@ -1,0 +1,109 @@
+name: Build V110 APK from issue ZIPs
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.event.issue.number == 4 && github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [Beta, Stable]
+    env:
+      COMMENT_BODY: ${{ github.event.comment.body }}
+      CHANNEL: ${{ matrix.channel }}
+    steps:
+      - name: Identify V110 source ZIP attachment
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, re, pathlib
+          channel = os.environ['CHANNEL']
+          body = os.environ.get('COMMENT_BODY','')
+          urls = re.findall(r'https://github\.com/user-attachments/files/[0-9]+/[^\s)\]>]+', body)
+          expected = 'LunaxyMusic-V110-' + channel + '-Source.zip'
+          matches = [u for u in urls if u.split('?')[0].endswith('/' + expected)]
+          if len(matches) != 1:
+              raise SystemExit('Expected exactly one issue attachment named ' + expected)
+          pathlib.Path('source_url.txt').write_text(matches[0])
+          print('Source attachment verified:', expected)
+          PY
+
+      - name: Download only the supplied V110 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --proto '=https' --tlsv1.2 "$(cat source_url.txt)" --output source.zip
+          sha256sum source.zip
+
+      - name: Safely extract and validate exact V110 channel
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, re, zipfile, pathlib, stat
+          channel = os.environ['CHANNEL']
+          root = pathlib.Path('LunaxyMusic-V110-' + channel)
+          with zipfile.ZipFile('source.zip') as z:
+              for entry in z.infolist():
+                  p = pathlib.PurePosixPath(entry.filename)
+                  if p.is_absolute() or '..' in p.parts or not p.parts or p.parts[0] != root.name:
+                      raise SystemExit('Unsafe/wrong archive path: ' + entry.filename)
+                  if stat.S_IFMT(entry.external_attr >> 16) == stat.S_IFLNK:
+                      raise SystemExit('Symlinks not accepted: ' + entry.filename)
+              z.extractall('.')
+          build = (root / 'app/build.gradle.kts').read_text()
+          package = 'com.xingyu.music.beta1' if channel == 'Beta' else 'com.xingyu.music'
+          assert re.search(r'applicationId\s*=\s*"' + re.escape(package) + '"', build), 'Wrong applicationId'
+          assert re.search(r'versionName\s*=\s*"110-' + channel.lower() + '"', build), 'Not V110 source'
+          assert (root / 'app/src/main/java/com/xingyu/music/ui/PrivateRadioDeckView.java').is_file(), 'V110 card deck missing'
+          assert (root / 'app/src/main/java/com/xingyu/music/data/PrivateRadioFeedV110.java').is_file(), 'V110 feed missing'
+          print('V110 ' + channel + ' source and identity verified')
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # V110 ZIP does not include gradle-wrapper.jar; use the pinned distribution instead.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Build V110 debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "LunaxyMusic-V110-$CHANNEL"
+          gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Name and checksum built APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp "LunaxyMusic-V110-$CHANNEL/app/build/outputs/apk/debug/app-debug.apk" "out/LunaxyMusic-V110-$CHANNEL-debug.apk"
+          cd out
+          sha256sum "LunaxyMusic-V110-$CHANNEL-debug.apk" > "LunaxyMusic-V110-$CHANNEL-debug.apk.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LunaxyMusic-V110-${{ matrix.channel }}-debug-APK
+          path: out/LunaxyMusic-V110-${{ matrix.channel }}-debug.apk*
+          if-no-files-found: error
+          retention-days: 30
