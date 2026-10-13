@@ -1,0 +1,122 @@
+name: Lunaxy V143 Three-Channel APK Build
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_url:
+        description: 'Public HTTPS URL for LunaxyMusic-V143-Three-Sources-Bundle.zip (e.g. GitHub Release asset)'
+        required: true
+        type: string
+      bundle_sha256:
+        description: 'SHA256 of source bundle (64 hex characters)'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  build:
+    name: Build ${{ matrix.channel }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [Beta, Stable, Cloud]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify complete V143 source bundle
+        shell: bash
+        env:
+          URL: ${{ inputs.bundle_url }}
+          SHA: ${{ inputs.bundle_sha256 }}
+          CHANNEL: ${{ matrix.channel }}
+        run: |
+          set -euo pipefail
+          [[ "$URL" == https://* ]] || { echo 'HTTPS source URL required'; exit 1; }
+          [[ "$SHA" =~ ^[a-fA-F0-9]{64}$ ]] || { echo 'Invalid SHA256'; exit 1; }
+          curl --fail --location --retry 3 --output v143.zip "$URL"
+          printf '%s  %s\n' "$SHA" v143.zip | sha256sum -c -
+          mkdir -p sources selected
+          unzip -q v143.zip -d sources
+          INNER="sources/LunaxyMusic-V143-${CHANNEL}-Source.zip"
+          test -s "$INNER"
+          unzip -q "$INNER" -d selected
+          test -s "selected/LunaxyMusic-V143-${CHANNEL}/settings.gradle.kts"
+          mv "selected/LunaxyMusic-V143-${CHANNEL}" project
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+      - name: Install Android SDK 36
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Verify V143 source identity
+        shell: bash
+        env:
+          CHANNEL: ${{ matrix.channel }}
+        run: |
+          set -euo pipefail
+          cd project
+          python3 tests/V143GlobalWakeComposerRegressionTest.py
+          python3 tests/V140WakeContinuityTest.py
+          python3 tests/V141GlobalWakeTitleNavigationTest.py
+          python3 tests/V142AgentSettingsScrollTest.py
+          if [ "$CHANNEL" = Cloud ]; then python3 tests/V143CloudIdentityTest.py; fi
+      - name: Build channel APK
+        env:
+          CHANNEL: ${{ matrix.channel }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$CHANNEL" = Cloud ]; then
+            gradle -p project --no-daemon :app:assembleRelease
+          else
+            gradle -p project --no-daemon :app:assembleDebug
+            mkdir -p dist
+            cp project/app/build/outputs/apk/debug/app-debug.apk "dist/LunaxyMusic-V143-${CHANNEL}.apk"
+          fi
+      - name: Sign Cloud with its independent signing identity
+        if: matrix.channel == 'Cloud'
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.LUNAXY_CLOUD_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.LUNAXY_CLOUD_KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.LUNAXY_CLOUD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          if [ -n "$KEYSTORE_B64" ]; then
+            printf '%s' "$KEYSTORE_B64" | base64 --decode > cloud.jks
+            test -n "$KEYSTORE_PASS" && test -n "$KEY_PASS"
+          else
+            echo 'WARNING: temporary Cloud key; configure secrets for future in-place upgrades'
+            KEYSTORE_PASS="$(openssl rand -hex 20)"
+            KEY_PASS="$KEYSTORE_PASS"
+            keytool -genkeypair -keystore cloud.jks -storepass "$KEYSTORE_PASS" -keypass "$KEY_PASS" -alias lunaxy-cloud -keyalg RSA -keysize 3072 -validity 10000 -dname 'CN=Lunaxy Cloud CI,O=Lunaxy,C=US' -noprompt
+          fi
+          export KEYSTORE_PASS KEY_PASS
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks cloud.jks --ks-key-alias lunaxy-cloud --ks-pass env:KEYSTORE_PASS --key-pass env:KEY_PASS --out dist/LunaxyMusic-V143-Cloud.apk project/app/build/outputs/apk/release/app-release-unsigned.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose dist/LunaxyMusic-V143-Cloud.apk
+          rm -f cloud.jks
+      - name: Verify output metadata
+        shell: bash
+        env:
+          CHANNEL: ${{ matrix.channel }}
+        run: |
+          set -euo pipefail
+          APK="dist/LunaxyMusic-V143-${CHANNEL}.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -1
+          sha256sum "$APK" > "$APK.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LunaxyMusic-V143-${{ matrix.channel }}-APK
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
