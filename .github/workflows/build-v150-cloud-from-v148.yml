@@ -46,7 +46,6 @@ jobs:
           cd LunaxyMusic-V148-Cloud
           patch --batch --fuzz=0 -p1 < /tmp/v150.patch
           python3 ../.ci/v150-cloud/fix_kws_adapter.py
-          python3 ../.ci/v150-cloud/fix_kws_android_api.py
           grep -F 'versionCode = 1503' app/build.gradle.kts
           grep -F 'applicationId = "com.xingyu.music.cloud"' app/build.gradle.kts
           python3 tests/V150WakePersonalizationLatencyTest.py
