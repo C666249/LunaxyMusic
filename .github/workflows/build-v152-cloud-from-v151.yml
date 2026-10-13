@@ -184,12 +184,12 @@ jobs:
             --ks cloud.jks --ks-key-alias lunaxy-cloud \
             --ks-pass env:STORE_PASS --key-pass env:KEY_PASS \
             --out out/LunaxyMusic-V152-Cloud.apk "$unsigned"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose out/LunaxyMusic-V151-Cloud.apk
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging out/LunaxyMusic-V151-Cloud.apk \
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose out/LunaxyMusic-V152-Cloud.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging out/LunaxyMusic-V152-Cloud.apk \
             | head -1 | tee out/package-identity.txt
           grep -F 'com.xingyu.music.cloud' out/package-identity.txt
           grep -F "versionCode='1523'" out/package-identity.txt
-          sha256sum out/LunaxyMusic-V151-Cloud.apk > out/LunaxyMusic-V151-Cloud.apk.sha256
+          sha256sum out/LunaxyMusic-V152-Cloud.apk > out/LunaxyMusic-V152-Cloud.apk.sha256
           rm -f cloud.jks
       - uses: actions/upload-artifact@v4
         with:
