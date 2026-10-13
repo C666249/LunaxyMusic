@@ -1,0 +1,112 @@
+name: Build V143 Cloud APK from Release
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-cloud:
+    if: github.event_name == 'workflow_dispatch' || github.event.release.tag_name == 'v143-cloud-source'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Download and verify full Cloud source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir incoming
+          gh release download v143-cloud-source --repo "$GH_REPO" \
+            -p LunaxyMusic-V143-Cloud-Source.zip -D incoming --clobber
+          test -s incoming/LunaxyMusic-V143-Cloud-Source.zip
+          echo 'ba397ce9615e712f9df939fbe0577a5b92af4eb0447121305aea9ac14535063f  incoming/LunaxyMusic-V143-Cloud-Source.zip' | sha256sum -c -
+      - name: Extract and validate Cloud identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile, pathlib, re, stat
+          src=pathlib.Path('incoming/LunaxyMusic-V143-Cloud-Source.zip')
+          root=pathlib.Path('LunaxyMusic-V143-Cloud').resolve()
+          with zipfile.ZipFile(src) as archive:
+              for item in archive.infolist():
+                  name=pathlib.PurePosixPath(item.filename)
+                  if name.is_absolute() or '..' in name.parts or not name.parts or name.parts[0] != root.name: raise SystemExit('Unsafe archive path')
+                  if stat.S_IFMT(item.external_attr >> 16)==stat.S_IFLNK: raise SystemExit('Symlink not allowed')
+              archive.extractall('.')
+          gradle=(root/'app/build.gradle.kts').read_text()
+          assert re.search(r'applicationId\s*=\s*"com\.xingyu\.music\.cloud"',gradle)
+          assert re.search(r'versionCode\s*=\s*1433',gradle)
+          assert (root/'app/src/main/assets/agent-speech/vosk-model-small-cn-0.22.zip').is_file()
+          print('Verified Cloud identity, V143 version and offline model.')
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Verify wake and overlay sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd LunaxyMusic-V143-Cloud
+          python3 tests/V143CloudIdentityTest.py
+          python3 tests/V143GlobalWakeComposerRegressionTest.py
+          python3 tests/V140WakeContinuityTest.py
+          python3 tests/V142AgentSettingsScrollTest.py
+      - name: Compile unsigned Cloud APK
+        run: gradle -p LunaxyMusic-V143-Cloud --no-daemon --stacktrace :app:assembleRelease
+      - name: Sign Cloud APK with independent identity
+        shell: bash
+        env:
+          CLOUD_KEYSTORE_B64: ${{ secrets.LUNAXY_CLOUD_KEYSTORE_BASE64 }}
+          CLOUD_STORE_PASS: ${{ secrets.LUNAXY_CLOUD_KEYSTORE_PASSWORD }}
+          CLOUD_KEY_PASS: ${{ secrets.LUNAXY_CLOUD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          if [ -n "$CLOUD_KEYSTORE_B64" ]; then
+            test -n "$CLOUD_STORE_PASS" && test -n "$CLOUD_KEY_PASS"
+            echo "$CLOUD_KEYSTORE_B64" | base64 --decode > cloud.jks
+          else
+            echo 'CAUTION: temporary Cloud signing key (upgrades need persistent key secrets)'
+            CLOUD_STORE_PASS="$(openssl rand -hex 20)"
+            CLOUD_KEY_PASS="$CLOUD_STORE_PASS"
+            keytool -genkeypair -keystore cloud.jks \
+              -storepass "$CLOUD_STORE_PASS" -keypass "$CLOUD_KEY_PASS" \
+              -alias lunaxy-cloud -keyalg RSA -keysize 3072 -validity 10000 \
+              -dname 'CN=Lunaxy Cloud,O=Lunaxy,C=US' -noprompt
+          fi
+          export CLOUD_STORE_PASS CLOUD_KEY_PASS
+          APK='LunaxyMusic-V143-Cloud/app/build/outputs/apk/release/app-release-unsigned.apk'
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+            --ks cloud.jks --ks-key-alias lunaxy-cloud \
+            --ks-pass env:CLOUD_STORE_PASS --key-pass env:CLOUD_KEY_PASS \
+            --out dist/LunaxyMusic-V143-Cloud.apk "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose dist/LunaxyMusic-V143-Cloud.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging \
+            dist/LunaxyMusic-V143-Cloud.apk | head -1 | tee dist/package.txt
+          grep -F com.xingyu.music.cloud dist/package.txt
+          sha256sum dist/LunaxyMusic-V143-Cloud.apk \
+            > dist/LunaxyMusic-V143-Cloud.apk.sha256
+          rm -f cloud.jks
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LunaxyMusic-V143-Cloud-APK
+          path: dist/*
+          retention-days: 30
+          if-no-files-found: error
