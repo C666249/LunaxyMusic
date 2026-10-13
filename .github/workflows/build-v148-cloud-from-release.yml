@@ -3,14 +3,22 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-v148-cloud-from-release.yml'
+      - '.ci/v148-cloud-fixes/**'
 permissions:
   contents: read
 jobs:
   build-cloud-v148:
-    if: github.event_name == 'workflow_dispatch' || github.event.release.tag_name == 'v148-cloud-source'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event.release.tag_name == 'v148-cloud-source'
     runs-on: ubuntu-latest
     timeout-minutes: 110
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
       - name: Download verified V148 Cloud source Release
         shell: bash
         env:
@@ -55,6 +63,13 @@ jobs:
           test -s app/libs/sherpa-onnx-1.13.8.aar
           test -s app/src/main/assets/sherpa-kws/keywords.txt
           test -s app/src/main/assets/sherpa-asr/model.int8.onnx
+      - name: Apply verified Android AAR Kotlin API hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd LunaxyMusic-V148-Cloud
+          python3 ../.ci/v148-cloud-fixes/apply_sherpa_android_api.py
+          python3 tests/V148VoiceIntegrationTest.py
       - name: Integration and music playback regression
         shell: bash
         run: |
