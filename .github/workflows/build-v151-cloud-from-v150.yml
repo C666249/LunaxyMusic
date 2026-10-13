@@ -73,6 +73,23 @@ jobs:
           python3 tests/V150WakePersonalizationLatencyTest.py
           python3 tests/V149WakeForegroundHealthTest.py
           python3 tests/V148VoiceIntegrationTest.py
+      - name: Correct Java escaped newline in V151 calibration dialog
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          r=Path('LunaxyMusic-V148-Cloud')
+          p=r/'app/src/main/java/com/xingyu/music/MainActivity.java'
+          s=p.read_text()
+          bad='+ "”。' + '\n' + '"' + '\n'
+          good='+ "”。' + '\\n' + '"' + '\n'
+          assert s.count(bad)==1, ('Expected one Java string newline to repair',s.count(bad))
+          p.write_text(s.replace(bad,good,1))
+          qa=r/'qa/android-project/app/src/main/java/com/xingyu/music/MainActivity.java'
+          qa.write_bytes(p.read_bytes())
+          print('V151 Java string literal checked and corrected')
+          PY
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
