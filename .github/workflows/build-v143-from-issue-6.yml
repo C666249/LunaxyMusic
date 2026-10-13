@@ -18,71 +18,57 @@ jobs:
       CHANNEL: ${{ matrix.channel }}
     steps:
       - uses: actions/checkout@v4
-      - name: Download, verify and reassemble V143 source
+      - name: Retrieve verified V143 base source and shared offline model
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import re,os,pathlib,json
-          body=os.environ.get('COMMENT_BODY','')
-          links=re.findall(r'https://github\.com/user-attachments/files/[0-9]+/[^\s)\]>]+',body)
-          result=[]
-          for idx in range(1,9):
-              name=f'Lunaxy-V143-source-part{idx:02d}.zip'
-              chosen=[x for x in links if x.split('?')[0].endswith('/'+name)]
-              if len(chosen)!=1: raise SystemExit(f'Expected one attachment: {name}, got {len(chosen)}')
-              result.append(chosen[0])
-          pathlib.Path('v143_urls.json').write_text(json.dumps(result))
+          import re,os,json,pathlib
+          links=re.findall(r'https://github\.com/user-attachments/files/[0-9]+/[^\s)\]>]+',os.environ.get('COMMENT_BODY',''))
+          names=['Lunaxy-V143-source-core.zip','Lunaxy-V143-source-model-01.zip','Lunaxy-V143-source-model-02.zip']
+          urls=[]
+          for name in names:
+              chosen=[u for u in links if u.split('?')[0].endswith('/'+name)]
+              if len(chosen)!=1:raise SystemExit('Expected exactly one attachment named '+name)
+              urls.append(chosen[0])
+          pathlib.Path('attachments.json').write_text(json.dumps(urls))
           PY
           python3 - <<'PY'
-          import json,subprocess,zipfile,hashlib,pathlib
-          sha=[
-          'b6906ff3d3bb937caaeb2375a2a2b9e223a4528c593252b1f0becbc942d3d203',
-          'a9e1b4b98ab65c9d91d2adecc527bd2992a1d277b78082f5222ab0fa841ff3a6',
-          '92b5bed1e1dcb6bf22d203bb1745486b50a1fe1ea9281cdd8e4c716cb468ebd6',
-          '37bf6524df4af3005af9a9beb9016e1e5b2c75acf054ccf4f00124aea6443088',
-          '55b294c569c9017b3984c79e432a17421c903bb62a01486f15db75715dba068b',
-          '10a8f54fbc6cfbd36094c3f74ce8cbead1dee40c3121abfa88695a99e84bb9d5',
-          'aebda2df590e525257e336af59b596749057d5144a47ed079979222cdf1fcef2',
-          '7d7cb564c4c34440acab99c37130b361340ba3809f1994e85a8202c98e228920']
-          urls=json.loads(pathlib.Path('v143_urls.json').read_text())
-          dst=pathlib.Path('v143-source.zip')
-          with dst.open('wb') as output:
-              for i,url in enumerate(urls,1):
-                  name=f'v143-part{i:02d}.zip'
-                  subprocess.run(['curl','--fail','--location','--retry','3','--proto','=https','--tlsv1.2',url,'-o',name],check=True)
-                  z=pathlib.Path(name)
-                  h=hashlib.sha256(z.read_bytes()).hexdigest()
-                  if h!=sha[i-1]:raise SystemExit(f'Part {i} SHA mismatch')
-                  with zipfile.ZipFile(z) as archive:
-                      if archive.namelist()!=[f'part{i:02d}.bin']:raise SystemExit('Invalid ZIP segment names')
-                      output.write(archive.read(f'part{i:02d}.bin'))
-                  z.unlink()
-          actual=hashlib.sha256(dst.read_bytes()).hexdigest()
-          expected='624f782deb57709bf4503b876f20ad4073f80bebd97a4d57bc6bce40c92d5bb8'
-          if actual!=expected:raise SystemExit('Source bundle SHA mismatch')
-          print('Verified full V143 source bundle SHA256:',actual)
-          PY
-      - name: Extract exactly selected channel project
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import os,zipfile,pathlib,stat
+          import json,subprocess,pathlib,zipfile,hashlib,os
+          names=['Lunaxy-V143-source-core.zip','Lunaxy-V143-source-model-01.zip','Lunaxy-V143-source-model-02.zip']
+          sums=['5c9f06a3ce9b15da78fb6f41202717ffe8997ee394c8c61531d49f422b618207',
+                'bf34a4127ceea10f0bda7ddc00f0ebce8cc5cf7cecae7b5cff745d309c3e0208',
+                'fbd4454a62320606187ceb4176fb66243d2924bf3067958f0dabd7fa17aff210']
+          urls=json.loads(pathlib.Path('attachments.json').read_text())
+          for name,sha,url in zip(names,sums,urls):
+              subprocess.run(['curl','--fail','--location','--retry','3','--proto','=https','--tlsv1.2',url,'-o',name],check=True)
+              actual=hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest()
+              if actual!=sha:raise SystemExit(name+' SHA mismatch')
+          model=bytearray()
+          for i,name in enumerate(names[1:],1):
+              with zipfile.ZipFile(name) as archive:
+                  assert archive.namelist()==[f'model{i:02d}.bin']
+                  model.extend(archive.read(f'model{i:02d}.bin'))
+          if hashlib.sha256(model).hexdigest()!='3af8b0e7e0f835ae9d414ce5df580237a3cfb08d586c9fbbb0f7ff29ad5b14ba':
+              raise SystemExit('Offline speech model SHA mismatch')
           ch=os.environ['CHANNEL']
-          member=f'LunaxyMusic-V143-{ch}-Source.zip'
-          with zipfile.ZipFile('v143-source.zip') as outer:
-              if member not in outer.namelist():raise SystemExit('Channel source missing')
-              pathlib.Path('project-source.zip').write_bytes(outer.read(member))
-          with zipfile.ZipFile('project-source.zip') as z:
-              for item in z.infolist():
-                  p=pathlib.PurePosixPath(item.filename)
-                  if not p.parts or p.parts[0]!=f'LunaxyMusic-V143-{ch}' or p.is_absolute() or '..' in p.parts:raise SystemExit('Unsafe path: '+item.filename)
-                  if stat.S_IFMT(item.external_attr>>16)==stat.S_IFLNK:raise SystemExit('No symlinks')
-              z.extractall('.')
-          p=pathlib.Path(f'LunaxyMusic-V143-{ch}')
-          assert (p/'settings.gradle.kts').is_file()
-          print('Verified',p)
+          with zipfile.ZipFile(names[0]) as archive:
+              source=pathlib.Path('LunaxyMusic-V143-'+ch)
+              for info in archive.infolist():
+                  n=info.filename
+                  if n.startswith('base/'):
+                      dest=source/n[5:]
+                  elif n.startswith('overlay/'+ch+'/'):
+                      dest=source/n[len('overlay/'+ch+'/'):]
+                  else:continue
+                  if not dest.resolve().is_relative_to(source.resolve()):raise SystemExit('Unsafe path')
+                  dest.parent.mkdir(parents=True,exist_ok=True)
+                  dest.write_bytes(archive.read(info))
+          model_path=source/'app/src/main/assets/agent-speech/vosk-model-small-cn-0.22.zip'
+          model_path.parent.mkdir(parents=True,exist_ok=True)
+          model_path.write_bytes(model)
+          assert (source/'settings.gradle.kts').is_file()
+          print('Restored',ch,'with verified offline model')
           PY
       - uses: actions/setup-java@v4
         with:
