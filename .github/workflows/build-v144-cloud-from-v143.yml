@@ -1,0 +1,126 @@
+name: Build V144 Cloud APK (V143 Release + verified audio patch)
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-v144-cloud-from-v143.yml'
+      - '.ci/v144-cloud/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-cloud:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Retrieve verified V143 Cloud baseline from release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p input
+          gh release download v143-cloud-source --repo "$GH_REPO" \
+            --pattern 'LunaxyMusic-V143-Cloud-Source.zip' --dir input --clobber
+          printf '%s  %s\n' ba397ce9615e712f9df939fbe0577a5b92af4eb0447121305aea9ac14535063f \
+            input/LunaxyMusic-V143-Cloud-Source.zip | sha256sum -c -
+          python3 - <<'PY'
+          import pathlib,zipfile,stat
+          root=pathlib.Path('LunaxyMusic-V143-Cloud')
+          with zipfile.ZipFile('input/LunaxyMusic-V143-Cloud-Source.zip') as z:
+              for item in z.infolist():
+                  p=pathlib.PurePosixPath(item.filename)
+                  if not p.parts or p.parts[0]!=root.name or p.is_absolute() or '..' in p.parts:
+                      raise SystemExit('Unsafe source path: '+item.filename)
+                  if stat.S_IFMT(item.external_attr >> 16)==stat.S_IFLNK:raise SystemExit('Symlink prohibited')
+              z.extractall('.')
+          assert (root/'settings.gradle.kts').is_file()
+          PY
+
+      - name: Apply auditable V144 patch without touching playback
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p LunaxyMusic-V143-Cloud/.ci/v144-cloud
+          cp .ci/v144-cloud/apply_v144.py LunaxyMusic-V143-Cloud/.ci/v144-cloud/apply_v144.py
+          python3 LunaxyMusic-V143-Cloud/.ci/v144-cloud/apply_v144.py
+          grep -F 'applicationId = "com.xingyu.music.cloud"' \
+            LunaxyMusic-V143-Cloud/app/build.gradle.kts
+          grep -F 'versionCode = 1443' LunaxyMusic-V143-Cloud/app/build.gradle.kts
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Run minimal playback and wake regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd LunaxyMusic-V143-Cloud
+          python3 tests/V138WakeAudioJvmTest.py
+          python3 tests/PlaybackChainLockTest.py
+          python3 tests/V143GlobalWakeComposerRegressionTest.py
+          python3 - <<'PY'
+          from pathlib import Path
+          f=Path('app/src/main/java/com/xingyu/music/agent/AgentVoiceWakeService.java').read_text()
+          assert 'compatPausedForMusic' in f and 'isMusicActive()' in f
+          assert 'startMusicMonitor()' in f and 'stopMusicMonitor()' in f
+          assert 'config.wakeTemplateCount() < 2' in f
+          assert 'new GlobalWakeCard' in f
+          print('V144 audio co-existence specific checks PASS')
+          PY
+      - name: Compile V144 Cloud APK
+        run: gradle -p LunaxyMusic-V143-Cloud --no-daemon --stacktrace :app:assembleRelease
+      - name: Independently sign V144 Cloud APK
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.LUNAXY_CLOUD_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.LUNAXY_CLOUD_KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.LUNAXY_CLOUD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          if [ -n "$KEYSTORE_B64" ]; then
+            test -n "$KEYSTORE_PASS" && test -n "$KEY_PASS"
+            printf '%s' "$KEYSTORE_B64" | base64 --decode > cloud.jks
+          else
+            echo 'WARNING: ephemeral Cloud signature; will not update V143 if its certificate differs'
+            KEYSTORE_PASS="$(openssl rand -hex 20)"
+            KEY_PASS="$KEYSTORE_PASS"
+            keytool -genkeypair -keystore cloud.jks -storepass "$KEYSTORE_PASS" \
+              -keypass "$KEY_PASS" -alias lunaxy-cloud -keyalg RSA -keysize 3072 \
+              -validity 10000 -dname 'CN=Lunaxy Cloud CI,O=Lunaxy,C=US' -noprompt
+          fi
+          export KEYSTORE_PASS KEY_PASS
+          unsigned='LunaxyMusic-V143-Cloud/app/build/outputs/apk/release/app-release-unsigned.apk'
+          test -s "$unsigned"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+            --ks cloud.jks --ks-key-alias lunaxy-cloud --ks-pass env:KEYSTORE_PASS \
+            --key-pass env:KEY_PASS --out dist/LunaxyMusic-V144-Cloud.apk "$unsigned"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose dist/LunaxyMusic-V144-Cloud.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging \
+            dist/LunaxyMusic-V144-Cloud.apk | head -1 | tee dist/apk-identity.txt
+          grep -F "com.xingyu.music.cloud" dist/apk-identity.txt
+          grep -F "versionCode='1443'" dist/apk-identity.txt
+          sha256sum dist/LunaxyMusic-V144-Cloud.apk > dist/LunaxyMusic-V144-Cloud.apk.sha256
+          rm -f cloud.jks
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LunaxyMusic-V144-Cloud-APK
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
