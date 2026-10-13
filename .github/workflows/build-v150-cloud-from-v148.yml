@@ -1,0 +1,132 @@
+name: Build Lunaxy V150 Cloud · Custom Wake + Faster ASR
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.ci/v150-cloud/**'
+      - '.github/workflows/build-v150-cloud-from-v148.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-cloud:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Obtain frozen V148 source release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p input
+          gh release download v148-cloud-source --repo "$GH_REPO" \
+            --pattern 'LunaxyMusic-V148-Cloud-Source.zip' --dir input --clobber
+          echo 'dc07521ed72fc6729cdbbe3633254926674d50abb4225c401da78b05ce818d3c  input/LunaxyMusic-V148-Cloud-Source.zip' | sha256sum -c -
+          python3 - <<'PY'
+          import pathlib,stat,zipfile
+          with zipfile.ZipFile('input/LunaxyMusic-V148-Cloud-Source.zip') as z:
+            for entry in z.infolist():
+              p=pathlib.PurePosixPath(entry.filename)
+              if p.is_absolute() or not p.parts or p.parts[0]!='LunaxyMusic-V148-Cloud' or '..' in p.parts:raise SystemExit('Unsafe ZIP path: '+entry.filename)
+              if stat.S_IFMT(entry.external_attr>>16)==stat.S_IFLNK:raise SystemExit('Symlink prohibited')
+            z.extractall('.')
+          PY
+      - name: Apply byte-verified V150 minimal source diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .ci/v150-cloud/verified-v148-to-v150.patch.bz2.b64 > /tmp/v150.patch.bz2
+          echo 'eb454b0ae0f307c6889684cea60cc90c3e45b27cfda4b9e2a2bdf6d25c602111  /tmp/v150.patch.bz2' | sha256sum -c -
+          bunzip2 -c /tmp/v150.patch.bz2 >/tmp/v150.patch
+          cd LunaxyMusic-V148-Cloud
+          patch --batch --fuzz=0 -p1 < /tmp/v150.patch
+          grep -F 'versionCode = 1503' app/build.gradle.kts
+          grep -F 'applicationId = "com.xingyu.music.cloud"' app/build.gradle.kts
+          python3 tests/V150WakePersonalizationLatencyTest.py
+          python3 tests/V149WakeForegroundHealthTest.py
+          python3 tests/V143GlobalWakeComposerRegressionTest.py
+          python3 tests/V148VoiceIntegrationTest.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+      - name: Install SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Retrieve pinned bilingual and SenseVoice offline models
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd LunaxyMusic-V148-Cloud
+          python3 scripts/download_models_v148.py
+          test -s app/libs/sherpa-onnx-1.13.8.aar
+          test -s app/src/main/assets/sherpa-asr/model.int8.onnx
+          test -s app/src/main/assets/sherpa-kws/keywords.txt
+      - name: Run voice and playback regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd LunaxyMusic-V148-Cloud
+          python3 tests/V138WakeAudioJvmTest.py
+          python3 tests/PlaybackChainLockTest.py
+          python3 tests/V140WakeContinuityTest.py
+          python3 tests/V141GlobalWakeTitleNavigationTest.py
+          python3 tests/V142AgentSettingsScrollTest.py
+          python3 tests/V149WakeForegroundHealthTest.py
+          python3 tests/V150WakePersonalizationLatencyTest.py
+      - name: Compile V150 Cloud release APK
+        shell: bash
+        run: gradle -p LunaxyMusic-V148-Cloud --no-daemon --stacktrace :app:assembleRelease
+      - name: Sign V150 Cloud with separate identity
+        shell: bash
+        env:
+          STORE_B64: ${{ secrets.LUNAXY_CLOUD_KEYSTORE_BASE64 }}
+          STORE_PASS: ${{ secrets.LUNAXY_CLOUD_KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.LUNAXY_CLOUD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          if [ -n "$STORE_B64" ]; then
+            test -n "$STORE_PASS" && test -n "$KEY_PASS"
+            printf '%s' "$STORE_B64" | base64 --decode > cloud.jks
+          else
+            echo 'WARNING: Temporary Cloud signer! It cannot update previously installed Cloud APKs with other signatures.'
+            STORE_PASS="$(openssl rand -hex 20)"
+            KEY_PASS="$STORE_PASS"
+            keytool -genkeypair -keystore cloud.jks -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
+              -alias lunaxy-cloud -keyalg RSA -keysize 3072 -validity 10000 \
+              -dname 'CN=Lunaxy Cloud V150,O=Lunaxy,C=US' -noprompt
+          fi
+          export STORE_PASS KEY_PASS
+          unsigned='LunaxyMusic-V148-Cloud/app/build/outputs/apk/release/app-release-unsigned.apk'
+          test -s "$unsigned"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+            --ks cloud.jks --ks-key-alias lunaxy-cloud \
+            --ks-pass env:STORE_PASS --key-pass env:KEY_PASS \
+            --out out/LunaxyMusic-V150-Cloud.apk "$unsigned"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose out/LunaxyMusic-V150-Cloud.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging out/LunaxyMusic-V150-Cloud.apk \
+            | head -1 | tee out/package-identity.txt
+          grep -F 'com.xingyu.music.cloud' out/package-identity.txt
+          grep -F "versionCode='1503'" out/package-identity.txt
+          sha256sum out/LunaxyMusic-V150-Cloud.apk > out/LunaxyMusic-V150-Cloud.apk.sha256
+          rm -f cloud.jks
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LunaxyMusic-V150-Cloud-APK
+          path: out/*
+          retention-days: 30
+          if-no-files-found: error
