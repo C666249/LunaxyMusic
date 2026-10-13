@@ -97,6 +97,10 @@ jobs:
         run: |
           set -euo pipefail
           cd LunaxyMusic-V148-Cloud
+          # Historical tests freeze the exact prior versionCode, not code behavior.
+          # Update only these two legacy test expectations to the new build number.
+          sed -i 's/expected=1503/expected=1513/' tests/V141GlobalWakeTitleNavigationTest.py
+          sed -i 's/{1503}/{1513}/' tests/V142AgentSettingsScrollTest.py
           python3 tests/V138WakeAudioJvmTest.py
           python3 tests/PlaybackChainLockTest.py
           python3 tests/V140WakeContinuityTest.py
