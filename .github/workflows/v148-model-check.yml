@@ -1,0 +1,29 @@
+name: V148 upstream voice model and Android AAR smoke test
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/v148-model-check.yml']
+permissions:
+  contents: read
+jobs:
+  upstream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Verify official Android runtime and bilingual KWS model
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o sherpa.aar https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar
+          unzip -l sherpa.aar | grep 'classes.jar'
+          unzip -l sherpa.aar | grep 'arm64-v8a/'
+          curl -fL --retry 3 -o kws.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20.tar.bz2
+          echo '68447f4fbc67e70eee3a93961f36e81e98f47aef73ce7e7ca00885c6cd3616a6  kws.tar.bz2' | sha256sum -c -
+          tar -tjf kws.tar.bz2 | grep 'encoder-epoch-13-avg-2-chunk-16-left-64.int8.onnx'
+          tar -tjf kws.tar.bz2 | grep 'decoder-epoch-13-avg-2-chunk-16-left-64.onnx'
+          tar -tjf kws.tar.bz2 | grep 'joiner-epoch-13-avg-2-chunk-16-left-64.int8.onnx'
+      - name: Verify SenseVoice INT8 archive exists
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o asr.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2
+          tar -tjf asr.tar.bz2 | grep '/model.int8.onnx'
+          tar -tjf asr.tar.bz2 | grep '/tokens.txt'
