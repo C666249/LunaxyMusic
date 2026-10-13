@@ -20,7 +20,7 @@ jobs:
           set -euo pipefail
           mkdir -p input
           gh release download v148-cloud-source --repo "$GH_REPO" --pattern LunaxyMusic-V148-Cloud-Source.zip --dir input --clobber
-          echo 'a71a12d0d6d4395f7525e930651c465827cee4beae35537e5ce12aed6b1904b3  input/LunaxyMusic-V148-Cloud-Source.zip' | sha256sum -c -
+          echo 'dc07521ed72fc6729cdbbe3633254926674d50abb4225c401da78b05ce818d3c  input/LunaxyMusic-V148-Cloud-Source.zip' | sha256sum -c -
           python3 - <<'PY'
           import zipfile,pathlib,stat
           with zipfile.ZipFile('input/LunaxyMusic-V148-Cloud-Source.zip') as a:
