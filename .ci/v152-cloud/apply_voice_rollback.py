@@ -26,6 +26,7 @@ for prefix in ("app","qa/android-project/app"):
     s=s.replace(" && !shouldUseSherpa()","")
     s=s.replace(" || sherpaThread != null","").replace("sherpaThread != null || ","").replace(" && sherpaThread == null","")
     s=s.replace("final Thread oldMic = sherpaThread != null ? sherpaThread : personalThread;","final Thread oldMic = personalThread;")
+    s=s.replace('if ((sherpaThread != null && sherpaThread.isAlive()) || (personalThread != null && personalThread.isAlive())) {', 'if (personalThread != null && personalThread.isAlive()) {')
     # Remove prewarm which required SenseVoice and extra hot background CPU.
     for indent in ("            ","        "):
         s=s.replace(indent+'''main.postDelayed(() -> { if(running&&!globalActive&&!isMusicActive())
