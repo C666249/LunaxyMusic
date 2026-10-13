@@ -1,0 +1,105 @@
+name: Build V148 Cloud · KWS + Multilingual ASR
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-cloud-v148:
+    if: github.event_name == 'workflow_dispatch' || github.event.release.tag_name == 'v148-cloud-source'
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - name: Download verified V148 Cloud source Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p input
+          gh release download v148-cloud-source --repo "$GH_REPO" --pattern LunaxyMusic-V148-Cloud-Source.zip --dir input --clobber
+          echo 'a71a12d0d6d4395f7525e930651c465827cee4beae35537e5ce12aed6b1904b3  input/LunaxyMusic-V148-Cloud-Source.zip' | sha256sum -c -
+          python3 - <<'PY'
+          import zipfile,pathlib,stat
+          with zipfile.ZipFile('input/LunaxyMusic-V148-Cloud-Source.zip') as a:
+            for i in a.infolist():
+              p=pathlib.PurePosixPath(i.filename)
+              if p.is_absolute() or '..' in p.parts or not p.parts or p.parts[0]!='LunaxyMusic-V148-Cloud':
+                raise SystemExit('Invalid ZIP path: '+i.filename)
+              if stat.S_IFMT(i.external_attr >> 16)==stat.S_IFLNK:raise SystemExit('Symbolic links forbidden')
+            a.extractall('.')
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+      - name: Install SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Download official pinned sherpa Android AAR and offline models
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd LunaxyMusic-V148-Cloud
+          python3 scripts/download_models_v148.py
+          test -s app/libs/sherpa-onnx-1.13.8.aar
+          test -s app/src/main/assets/sherpa-kws/keywords.txt
+          test -s app/src/main/assets/sherpa-asr/model.int8.onnx
+      - name: Integration and music playback regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd LunaxyMusic-V148-Cloud
+          python3 tests/V148VoiceIntegrationTest.py
+          python3 tests/PlaybackChainLockTest.py
+      - name: Compile V148 Cloud with both offline models
+        shell: bash
+        run: gradle -p LunaxyMusic-V148-Cloud --no-daemon --stacktrace :app:assembleRelease
+      - name: Sign independent V148 Cloud APK
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.LUNAXY_CLOUD_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.LUNAXY_CLOUD_KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.LUNAXY_CLOUD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          if [ -n "$KEYSTORE_B64" ]; then
+            test -n "$KEYSTORE_PASS"; test -n "$KEY_PASS"
+            printf '%s' "$KEYSTORE_B64" | base64 -d > cloud.jks
+          else
+            echo 'WARNING: No persistent Cloud signing secrets. Generated signature will not match V144 Cloud.'
+            KEYSTORE_PASS="$(openssl rand -hex 20)"
+            KEY_PASS="$KEYSTORE_PASS"
+            keytool -genkeypair -keystore cloud.jks -storepass "$KEYSTORE_PASS" \
+              -keypass "$KEY_PASS" -alias lunaxy-cloud -keyalg RSA -keysize 3072 \
+              -validity 10000 -dname 'CN=Lunaxy V148 Cloud,O=Lunaxy,C=US' -noprompt
+          fi
+          export KEYSTORE_PASS KEY_PASS
+          unsigned=LunaxyMusic-V148-Cloud/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$unsigned"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks cloud.jks \
+            --ks-key-alias lunaxy-cloud --ks-pass env:KEYSTORE_PASS \
+            --key-pass env:KEY_PASS --out out/LunaxyMusic-V148-Cloud.apk "$unsigned"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose out/LunaxyMusic-V148-Cloud.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging out/LunaxyMusic-V148-Cloud.apk | head -1 | tee out/apk-identity.txt
+          grep -F 'com.xingyu.music.cloud' out/apk-identity.txt
+          grep -F "versionCode='1483'" out/apk-identity.txt
+          sha256sum out/LunaxyMusic-V148-Cloud.apk > out/LunaxyMusic-V148-Cloud.apk.sha256
+          rm -f cloud.jks
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LunaxyMusic-V148-Cloud-APK
+          path: out/*
+          if-no-files-found: error
+          retention-days: 30
