@@ -76,10 +76,7 @@ jobs:
           wake_src=wake_src.replace(old_ver,'code = 1431 if channel == "Beta" else 1432')
           frozen='    assert hashlib.sha256((p/name).read_bytes()).hexdigest() == expected, "Protected V139 Java changed: " + name'
           assert frozen in wake_src
-          revised='''    if name.endswith("/ui/Ui.java"):
-        assert hashlib.sha256((p/name).read_bytes()).hexdigest() == "a7a5f35a20720c4e852e6248c25b03025e20021a08987f3fa27c2594d80d6327", "V143 glass Ui.java drift"
-    else:
-        assert hashlib.sha256((p/name).read_bytes()).hexdigest() == expected, "Protected V139 Java changed: " + name'''
+          revised='    if name.endswith("/ui/Ui.java"):\n        assert hashlib.sha256((p/name).read_bytes()).hexdigest() == "a7a5f35a20720c4e852e6248c25b03025e20021a08987f3fa27c2594d80d6327", "V143 glass Ui.java drift"\n    else:\n        assert hashlib.sha256((p/name).read_bytes()).hexdigest() == expected, "Protected V139 Java changed: " + name'
           wake_check.write_text(wake_src.replace(frozen,revised))
           assert (prod/'ui/ClearLiquidGlassDrawable.java').is_file()
           assert (prod/'MainActivity.java').read_bytes()==(qa/'MainActivity.java').read_bytes()
