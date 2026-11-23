@@ -68,6 +68,14 @@ jobs:
         run: |
           set -euo pipefail
           apk="buildroot/app/build/outputs/apk/debug/LunaxyMusic-V141-${CHANNEL}-debug.apk"
+          # AGP 9 may keep only app-debug.apk; export a deterministic channel-labelled copy.
+          if [ ! -s "$apk" ]; then
+            echo "Available APK outputs:"
+            find buildroot/app/build/outputs -type f -name '*.apk' -print
+            original=$(find buildroot/app/build/outputs/apk -type f -name '*.apk' -print -quit)
+            test -n "$original" && test -s "$original"
+            cp "$original" "$apk"
+          fi
           test -s "$apk"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$apk"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | head -1
