@@ -38,6 +38,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mv "$SOURCE_DIR" "$RUNNER_TEMP/v142/LunaxyMusic-V142-$CHANNEL"
+          SOURCE_DIR="$RUNNER_TEMP/v142/LunaxyMusic-V142-$CHANNEL"
+          echo "SOURCE_DIR=$SOURCE_DIR" >> "$GITHUB_ENV"
           cd "$SOURCE_DIR"
           PATCH="$GITHUB_WORKSPACE/ci/v142/$(echo "$CHANNEL" | tr '[:upper:]' '[:lower:]').patch.xz.b64"
           test -s "$PATCH"
@@ -102,6 +105,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: LunaxyMusic-V142-${{ matrix.channel }}-debug-APK
-          path: ${{ runner.temp }}/v142/LunaxyMusic-V143-Cloud/app/build/outputs/apk/debug/LunaxyMusic-V142-${{ matrix.channel }}-debug.apk
+          path: ${{ runner.temp }}/v142/LunaxyMusic-V142-${{ matrix.channel }}/app/build/outputs/apk/debug/LunaxyMusic-V142-${{ matrix.channel }}-debug.apk
           if-no-files-found: error
           retention-days: 3
