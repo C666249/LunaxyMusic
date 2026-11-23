@@ -41,6 +41,10 @@ jobs:
             git -C buildroot apply --check "$RUNNER_TEMP/lunaxy-patches/beta.patch"
             git -C buildroot apply "$RUNNER_TEMP/lunaxy-patches/beta.patch"
           fi
+          echo "CONFIG: $(realpath buildroot/app/build.gradle.kts)"
+          grep -n -E 'applicationId =|versionCode =|versionName =' buildroot/app/build.gradle.kts
+          grep -F 'applicationId = "com.xingyu.music"' buildroot/app/build.gradle.kts
+          grep -F 'versionCode = 1412' buildroot/app/build.gradle.kts
           python3 buildroot/tests/PlaybackChainLockTest.py
           python3 buildroot/tests/AgentArchitecturePolicyTest.py
       - uses: actions/setup-java@v4
@@ -72,6 +76,10 @@ jobs:
           if [ ! -s "$apk" ]; then
             echo "Available APK outputs:"
             find buildroot/app/build/outputs -type f -name '*.apk' -print
+            for item in $(find buildroot/app/build/outputs -type f -name '*.apk'); do
+              echo "BADGING: $item"
+              "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$item" | head -1
+            done
             original=$(find buildroot/app/build/outputs/apk -type f -name '*.apk' -print -quit)
             test -n "$original" && test -s "$original"
             cp "$original" "$apk"
