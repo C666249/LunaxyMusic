@@ -48,8 +48,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.5.0"
-      - uses: android-actions/setup-android@v3
-      - name: Install Android SDK 36
+      - name: Install Android SDK 36 on preinstalled runner SDK
         shell: bash
         run: |
           set -euo pipefail
