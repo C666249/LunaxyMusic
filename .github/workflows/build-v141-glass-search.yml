@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 55
     env:
       CHANNEL: ${{ matrix.channel }}
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
       - name: Restore pinned V143 source then apply V140-derived V141 runtime delta
@@ -52,8 +54,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager_bin="$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager"
+          test -x "$sdkmanager_bin"
+          yes | "$sdkmanager_bin" --licenses >/dev/null || true
+          "$sdkmanager_bin" "platforms;android-36" "build-tools;36.0.0"
       - name: Compile Android
         shell: bash
         working-directory: buildroot
