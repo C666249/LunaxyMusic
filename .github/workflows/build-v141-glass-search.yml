@@ -50,14 +50,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.5.0"
-      - name: Install Android SDK 36 on preinstalled runner SDK
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+      - name: Install Android SDK 36
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager_bin="$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager"
-          test -x "$sdkmanager_bin"
-          yes | "$sdkmanager_bin" --licenses >/dev/null || true
-          "$sdkmanager_bin" "platforms;android-36" "build-tools;36.0.0"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Compile Android
         shell: bash
         working-directory: buildroot
