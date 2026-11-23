@@ -1,0 +1,126 @@
+name: Build Lunaxy V143 Clear Transparent Glass APKs
+on:
+  push:
+    branches: [ci/v143-clear-glass]
+    paths:
+      - .github/workflows/build-v143-clear-glass.yml
+      - ci/v143-clear-glass/**
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [Stable, Beta]
+    env:
+      CHANNEL: ${{ matrix.channel }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Retrieve immutable V143 Cloud build baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v143-clear"
+          gh release download v143-cloud-source --repo C666249/LunaxyMusic --pattern "LunaxyMusic-V143-Cloud-Source.zip" --dir "$RUNNER_TEMP/v143-clear" --clobber
+          echo 'ba397ce9615e712f9df939fbe0577a5b92af4eb0447121305aea9ac14535063f  '"$RUNNER_TEMP/v143-clear/LunaxyMusic-V143-Cloud-Source.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/v143-clear/LunaxyMusic-V143-Cloud-Source.zip" -d "$RUNNER_TEMP/v143-clear"
+      - name: Restore V142 original search, then apply V143 transparency-only UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET="$RUNNER_TEMP/v143-clear/LunaxyMusic-V143-$CHANNEL"
+          mv "$RUNNER_TEMP/v143-clear/LunaxyMusic-V143-Cloud" "$TARGET"
+          echo "SOURCE_DIR=$TARGET" >> "$GITHUB_ENV"
+          cd "$TARGET"
+          CHANNEL_FILE="$(printf '%s' "$CHANNEL" | tr '[:upper:]' '[:lower:]')"
+          base64 -d "$GITHUB_WORKSPACE/ci/v142/$CHANNEL_FILE.patch.xz.b64" | xz -dc | patch --batch --fuzz=0 -p1 -s
+          base64 -d "$GITHUB_WORKSPACE/ci/v143-clear-glass/clear-glass-app.patch.xz.b64" | xz -dc | patch --batch --fuzz=0 -p1 -s
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          channel=os.environ['CHANNEL']
+          root=Path('.')
+          p=root/'app/build.gradle.kts'
+          s=p.read_text()
+          old='1422' if channel=='Stable' else '1421'
+          new='1432' if channel=='Stable' else '1431'
+          assert f'versionCode = {old}' in s
+          assert f'versionName = "142-{channel.lower()}"' in s
+          s=s.replace(f'versionCode = {old}',f'versionCode = {new}')
+          s=s.replace(f'versionName = "142-{channel.lower()}"',f'versionName = "143-{channel.lower()}"')
+          s=s.replace(f'LunaxyMusic-V142-{channel}',f'LunaxyMusic-V143-{channel}')
+          p.write_text(s)
+          qa=root/'qa/android-project/app/src/main/java/com/xingyu/music'
+          prod=root/'app/src/main/java/com/xingyu/music'
+          for filename in ['MainActivity.java','ui/Ui.java','ui/ClearLiquidGlassDrawable.java']:
+              dst=qa/filename
+              dst.parent.mkdir(parents=True,exist_ok=True)
+              dst.write_bytes((prod/filename).read_bytes())
+          check=root/'tests/V142SearchHistoryCascadeTest.py'
+          test=check.read_text().replace("code = 1421 if channel == 'Beta' else 1422","code = 1431 if channel == 'Beta' else 1432")
+          test=test.replace('field.setBackground(Ui.contentSurface(26, this));','field.setBackground(Ui.clearLiquidGlass(26, this));')
+          test=test.replace('chip.setBackground(Ui.glass(92, 15, 18, this));','chip.setBackground(Ui.clearLiquidGlass(15, this));')
+          check.write_text(test)
+          assert (prod/'ui/ClearLiquidGlassDrawable.java').is_file()
+          assert (prod/'MainActivity.java').read_bytes()==(qa/'MainActivity.java').read_bytes()
+          assert ('applicationId = "com.xingyu.music.beta1"' if channel=='Beta' else 'applicationId = "com.xingyu.music"') in s
+          assert f'versionCode = {new}' in s
+          print(f'PASS: 143-{channel.lower()} restored original search and new clear glass')
+          PY
+          python3 tests/V142SearchHistoryCascadeTest.py
+          python3 tests/V140WakeContinuityTest.py
+          python3 tests/PlaybackChainLockTest.py
+          python3 tests/AgentArchitecturePolicyTest.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+      - name: Install SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Compile V143 Debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_DIR"
+          gradle --no-daemon --stacktrace :app:assembleDebug
+      - name: Verify package, version, certificate and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$SOURCE_DIR/app/build/outputs/apk/debug/LunaxyMusic-V143-$CHANNEL-debug.apk"
+          test -s "$APK"
+          if [[ "$CHANNEL" == "Stable" ]]; then
+            APPID='com.xingyu.music'; VCODE=1432; VNAME='143-stable'
+          else
+            APPID='com.xingyu.music.beta1'; VCODE=1431; VNAME='143-beta'
+          fi
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -1 | tee /tmp/v143-apk-badging
+          grep -F "name='$APPID'" /tmp/v143-apk-badging
+          grep -F "versionCode='$VCODE'" /tmp/v143-apk-badging
+          grep -F "versionName='$VNAME'" /tmp/v143-apk-badging
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          sha256sum "$APK" | tee "$APK.sha256"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | grep 'certificate SHA-256 digest'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LunaxyMusic-V143-${{ matrix.channel }}-ClearGlass-APK
+          path: |
+            ${{ runner.temp }}/v143-clear/LunaxyMusic-V143-${{ matrix.channel }}/app/build/outputs/apk/debug/LunaxyMusic-V143-${{ matrix.channel }}-debug.apk
+            ${{ runner.temp }}/v143-clear/LunaxyMusic-V143-${{ matrix.channel }}/app/build/outputs/apk/debug/LunaxyMusic-V143-${{ matrix.channel }}-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
