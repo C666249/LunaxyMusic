@@ -1,0 +1,87 @@
+name: Build V141 Stable + Beta · FMV Glass Search
+on:
+  push:
+    branches: ["build/v141-glass-search"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: lunaxy-v141-glass-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  android:
+    name: APK · ${{ matrix.channel }}
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [Stable, Beta]
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      CHANNEL: ${{ matrix.channel }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore pinned V143 source then apply V140-derived V141 runtime delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --retry 3 --retry-delay 3 -fLsS "https://github.com/C666249/LunaxyMusic/releases/download/v143-cloud-source/LunaxyMusic-V143-Cloud-Source.zip" -o "$RUNNER_TEMP/lunaxy-v143.zip"
+          echo "ba397ce9615e712f9df939fbe0577a5b92af4eb0447121305aea9ac14535063f  $RUNNER_TEMP/lunaxy-v143.zip" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/lunaxy-src" "$RUNNER_TEMP/lunaxy-patches"
+          unzip -q "$RUNNER_TEMP/lunaxy-v143.zip" -d "$RUNNER_TEMP/lunaxy-src"
+          mv "$RUNNER_TEMP/lunaxy-src/LunaxyMusic-V143-Cloud" "$GITHUB_WORKSPACE/buildroot"
+          base64 --decode .ci/v141-glass/runtime-patches.tar.xz.base64 > "$RUNNER_TEMP/lunaxy-delta.tar.xz"
+          echo "27a14806d4a916e55c42ee2e290732fec1e51349820d8d3377a3725679c8a23a  $RUNNER_TEMP/lunaxy-delta.tar.xz" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/lunaxy-delta.tar.xz" -C "$RUNNER_TEMP/lunaxy-patches"
+          git -C buildroot apply --check "$RUNNER_TEMP/lunaxy-patches/stable.patch"
+          git -C buildroot apply "$RUNNER_TEMP/lunaxy-patches/stable.patch"
+          if [ "$CHANNEL" = "Beta" ]; then
+            git -C buildroot apply --check "$RUNNER_TEMP/lunaxy-patches/beta.patch"
+            git -C buildroot apply "$RUNNER_TEMP/lunaxy-patches/beta.patch"
+          fi
+          python3 buildroot/tests/PlaybackChainLockTest.py
+          python3 buildroot/tests/AgentArchitecturePolicyTest.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.5.0"
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Compile Android
+        shell: bash
+        working-directory: buildroot
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+      - name: Verify channel and APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="buildroot/app/build/outputs/apk/debug/LunaxyMusic-V141-${CHANNEL}-debug.apk"
+          test -s "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | head -1
+          if [ "$CHANNEL" = "Stable" ]; then
+            expected="com.xingyu.music"; code=1412; version="141-stable"
+          else
+            expected="com.xingyu.music.beta1"; code=1411; version="141-beta"
+          fi
+          badging=$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | head -1)
+          echo "$badging" | grep -F "name='$expected'"
+          echo "$badging" | grep -F "versionCode='$code'"
+          echo "$badging" | grep -F "versionName='$version'"
+          sha256sum "$apk" > "$apk.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LunaxyMusic-V141-${{ matrix.channel }}-debug-APK
+          path: |
+            buildroot/app/build/outputs/apk/debug/LunaxyMusic-V141-${{ matrix.channel }}-debug.apk
+            buildroot/app/build/outputs/apk/debug/LunaxyMusic-V141-${{ matrix.channel }}-debug.apk.sha256
+          retention-days: 2
+          if-no-files-found: error
