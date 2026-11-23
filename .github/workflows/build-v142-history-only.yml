@@ -1,0 +1,107 @@
+name: Build Lunaxy V142 Original Search History Cascade
+on:
+  push:
+    branches: [ci/v142-search-history-cascade]
+    paths:
+      - .github/workflows/build-v142-history-only.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [Stable, Beta]
+    env:
+      CHANNEL: ${{ matrix.channel }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Retrieve and verify immutable public V143 snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v142"
+          gh release download v143-cloud-source --repo C666249/LunaxyMusic --pattern "LunaxyMusic-V143-Cloud-Source.zip" --dir "$RUNNER_TEMP/v142" --clobber
+          echo 'ba397ce9615e712f9df939fbe0577a5b92af4eb0447121305aea9ac14535063f  '"$RUNNER_TEMP/v142/LunaxyMusic-V143-Cloud-Source.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/v142/LunaxyMusic-V143-Cloud-Source.zip" -d "$RUNNER_TEMP/v142"
+          echo "SOURCE_DIR=$RUNNER_TEMP/v142/LunaxyMusic-V143-Cloud" >> "$GITHUB_ENV"
+
+      - name: Restore exact V140-based V142 channel tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_DIR"
+          PATCH="$GITHUB_WORKSPACE/ci/v142/$(echo "$CHANNEL" | tr '[:upper:]' '[:lower:]').patch.xz.b64"
+          test -s "$PATCH"
+          base64 -d "$PATCH" | xz -dc | patch -p1 -s
+          if [[ "$CHANNEL" == "Stable" ]]; then
+            grep -F 'applicationId = "com.xingyu.music"' app/build.gradle.kts
+            grep -F 'versionCode = 1422' app/build.gradle.kts
+            grep -F 'versionName = "142-stable"' app/build.gradle.kts
+          else
+            grep -F 'applicationId = "com.xingyu.music.beta1"' app/build.gradle.kts
+            grep -F 'versionCode = 1421' app/build.gradle.kts
+            grep -F 'versionName = "142-beta"' app/build.gradle.kts
+          fi
+          python3 tests/V142SearchHistoryCascadeTest.py
+          python3 tests/V140WakeContinuityTest.py
+          python3 tests/PlaybackChainLockTest.py
+          python3 tests/AgentArchitecturePolicyTest.py
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
+      - name: Install Android SDK 36
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Compile APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_DIR"
+          gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Validate APK package, version, and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$SOURCE_DIR/app/build/outputs/apk/debug/LunaxyMusic-V142-$CHANNEL-debug.apk"
+          test -s "$APK"
+          if [[ "$CHANNEL" == "Stable" ]]; then
+            APPID='com.xingyu.music'; VCODE=1422; VNAME='142-stable'
+          else
+            APPID='com.xingyu.music.beta1'; VCODE=1421; VNAME='142-beta'
+          fi
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -1 | tee /tmp/apk-badging
+          grep -F "name='$APPID'" /tmp/apk-badging
+          grep -F "versionCode='$VCODE'" /tmp/apk-badging
+          grep -F "versionName='$VNAME'" /tmp/apk-badging
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          sha256sum "$APK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LunaxyMusic-V142-${{ matrix.channel }}-debug-APK
+          path: ${{ runner.temp }}/v142/LunaxyMusic-V143-Cloud/app/build/outputs/apk/debug/LunaxyMusic-V142-${{ matrix.channel }}-debug.apk
+          if-no-files-found: error
+          retention-days: 3
